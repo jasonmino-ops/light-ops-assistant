@@ -220,6 +220,13 @@ export class NetworkAddonProfile {
     await this.transactions.syncDirectory(this.options.directory)
   }
 
+  private async cleanupStagedNode(revision: number) {
+    const file = path.join(this.options.directory, `nodes-${revision}.sealed`)
+    try { await unlink(file) }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    await this.transactions.syncDirectory(this.options.directory)
+  }
+
   /**
    * Transaction publication uses temporary files that are never authoritative.
    * Remove only the exact transaction temp names after recovery or a failed
@@ -671,7 +678,7 @@ export class NetworkAddonProfile {
       } catch (error) {
         try {
           await this.cleanupOrphanedTransactionTemps()
-          await this.cleanupOrphanedNextNode(revision)
+          await this.cleanupStagedNode(revision)
         } catch (cleanupError) {
           throw new Error('ADDON_COLD_TRANSACTION_BLOCKED', { cause: new AggregateError([error, cleanupError]) })
         }
