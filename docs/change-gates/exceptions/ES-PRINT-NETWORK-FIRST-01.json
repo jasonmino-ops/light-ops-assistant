@@ -1593,7 +1593,7 @@
         "Any source delta on the rc.10 recovery build worktree, bypass of trusted origin/main or exact hash authorization, second candidate build, installation, Production deploy, FIELD, signing or formal publication."
       ],
       "expirationCondition": "Close this exact grant after the one retained rc.10 recovery Candidate is packaged, or when explicitly superseded.",
-      "closedAt": "2026-10-13T12:20:00+07:00",
+      "closedAt": "2026-10-13T05:20:00Z",
       "closureReason": "Superseded by NETWORK-M2-CANDIDATE-RC10-BUILD-23 governance successor; no installer evidence from this historical retry is reused."
     },
     {
@@ -1639,7 +1639,7 @@
         "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; installation, Production deploy, FIELD, signing or formal publication."
       ],
       "expirationCondition": "Close this exact grant after the one retained M2 Add-on Candidate is packaged, or when explicitly superseded.",
-      "closedAt": "2026-10-13T12:20:00+07:00",
+      "closedAt": "2026-10-13T05:20:00Z",
       "closureReason": "Consumed by the one retained M2 Add-on FIELD candidate package; source, installer and governance evidence are retained separately, and no further build is authorized under this grant."
     },
     {
