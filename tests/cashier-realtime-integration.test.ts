@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createCashierRealtimeWakeCoalescer } from '../lib/cashier-realtime-client'
@@ -350,7 +350,7 @@ async function main() {
   // historical governance regression exact-path and task-bound; it does not
   // authorize packaging or FIELD release.
   const m4ApprovedBase = '90a88df92b0441d20e55a6420605034095a52612'
-  const m4Candidate = 'ce59da981e3a7acadaf986da230b320b9bb99225'
+  const m4Candidate = '60209a74ab036bddeaf6279c062a769a4ea2db77'
   const m4Paths = [
     'desktop/scripts/build-single-installer.mjs',
     'desktop/scripts/single-installer-contract.mjs',
@@ -373,13 +373,16 @@ async function main() {
   ]
   const m4SuccessorPath = 'tests/cashier-realtime-integration.test.ts'
   const gitPaths = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
+  const gitIsAncestor = (ancestor: string, descendant: string) => spawnSync(
+    'git', ['merge-base', '--is-ancestor', ancestor, descendant], { cwd: root },
+  ).status === 0
   const unmergedCommits = gitPaths('rev-list', 'origin/main..HEAD')
   const isM2 = gitPaths('rev-parse', 'origin/main')[0] === m2ApprovedBase
     && changed.some(path => m2Paths.includes(path))
   const isM3 = gitPaths('rev-parse', 'origin/main')[0] === m3ApprovedBase
     && unmergedCommits.includes(m3Candidate)
     && changed.some(path => m3Paths.includes(path))
-  const isM4 = gitPaths('rev-parse', 'origin/main')[0] === m4ApprovedBase
+  const isM4 = gitIsAncestor(m4ApprovedBase, gitPaths('rev-parse', 'origin/main')[0])
     && unmergedCommits.includes(m4Candidate)
     && changed.some(path => m4Paths.includes(path))
   // Once merged, the candidate is no longer an unmerged task grant. Later M1
@@ -427,14 +430,22 @@ async function main() {
     assert.ok(m3Paths.every(path => changed.includes(path)), 'M3 complete exact packaging package required')
     assertBoundary(changed, new Set([...m3Paths, m3SuccessorPath]))
   } else if (isM4) {
-    assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [m4ApprovedBase], 'M4 requires the authorized trusted baseline')
     assert.ok(m4Paths.every(path => changed.includes(path)), 'M4 complete exact product package required')
+    const m4AuthorizationPath = 'docs/change-gates/exceptions/ES-PRINT-NETWORK-FIRST-01.json'
+    const m4CorrectivePaths = new Set([
+      'desktop/scripts/build-single-installer.mjs',
+      'desktop/scripts/single-installer-contract.mjs',
+      'desktop/scripts/verify-single-installer.mjs',
+      'desktop/tests/single-installer-packaging.test.ts',
+      m4SuccessorPath,
+    ])
     assert.deepEqual(
-      gitPaths('diff', '--name-only', m4Candidate, 'HEAD').filter(path => path !== m4SuccessorPath),
-      [],
-      'M4 reviewed product/content boundary changed',
+      gitPaths('diff', '--name-only', m4Candidate, 'HEAD')
+        .filter(path => path !== m4AuthorizationPath),
+      [...m4CorrectivePaths].sort(),
+      'M4 product candidate may only receive the approved dual-SHA packaging corrective',
     )
-    assertBoundary(changed, new Set([...m4Paths, m4SuccessorPath]))
+    assertBoundary(changed, new Set([...m4Paths, m4SuccessorPath, m4AuthorizationPath]))
   } else {
     // ES-CASHIER-COST-01 exclusions and the existing H5/Dine-in approved set
     // retain their prior semantics. Closed historical grants are not reopened.

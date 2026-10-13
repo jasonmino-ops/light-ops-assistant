@@ -6,6 +6,8 @@ export const DESKTOP_VERSION = '0.2.0-pilot.2'
 export const ADDON_VERSION = '0.1.0-commercial-rc.10'
 export const ADDON_INSTALLER_FILENAME = `E-Shop-Network-Print-Addon-TEST-${ADDON_VERSION}-x64.exe`
 export const ADDON_MANIFEST_FILENAME = 'network-print-addon-manifest.json'
+export const PRODUCT_CANDIDATE_COMMIT = '60209a74ab036bddeaf6279c062a769a4ea2db77'
+export const GOVERNANCE_HEAD_COMMIT = 'e4563bbf0dd0e61606dcd6bcb37cc83862abdb30'
 
 export function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
@@ -21,6 +23,7 @@ export function assertManifest(manifest, installerHash) {
   if (!manifest || manifest.schemaVersion !== 1 || manifest.product !== 'E-Shop Network Print Add-on (TEST ONLY)'
     || manifest.version !== ADDON_VERSION || manifest.testOnly !== true || manifest.releaseReady !== false
     || manifest.published !== false || !/^[a-f0-9]{40}$/.test(manifest.sourceCommit)
+    || manifest.sourceCommit !== GOVERNANCE_HEAD_COMMIT
     || manifest.buildClass !== 'unsigned-test-candidate' || manifest.installer !== true || manifest.runtimeIncluded !== true
     || manifest.installerFile !== ADDON_INSTALLER_FILENAME
     || manifest.artifactsSha256?.[ADDON_INSTALLER_FILENAME] !== installerHash) {
@@ -46,12 +49,14 @@ export async function verifyAddonInput(installerPath, manifestPath) {
 
 export function createEmbeddedManifest({ desktopSourceCommit, addon }) {
   if (!/^[a-f0-9]{40}$/.test(desktopSourceCommit)) throw new Error('SINGLE_INSTALLER_DESKTOP_SOURCE_INVALID')
-  if (addon.sourceCommit !== desktopSourceCommit) throw new Error('SINGLE_INSTALLER_SOURCE_BINDING_MISMATCH')
+  if (addon.sourceCommit !== GOVERNANCE_HEAD_COMMIT) throw new Error('SINGLE_INSTALLER_GOVERNANCE_SOURCE_MISMATCH')
   return {
     schemaVersion: 1,
     product: 'E-Shop Desktop Single Installer',
     desktopVersion: DESKTOP_VERSION,
     desktopSourceCommit,
+    productCandidateCommit: PRODUCT_CANDIDATE_COMMIT,
+    governanceHeadCommit: GOVERNANCE_HEAD_COMMIT,
     addon: {
       product: 'E-Shop Network Print Add-on (TEST ONLY)',
       version: addon.version,

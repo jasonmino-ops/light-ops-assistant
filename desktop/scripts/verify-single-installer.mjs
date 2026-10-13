@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ADDON_INSTALLER_FILENAME, ADDON_MANIFEST_FILENAME, ADDON_VERSION, assertManifest, readRegularFile, sha256 } from './single-installer-contract.mjs'
+import { ADDON_INSTALLER_FILENAME, ADDON_MANIFEST_FILENAME, ADDON_VERSION, GOVERNANCE_HEAD_COMMIT, PRODUCT_CANDIDATE_COMMIT, assertManifest, readRegularFile, sha256 } from './single-installer-contract.mjs'
 import { inspectCandidateInstaller } from '../../e-shop-tray/scripts/build-network-addon.mjs'
 
 const require = createRequire(import.meta.url)
@@ -59,14 +59,18 @@ export async function verifySingleInstaller(installerPath, expectedBinding) {
     }
     if (embedded.product !== 'E-Shop Desktop Single Installer' || embedded.desktopVersion !== '0.2.0-pilot.2'
       || embedded.desktopSourceCommit !== sourceCommit
+      || embedded.productCandidateCommit !== PRODUCT_CANDIDATE_COMMIT
+      || embedded.governanceHeadCommit !== GOVERNANCE_HEAD_COMMIT
       || embedded.merchantDelivery !== 'single-desktop-installer' || embedded.addonRuntime !== 'separate-process'
       || embedded.addon?.product !== 'E-Shop Network Print Add-on (TEST ONLY)'
       || embedded.addon?.version !== ADDON_VERSION || !/^[a-f0-9]{64}$/.test(embedded.addon?.installerSha256 ?? '')
       || embedded.addon?.installerFile !== ADDON_INSTALLER_FILENAME || embedded.addon?.published !== false) {
       fail('SINGLE_INSTALLER_EMBEDDED_MANIFEST_MISMATCH')
     }
-    if (embedded.addon?.sourceCommit !== sourceCommit || expectedBinding.desktopSourceCommit !== sourceCommit
-      || expectedBinding.addon?.sourceCommit !== sourceCommit) fail('SINGLE_INSTALLER_SOURCE_BINDING_MISMATCH')
+    if (embedded.addon?.sourceCommit !== GOVERNANCE_HEAD_COMMIT || expectedBinding.desktopSourceCommit !== sourceCommit
+      || expectedBinding.productCandidateCommit !== PRODUCT_CANDIDATE_COMMIT
+      || expectedBinding.governanceHeadCommit !== GOVERNANCE_HEAD_COMMIT
+      || expectedBinding.addon?.sourceCommit !== GOVERNANCE_HEAD_COMMIT) fail('SINGLE_INSTALLER_SOURCE_BINDING_MISMATCH')
     if (JSON.stringify(embedded) !== JSON.stringify(expectedBinding)) fail('SINGLE_INSTALLER_BINDING_MISMATCH')
     assertManifest({ schemaVersion: 1, product: embedded.addon.product, version: embedded.addon.version,
       testOnly: embedded.addon.testOnly, releaseReady: embedded.addon.releaseReady, published: false,

@@ -1692,7 +1692,7 @@
       "featureMergeCommitSha": "304a341f43fa633ce70699917c12bade0ff9aa19"
     },
     {
-      "authorizationId": "NETWORK-M4-SINGLE-INSTALLER-PACKAGING-25",
+      "authorizationId": "NETWORK-M4-SINGLE-INSTALLER-DUAL-SHA-CORRECTIVE-25",
       "featureBranch": "codex/es-print-single-installer-failure-repair",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "90a88df92b0441d20e55a6420605034095a52612",
@@ -1701,7 +1701,7 @@
       "createdAt": "2026-10-14T00:00:00Z",
       "approvedAt": "2026-10-14T00:00:00Z",
       "closeAfter": "FEATURE_MERGE",
-      "reason": "Founder approved one exact M4 packaging successor for ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01. This single-use authorization permits one unsigned TEST-only 0.1.0-commercial-rc.10 Add-on candidate and its source-bound Single Installer FIELD package from the reviewed M4 candidate, without changing product scope or runtime semantics.",
+      "reason": "Founder approved one exact M4 dual-SHA packaging corrective for ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01. This single-use authorization permits one corrected unsigned TEST-only 0.1.0-commercial-rc.10 Add-on/Single Installer candidate, binding Product Candidate 60209a74 and Governance Head e4563bbf with zero non-governance diff, without changing product scope or runtime semantics.",
       "authorizedPaths": [
         "desktop/scripts/build-single-installer.mjs",
         "desktop/scripts/single-installer-contract.mjs",
@@ -1724,10 +1724,10 @@
         "tests/cashier-realtime-integration.test.ts"
       ],
       "authorizedPathSha256": {
-        "desktop/scripts/build-single-installer.mjs": "837c94e9a4892432231707990bac94eab1774f319f6912d829518335154ac313",
-        "desktop/scripts/single-installer-contract.mjs": "6bad202c8e954efe9c4e95d8ac5dd4d67b74a359ac385e24304cf7721e27a9af",
-        "desktop/scripts/verify-single-installer.mjs": "3656163de3f8e6bfa2c264e07adf2dfadd1c8575d9f85fc0a814ad3a401b70ae",
-        "desktop/tests/single-installer-packaging.test.ts": "04fb52f82153a72087608e5297bd01910cc73590a170bda9879d04ee6b73cde3",
+        "desktop/scripts/build-single-installer.mjs": "9ce6509a000b5e73498cc3b896e59fbc1b8fedefa6f76329489871158909f599",
+        "desktop/scripts/single-installer-contract.mjs": "a85d5c3289255527c3e6841002cc63fb4b069fafe66fc280b3c675f501718f04",
+        "desktop/scripts/verify-single-installer.mjs": "89811fb7b904d399117c45907fa5cfe87937d324e2e6463a873d5a4d0ada954d",
+        "desktop/tests/single-installer-packaging.test.ts": "b7c888a41b0f7f15bde2d850b7b3f8b3612e69f09533111f407ea1ccd220a14a",
         "e-shop-tray/network-addon/coldModeLifecycle.ts": "30a0256f96be51a35f2f51ffda2f6ca1c14f35f53d9b384b011648ce2b6a7a68",
         "e-shop-tray/network-addon/entryCoordinator.ts": "8c20e4f949d69fc49a13955ec5d96cb7cf5d757f42e281e4dcbb59ad199389aa",
         "e-shop-tray/network-addon/main.ts": "ce9852576085ede913d0909c7f27b8645727bfd9eff53fbf03d3274422aee253",
@@ -1742,9 +1742,9 @@
         "e-shop-tray/tests/network-addon-lifecycle.test.ts": "ec411d617557b46e331343d957559f3e5615c043219465791683e157d66b89a0",
         "e-shop-tray/tests/network-addon-settings-only.test.ts": "9c962fa6bf2dbfdc971c7adbae87f68057d19c3db4ce13f6e0ac41f2da84f54b",
         "e-shop-tray/tests/network-dual-endpoint.test.ts": "78fe504d4094b6a5362be005a6f33e06ed9bea5812cf327e9138b889c511f28e",
-        "tests/cashier-realtime-integration.test.ts": "1a55acc2218fed682f29747053ca23a12aac9cb98b3cbd581b1184b725692e26"
+        "tests/cashier-realtime-integration.test.ts": "f1a22cc34c84a1c61569ce1469dfbb677bad1895ebecb77745295a0d3b254cbe"
       },
-      "approvedContentMappingSha256": "84255cdc13c2c04236bd5605fd770c7fb9d9157e9d5118f87e89edc93f98ace1",
+      "approvedContentMappingSha256": "8197c9888bf0eae7448b2ab1dd28947055913abe957f3055ca44ac68b4ad4d7a",
       "candidateBuild": {
         "mode": "unsigned-test-only",
         "version": "0.1.0-commercial-rc.10",
@@ -1757,13 +1757,18 @@
         "commit": "60209a74ab036bddeaf6279c062a769a4ea2db77",
         "exactMatchRequired": true
       },
+      "governanceState": {
+        "commit": "e4563bbf0dd0e61606dcd6bcb37cc83862abdb30",
+        "exactMatchRequired": true,
+        "zeroNonGovernanceDiff": true
+      },
       "allowedPurposes": [
-        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Network Print Add-on candidate and one source-bound Single Installer FIELD package from the reviewed M4 source.",
-        "Retain source, embedded Add-on, installer bytes and SHA-256 evidence; this authorization is not Production deployment, migration, FIELD execution, signing or formal publication."
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Network Print Add-on candidate and one Single Installer FIELD package with Product Candidate 60209a74 and Governance Head e4563bbf explicitly bound.",
+        "Retain dual-SHA source, embedded Add-on, installer bytes and SHA-256 evidence; this authorization is not Production deployment, migration, FIELD execution, signing or formal publication."
       ],
       "prohibitedChanges": [
         "Any source delta outside the nineteen exact authorized paths, any RAW TCP, durable jobs, RC10, print-core, mobile, provisioning or unrelated behavior change.",
-        "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production deploy, FIELD execution, signing or formal publication."
+        "Any bypass of trusted origin/main, exact source hashes, dual-SHA binding, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production deploy, FIELD execution, signing or formal publication."
       ],
       "expirationCondition": "Close this single-use grant after the one M4 Add-on and source-bound Single Installer FIELD package is packaged and evidence is retained, or when explicitly superseded."
     }

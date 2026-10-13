@@ -2,7 +2,7 @@ import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { ADDON_INSTALLER_FILENAME, ADDON_MANIFEST_FILENAME, DESKTOP_VERSION, createEmbeddedManifest, verifyAddonInput } from './single-installer-contract.mjs'
+import { ADDON_INSTALLER_FILENAME, ADDON_MANIFEST_FILENAME, DESKTOP_VERSION, GOVERNANCE_HEAD_COMMIT, PRODUCT_CANDIDATE_COMMIT, createEmbeddedManifest, verifyAddonInput } from './single-installer-contract.mjs'
 import { verifySingleInstaller } from './verify-single-installer.mjs'
 
 const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -19,6 +19,12 @@ function run(command, args, cwd = desktopDir) {
   const result = spawnSync(command, args, { cwd, stdio: 'inherit', env: { ...process.env, ELECTRON_BUILDER_DISABLE_UPDATE_CHECK: 'true' } })
   if (result.error || result.status !== 0) fail(`SINGLE_INSTALLER_COMMAND_FAILED:${command}`)
 }
+function assertSourceLineage() {
+  for (const commit of [PRODUCT_CANDIDATE_COMMIT, GOVERNANCE_HEAD_COMMIT]) {
+    const result = spawnSync('git', ['merge-base', '--is-ancestor', commit, 'HEAD'], { cwd: repoRoot })
+    if (result.error || result.status !== 0) fail('SINGLE_INSTALLER_SOURCE_LINEAGE_MISMATCH')
+  }
+}
 function parseArgs(args) {
   const values = {}
   for (let index = 0; index < args.length; index += 1) {
@@ -33,8 +39,9 @@ function parseArgs(args) {
 export async function stageSingleInstallerInputs({ installerPath, manifestPath }) {
   const sourceCommit = git(['rev-parse', 'HEAD'])
   if (git(['status', '--porcelain=v1', '--untracked-files=all'])) fail('SINGLE_INSTALLER_SOURCE_DIRTY')
+  assertSourceLineage()
   const addon = await verifyAddonInput(installerPath, manifestPath)
-  if (addon.sourceCommit !== sourceCommit) fail('SINGLE_INSTALLER_ADDON_SOURCE_MISMATCH')
+  if (addon.sourceCommit !== GOVERNANCE_HEAD_COMMIT) fail('SINGLE_INSTALLER_GOVERNANCE_SOURCE_MISMATCH')
   await rm(stageDir, { recursive: true, force: true })
   await mkdir(stageDir, { recursive: true })
   await copyFile(installerPath, path.join(stageDir, ADDON_INSTALLER_FILENAME))
@@ -55,7 +62,8 @@ export async function buildSingleInstaller(options) {
       await mkdir(options.output, { recursive: true })
       await copyFile(installer, path.join(options.output, path.basename(installer)))
       await writeFile(path.join(options.output, 'single-installer-evidence.json'), `${JSON.stringify({
-        schemaVersion: 1, desktop: { version: DESKTOP_VERSION, sourceCommit: staged.sourceCommit, installerSha256: verified.installerSha256,
+        schemaVersion: 1, productCandidateCommit: verified.embedded.productCandidateCommit, governanceHeadCommit: verified.embedded.governanceHeadCommit,
+        desktop: { version: DESKTOP_VERSION, sourceCommit: staged.sourceCommit, installerSha256: verified.installerSha256,
           installer: path.basename(installer) }, addon: { version: staged.addon.version, sourceCommit: staged.addon.sourceCommit,
           installerFile: staged.addon.installerFile, installerSha256: staged.addon.installerSha256, testOnly: staged.addon.testOnly,
           releaseReady: staged.addon.releaseReady }, embedded: verified.embedded, delivery: 'single-desktop-installer',

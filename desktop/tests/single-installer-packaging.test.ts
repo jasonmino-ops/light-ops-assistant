@@ -43,6 +43,8 @@ describe('single installer packaging contract', () => {
     expect(contract).not.toContain('adc273c99a823d6dd640aa40bca6e385d0f651c7a10248e7471d508fadbf5456')
     expect(contract).not.toContain('304a341f43fa633ce70699917c12bade0ff9aa19')
     expect(contract).toContain("merchantDelivery: 'single-desktop-installer'")
+    expect(contract).toContain("PRODUCT_CANDIDATE_COMMIT = '60209a74ab036bddeaf6279c062a769a4ea2db77'")
+    expect(contract).toContain("GOVERNANCE_HEAD_COMMIT = 'e4563bbf0dd0e61606dcd6bcb37cc83862abdb30'")
   })
 
   it('fails closed for independent merchant Add-on delivery claims', () => {
@@ -54,7 +56,9 @@ describe('single installer packaging contract', () => {
     expect(verifier).toContain('embedded.desktopSourceCommit !== sourceCommit')
     expect(verifier).toContain('SINGLE_INSTALLER_BINDING_REQUIRED')
     expect(verifier).toContain('SINGLE_INSTALLER_BINDING_MISMATCH')
-    expect(verifier).toContain('embedded.addon?.sourceCommit !== sourceCommit')
-    expect(contract).toContain('SINGLE_INSTALLER_SOURCE_BINDING_MISMATCH')
+    expect(verifier).toContain('embedded.addon?.sourceCommit !== GOVERNANCE_HEAD_COMMIT')
+    expect(verifier).toContain('embedded.productCandidateCommit !== PRODUCT_CANDIDATE_COMMIT')
+    expect(verifier).toContain('embedded.governanceHeadCommit !== GOVERNANCE_HEAD_COMMIT')
+    expect(contract).toContain('SINGLE_INSTALLER_GOVERNANCE_SOURCE_MISMATCH')
   })
 })
