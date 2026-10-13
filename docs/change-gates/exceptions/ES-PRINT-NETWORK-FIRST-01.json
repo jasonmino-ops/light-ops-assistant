@@ -1594,7 +1594,8 @@
       ],
       "expirationCondition": "Close this exact grant after the one retained rc.10 recovery Candidate is packaged, or when explicitly superseded.",
       "closedAt": "2026-10-13T05:20:00Z",
-      "closureReason": "Superseded by NETWORK-M2-CANDIDATE-RC10-BUILD-23 governance successor; no installer evidence from this historical retry is reused."
+      "closureReason": "Superseded by NETWORK-M2-CANDIDATE-RC10-BUILD-23 governance successor; no installer evidence from this historical retry is reused.",
+      "featureMergeCommitSha": "5a2c4dcb30debd75fa2c89a3e165b0ba634502b8"
     },
     {
       "authorizationId": "NETWORK-M2-CANDIDATE-RC10-BUILD-23",
@@ -1640,7 +1641,8 @@
       ],
       "expirationCondition": "Close this exact grant after the one retained M2 Add-on Candidate is packaged, or when explicitly superseded.",
       "closedAt": "2026-10-13T05:20:00Z",
-      "closureReason": "Consumed by the one retained M2 Add-on FIELD candidate package; source, installer and governance evidence are retained separately, and no further build is authorized under this grant."
+      "closureReason": "Consumed by the one retained M2 Add-on FIELD candidate package; source, installer and governance evidence are retained separately, and no further build is authorized under this grant.",
+      "featureMergeCommitSha": "f40b5c297754f9fb57dfb00f308dcf70b8ad7443"
     },
     {
       "authorizationId": "NETWORK-M2-CANDIDATE-RC10-PACKAGING-SUCCESSOR-24",
