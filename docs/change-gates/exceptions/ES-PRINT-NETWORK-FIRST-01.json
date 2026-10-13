@@ -1641,6 +1641,50 @@
       "expirationCondition": "Close this exact grant after the one retained M2 Add-on Candidate is packaged, or when explicitly superseded.",
       "closedAt": "2026-10-13T12:20:00+07:00",
       "closureReason": "Consumed by the one retained M2 Add-on FIELD candidate package; source, installer and governance evidence are retained separately, and no further build is authorized under this grant."
+    },
+    {
+      "authorizationId": "NETWORK-M2-CANDIDATE-RC10-PACKAGING-SUCCESSOR-24",
+      "featureBranch": "codex/es-print-network-onboarding-01-m2-addon-packaging-successor",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "f1e0872968e55033dc618ea67bd4eaad96dbaf9",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-13T12:30:00+07:00",
+      "approvedAt": "2026-10-13T12:30:00+07:00",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder approved one-shot final packaging successor for ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01. This exact authorization permits one unsigned TEST-only 0.1.0-commercial-rc.10 Network Print Add-on rebuild and evidence rebinding from trusted origin/main f1e0872968e55033dc618ea67bd4eaad96dbaf9, with no product implementation or scope expansion.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts",
+        "e-shop-tray/tests/network-addon.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "22eae61c2c071d78f4369e413241b34a1205df2f48b22dfb47fccc018ded4ab5",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts": "3d08a9229067ca1c7acb110e7f6e6c2069713c884b91922469b875184173f4d5",
+        "e-shop-tray/tests/network-addon.test.ts": "dd30dacf6f47d21087152139bc8a1c16360c3738660a820ca9cb726dbde31700"
+      },
+      "approvedContentMappingSha256": "897303523a998f3846077cdced301caa846c028cc6caa711643d297ab9d98cf8",
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "commit": "f1e0872968e55033dc618ea67bd4eaad96dbaf9",
+        "exactMatchRequired": true
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Network Print Add-on candidate from the exact M2 source/test bytes for paired Desktop V727 FIELD preparation.",
+        "Retain source, toolchain, machine, installer bytes and SHA-256 evidence; this authorization is not installation, Production deployment, FIELD acceptance, signing or formal publication."
+      ],
+      "prohibitedChanges": [
+        "Any source delta outside the three exact authorized paths, any RAW TCP, durable jobs, RC10, print-core, SHARED_PRINTER, mobile, provisioning or unrelated behavior change.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; installation, Production deploy, FIELD, signing or formal publication."
+      ],
+      "expirationCondition": "Close this single-use grant after the one final M2 Add-on Candidate is packaged and rebound, or when explicitly superseded."
     }
   ]
 }
