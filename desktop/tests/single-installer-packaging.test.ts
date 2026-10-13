@@ -29,6 +29,9 @@ describe('single installer packaging contract', () => {
     expect(running.indexOf('!insertmacro eshopCheckNetworkAddonInstallState')).toBeGreaterThan(
       running.indexOf('nsProcess::_FindProcess'),
     )
+    expect(running.indexOf('!insertmacro eshopCheckNetworkAddonInstallState')).toBeGreaterThan(
+      running.indexOf('  ${EndIf}\n\n  !ifndef BUILD_UNINSTALLER'),
+    )
     expect(running.indexOf('!insertmacro eshopCheckNetworkAddonInstallState')).toBeLessThan(
       running.indexOf('!insertmacro eshopUninstallPriorVersion'),
     )
