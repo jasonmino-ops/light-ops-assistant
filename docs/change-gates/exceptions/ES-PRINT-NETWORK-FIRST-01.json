@@ -1690,6 +1690,82 @@
       "closedAt": "2026-10-13T07:12:06Z",
       "closureReason": "Consumed by the one final paired Desktop and Network Print Add-on FIELD candidate rebuild bound to source/main 304a341f43fa633ce70699917c12bade0ff9aa19; no further packaging or FIELD authority is granted by this record.",
       "featureMergeCommitSha": "304a341f43fa633ce70699917c12bade0ff9aa19"
+    },
+    {
+      "authorizationId": "NETWORK-M4-SINGLE-INSTALLER-PACKAGING-25",
+      "featureBranch": "codex/es-print-single-installer-failure-repair",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "90a88df92b0441d20e55a6420605034095a52612",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-14T00:00:00Z",
+      "approvedAt": "2026-10-14T00:00:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder approved one exact M4 packaging successor for ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01. This single-use authorization permits one unsigned TEST-only 0.1.0-commercial-rc.10 Add-on candidate and its source-bound Single Installer FIELD package from the reviewed M4 candidate, without changing product scope or runtime semantics.",
+      "authorizedPaths": [
+        "desktop/scripts/build-single-installer.mjs",
+        "desktop/scripts/single-installer-contract.mjs",
+        "desktop/scripts/verify-single-installer.mjs",
+        "desktop/tests/single-installer-packaging.test.ts",
+        "e-shop-tray/network-addon/coldModeLifecycle.ts",
+        "e-shop-tray/network-addon/entryCoordinator.ts",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/network-addon/preload.ts",
+        "e-shop-tray/network-addon/profile.ts",
+        "e-shop-tray/network-addon/ui.css",
+        "e-shop-tray/network-addon/ui.html",
+        "e-shop-tray/network-addon/ui.ts",
+        "e-shop-tray/src/networkNodeConfig.ts",
+        "e-shop-tray/tests/network-addon-cold-mode-change.test.ts",
+        "e-shop-tray/tests/network-addon-entry.test.ts",
+        "e-shop-tray/tests/network-addon-lifecycle.test.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts",
+        "e-shop-tray/tests/network-dual-endpoint.test.ts",
+        "tests/cashier-realtime-integration.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "desktop/scripts/build-single-installer.mjs": "837c94e9a4892432231707990bac94eab1774f319f6912d829518335154ac313",
+        "desktop/scripts/single-installer-contract.mjs": "6bad202c8e954efe9c4e95d8ac5dd4d67b74a359ac385e24304cf7721e27a9af",
+        "desktop/scripts/verify-single-installer.mjs": "3656163de3f8e6bfa2c264e07adf2dfadd1c8575d9f85fc0a814ad3a401b70ae",
+        "desktop/tests/single-installer-packaging.test.ts": "04fb52f82153a72087608e5297bd01910cc73590a170bda9879d04ee6b73cde3",
+        "e-shop-tray/network-addon/coldModeLifecycle.ts": "30a0256f96be51a35f2f51ffda2f6ca1c14f35f53d9b384b011648ce2b6a7a68",
+        "e-shop-tray/network-addon/entryCoordinator.ts": "8c20e4f949d69fc49a13955ec5d96cb7cf5d757f42e281e4dcbb59ad199389aa",
+        "e-shop-tray/network-addon/main.ts": "ce9852576085ede913d0909c7f27b8645727bfd9eff53fbf03d3274422aee253",
+        "e-shop-tray/network-addon/preload.ts": "06feb4ae1d376aeca0f4cec5bc23f05c11c9c028c581a759197198f0f359374f",
+        "e-shop-tray/network-addon/profile.ts": "fce2ee36ee88b559b8a885a356e731425264a3912398fb298ed01aeda24eed35",
+        "e-shop-tray/network-addon/ui.css": "dd54e0613c0c61bfaa008a134b153493663dade7e98214c9f9af70d875308d74",
+        "e-shop-tray/network-addon/ui.html": "6e8293acad2dccd8e5f6ec1b31d97561c414492f1b88f4cdffc89b2468015b73",
+        "e-shop-tray/network-addon/ui.ts": "139984b9d3e116331e3563d977e5e2839c77982022cb268363dc15ad6d77f17d",
+        "e-shop-tray/src/networkNodeConfig.ts": "4b6aec29fbc36aa95a967d8e923e93fec7ddce9cdb37678be6ef540197c53e9f",
+        "e-shop-tray/tests/network-addon-cold-mode-change.test.ts": "440e40b1898cb0548cf10920b1005193b0cced1091271f0027f72a0cbbddc8ac",
+        "e-shop-tray/tests/network-addon-entry.test.ts": "65dcac79da755127f75fa7d6e3b4cb3c53d2729d299ce5f80711fda19a17a63a",
+        "e-shop-tray/tests/network-addon-lifecycle.test.ts": "ec411d617557b46e331343d957559f3e5615c043219465791683e157d66b89a0",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "9c962fa6bf2dbfdc971c7adbae87f68057d19c3db4ce13f6e0ac41f2da84f54b",
+        "e-shop-tray/tests/network-dual-endpoint.test.ts": "78fe504d4094b6a5362be005a6f33e06ed9bea5812cf327e9138b889c511f28e",
+        "tests/cashier-realtime-integration.test.ts": "1a55acc2218fed682f29747053ca23a12aac9cb98b3cbd581b1184b725692e26"
+      },
+      "approvedContentMappingSha256": "84255cdc13c2c04236bd5605fd770c7fb9d9157e9d5118f87e89edc93f98ace1",
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "commit": "60209a74ab036bddeaf6279c062a769a4ea2db77",
+        "exactMatchRequired": true
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Network Print Add-on candidate and one source-bound Single Installer FIELD package from the reviewed M4 source.",
+        "Retain source, embedded Add-on, installer bytes and SHA-256 evidence; this authorization is not Production deployment, migration, FIELD execution, signing or formal publication."
+      ],
+      "prohibitedChanges": [
+        "Any source delta outside the nineteen exact authorized paths, any RAW TCP, durable jobs, RC10, print-core, mobile, provisioning or unrelated behavior change.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production deploy, FIELD execution, signing or formal publication."
+      ],
+      "expirationCondition": "Close this single-use grant after the one M4 Add-on and source-bound Single Installer FIELD package is packaged and evidence is retained, or when explicitly superseded."
     }
   ]
 }
