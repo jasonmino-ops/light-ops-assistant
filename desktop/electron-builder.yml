@@ -29,6 +29,11 @@ extraResources:
       - dist/**
       - package.json
       - node_modules/@eshop/hrt-contract/**
+  - from: build/network-print-addon
+    to: network-print-addon
+    filter:
+      - E-Shop-Network-Print-Addon-TEST-0.1.0-commercial-rc.10-x64.exe
+      - network-print-addon-manifest.json
 
 win:
   target:

@@ -19,6 +19,10 @@ function matchingLines(pattern: RegExp): string[] {
     .filter((line) => pattern.test(line))
 }
 
+function autostartWrites(): string[] {
+  return matchingLines(/^WriteRegStr HKCU "\$\{ESHOP_DESKTOP_AUTOSTART_KEY\}"/)
+}
+
 describe('ES-DESKTOP-AUTOSTART-01 Windows installer registration', () => {
   it('loads the supported custom NSIS include from electron-builder', () => {
     expect(builderConfig).toMatch(/^\s*include:\s*build\/installer\.nsh\s*$/m)
@@ -32,7 +36,7 @@ describe('ES-DESKTOP-AUTOSTART-01 Windows installer registration', () => {
   })
 
   it('writes exactly one current-user Run value for the normal packaged executable', () => {
-    const writes = matchingLines(/^WriteRegStr\b/)
+    const writes = autostartWrites()
 
     expect(writes).toHaveLength(1)
     expect(writes[0]).toBe(
@@ -43,7 +47,7 @@ describe('ES-DESKTOP-AUTOSTART-01 Windows installer registration', () => {
   })
 
   it('uses same-name overwrite semantics so upgrades cannot add duplicate entries', () => {
-    expect(matchingLines(/^WriteRegStr\b/)).toHaveLength(1)
+    expect(autostartWrites()).toHaveLength(1)
     expect(installerInclude.match(/ESHOP_DESKTOP_AUTOSTART_VALUE/g)).toHaveLength(3)
     expect(installerInclude).not.toMatch(/WriteRegExpandStr|WriteRegBin|WriteRegDWORD/)
   })
@@ -57,9 +61,9 @@ describe('ES-DESKTOP-AUTOSTART-01 Windows installer registration', () => {
   })
 
   it('does not add an alternate startup system or Activation-bypass argument', () => {
-    const writes = matchingLines(/^WriteRegStr\b/)
+    const writes = autostartWrites()
 
-    expect(installerInclude).not.toMatch(/HKLM|CurrentVersion\\RunOnce/i)
+    expect(installerInclude).not.toMatch(/WriteRegStr HKLM|DeleteReg(?:Key|Value) HKLM|CurrentVersion\\RunOnce/i)
     expect(installerInclude).not.toMatch(/Startup|CreateShortCut|schtasks|Schedule|Service/i)
     expect(writes).toHaveLength(1)
     expect(writes[0]).not.toMatch(/--[A-Za-z]/)

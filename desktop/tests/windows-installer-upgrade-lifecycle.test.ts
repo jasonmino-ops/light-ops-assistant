@@ -163,7 +163,7 @@ describe('ES-DESKTOP-INSTALLER-UPGRADE-LIFECYCLE-FIX-01', () => {
   it('protects embedded-uninstaller CRC and preserves the one HKCU Run lifecycle', () => {
     expect(installerInclude).toContain('!define /ifndef MUI_UNICON "${MUI_ICON}"')
     expect(installerInclude).toContain('!if "${MUI_ICON}" != "${MUI_UNICON}"')
-    expect(installerInclude.match(/^\s*WriteRegStr HKCU /gm)).toHaveLength(1)
+    expect(installerInclude.match(/^\s*WriteRegStr HKCU "\$\{ESHOP_DESKTOP_AUTOSTART_KEY\}"/gm)).toHaveLength(1)
     expect(installerInclude.match(/^\s*DeleteRegValue HKCU /gm)).toHaveLength(1)
     expect(installerInclude).toContain('"${ESHOP_DESKTOP_AUTOSTART_VALUE}"')
   })
