@@ -345,6 +345,33 @@ async function main() {
     'desktop/tests/windows-installer-upgrade-lifecycle.test.ts',
   ]
   const m3SuccessorPath = 'tests/cashier-realtime-integration.test.ts'
+  // ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01 M4: exact Printer Onboarding UX
+  // and safe FRONT/KITCHEN replacement successor. This registration keeps the
+  // historical governance regression exact-path and task-bound; it does not
+  // authorize packaging or FIELD release.
+  const m4ApprovedBase = '90a88df92b0441d20e55a6420605034095a52612'
+  const m4Candidate = 'ce59da981e3a7acadaf986da230b320b9bb99225'
+  const m4Paths = [
+    'desktop/scripts/build-single-installer.mjs',
+    'desktop/scripts/single-installer-contract.mjs',
+    'desktop/scripts/verify-single-installer.mjs',
+    'desktop/tests/single-installer-packaging.test.ts',
+    'e-shop-tray/network-addon/coldModeLifecycle.ts',
+    'e-shop-tray/network-addon/entryCoordinator.ts',
+    'e-shop-tray/network-addon/main.ts',
+    'e-shop-tray/network-addon/preload.ts',
+    'e-shop-tray/network-addon/profile.ts',
+    'e-shop-tray/network-addon/ui.css',
+    'e-shop-tray/network-addon/ui.html',
+    'e-shop-tray/network-addon/ui.ts',
+    'e-shop-tray/src/networkNodeConfig.ts',
+    'e-shop-tray/tests/network-addon-cold-mode-change.test.ts',
+    'e-shop-tray/tests/network-addon-entry.test.ts',
+    'e-shop-tray/tests/network-addon-lifecycle.test.ts',
+    'e-shop-tray/tests/network-addon-settings-only.test.ts',
+    'e-shop-tray/tests/network-dual-endpoint.test.ts',
+  ]
+  const m4SuccessorPath = 'tests/cashier-realtime-integration.test.ts'
   const gitPaths = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
   const unmergedCommits = gitPaths('rev-list', 'origin/main..HEAD')
   const isM2 = gitPaths('rev-parse', 'origin/main')[0] === m2ApprovedBase
@@ -352,9 +379,12 @@ async function main() {
   const isM3 = gitPaths('rev-parse', 'origin/main')[0] === m3ApprovedBase
     && unmergedCommits.includes(m3Candidate)
     && changed.some(path => m3Paths.includes(path))
+  const isM4 = gitPaths('rev-parse', 'origin/main')[0] === m4ApprovedBase
+    && unmergedCommits.includes(m4Candidate)
+    && changed.some(path => m4Paths.includes(path))
   // Once merged, the candidate is no longer an unmerged task grant. Later M1
   // path edits still enter this branch and fail without that exact grant.
-  const isM1 = unmergedCommits.includes(productCandidate) || changed.some(path => productPaths.includes(path))
+  const isM1 = !isM4 && (unmergedCommits.includes(productCandidate) || changed.some(path => productPaths.includes(path)))
   const isCombinedCorrective = isM1 && unmergedCommits.includes(correctiveCandidate)
   if (isM2) {
     assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [m2ApprovedBase], 'M2 requires the authorized trusted baseline')
@@ -396,6 +426,15 @@ async function main() {
     assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [m3ApprovedBase], 'M3 requires the authorized trusted baseline')
     assert.ok(m3Paths.every(path => changed.includes(path)), 'M3 complete exact packaging package required')
     assertBoundary(changed, new Set([...m3Paths, m3SuccessorPath]))
+  } else if (isM4) {
+    assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [m4ApprovedBase], 'M4 requires the authorized trusted baseline')
+    assert.ok(m4Paths.every(path => changed.includes(path)), 'M4 complete exact product package required')
+    assert.deepEqual(
+      gitPaths('diff', '--name-only', m4Candidate, 'HEAD').filter(path => path !== m4SuccessorPath),
+      [],
+      'M4 reviewed product/content boundary changed',
+    )
+    assertBoundary(changed, new Set([...m4Paths, m4SuccessorPath]))
   } else {
     // ES-CASHIER-COST-01 exclusions and the existing H5/Dine-in approved set
     // retain their prior semantics. Closed historical grants are not reopened.
