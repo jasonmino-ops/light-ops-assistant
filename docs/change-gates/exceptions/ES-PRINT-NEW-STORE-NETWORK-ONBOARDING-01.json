@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "taskId": "ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "featureBranch": "codex/es-print-m4-addon-lifecycle-fix",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "277551174f2ad4a9be5e581daca54d50e819d587",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "createdAt": "2026-10-14T11:48:55Z",
+  "approvedAt": "2026-10-14T11:48:55Z",
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Founder authorized one exact-path M4-C corrective to verify existing managed Network Print Add-on lifecycle artifacts after the embedded /S installer exits. This record permits only the installer include and its focused packaging contract test; it does not authorize any product/runtime, printing, provider, RC10, Local First, dine-in, UX, deployment, FIELD or release changes.",
+  "authorizedPaths": [
+    "desktop/build/installer.nsh",
+    "desktop/tests/single-installer-packaging.test.ts"
+  ],
+  "authorizedPathSha256": {
+    "desktop/build/installer.nsh": "5c4d2d1a69bf21ab899a60c6448c2d6dae95b48309c4d9c12390b5549fa8a3e7",
+    "desktop/tests/single-installer-packaging.test.ts": "b7c888a41b0f7f15bde2d850b7b3f8b3612e69f09533111f407ea1ccd220a14a"
+  }
+}
