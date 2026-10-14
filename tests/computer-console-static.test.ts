@@ -12,6 +12,8 @@ const home = fs.readFileSync('app/home/page.tsx', 'utf8')
 const modal = fs.readFileSync('app/home/ComputerConsoleModal.tsx', 'utf8')
 const computerClientPage = fs.readFileSync('app/home/computer-client/page.tsx', 'utf8')
 const requestListRoute = fs.readFileSync('app/api/computer-client/requests/route.ts', 'utf8')
+const approveRequestRoute = fs.readFileSync('app/api/computer-client/requests/[id]/approve/route.ts', 'utf8')
+const rejectRequestRoute = fs.readFileSync('app/api/computer-client/requests/[id]/reject/route.ts', 'utf8')
 const terminalsRoute = fs.readFileSync('app/api/computer-client/terminals/route.ts', 'utf8')
 const revokeDesktopRoute = fs.readFileSync('app/api/desktop/devices/[id]/revoke/route.ts', 'utf8')
 const disableRoute = fs.readFileSync(
@@ -45,6 +47,7 @@ const closeoutMigration = fs.readFileSync(
 const zh = fs.readFileSync('lib/i18n/zh.ts', 'utf8')
 const en = fs.readFileSync('lib/i18n/en.ts', 'utf8')
 const km = fs.readFileSync('lib/i18n/km.ts', 'utf8')
+const addonMain = fs.readFileSync('e-shop-tray/network-addon/main.ts', 'utf8')
 
 assert.equal(buildComputerConsoleCashierUrl(null, 'zh'), null, 'missing storeCode must not produce a cashier URL')
 assert.equal(buildComputerConsoleCashierUrl('', 'zh'), null, 'empty storeCode must not produce a cashier URL')
@@ -173,6 +176,11 @@ assert.doesNotMatch(
   'this release must not expose re-enable',
 )
 assert.match(requestListRoute, /tenantId:\s*ctx\.tenantId[\s\S]*storeId:\s*ctx\.storeId/, 'all management lists must be tenant/store scoped')
+assert.match(requestListRoute, /identityKind:\s*'LEGACY_AGENT'/, 'OWNER request lists must exclude hidden print children')
+assert.match(disableRoute, /identityKind:\s*'LEGACY_AGENT'/, 'disable must reject hidden print children by identity kind')
+assert.match(reapplyRoute, /identityKind:\s*'LEGACY_AGENT'/, 'reapply must reject hidden print children by identity kind')
+assert.match(approveRequestRoute, /identityKind:\s*'LEGACY_AGENT'/, 'approve must reject hidden print children by identity kind')
+assert.match(rejectRequestRoute, /identityKind:\s*'LEGACY_AGENT'/, 'reject must reject hidden print children by identity kind')
 assert.match(disableRoute, /ctx\.role !== 'OWNER'/, 'disable must require an OWNER session')
 assert.match(disableRoute, /disabledAt:\s*now/, 'disable must be a soft state change')
 assert.match(disableRoute, /credentialStatus:\s*'VOID'/, 'disable must invalidate the Agent credential')
@@ -268,6 +276,9 @@ assert.match(posAuth, /payload\.browserPosSessionId/, 'managed POS tokens must c
 assert.match(posAuth, /prisma\.browserPosDevice\.findFirst/, 'daily authorization must validate the existing Browser Session lifecycle')
 assert.doesNotMatch(posAuth, /prisma\.computerBinding/, 'daily Browser POS authorization must not read Computer Binding')
 assert.match(disableRoute, /browserPosDevice\.updateMany/, 'computer disable must end its Browser Sessions at the lifecycle boundary')
+assert.match(addonMain, /const managedRuntime = process\.argv\.includes\('--settings-only'\)/, 'managed settings-only runtime must be explicit')
+assert.match(addonMain, /if \(!child\) throw new Error\('PRINT_CHILD_HANDOFF_UNAVAILABLE'\)/, 'managed runtime must fail closed when child handoff is missing')
+assert.doesNotMatch(addonMain, /if \(child\)[\s\S]*readDesktopBindingIdentity\(/, 'managed runtime must not fall back to legacy identity')
 
 // ── 身份与边界 ──────────────────────────────────────────────────────────────
 assert.match(computerClientPage, /effectiveRole !== 'OWNER'[\s\S]*router\.replace\('\/home'\)/, 'the approval page should redirect outside owner work mode')

@@ -32,6 +32,7 @@ export async function POST(
         id: computerId,
         tenantId: ctx.tenantId,
         storeId: ctx.storeId,
+        identityKind: 'LEGACY_AGENT',
         disabledAt: { not: null },
       },
     })

@@ -22,7 +22,12 @@ export async function POST(
 
     const { computerId } = await params
     const current = await prisma.computerBinding.findFirst({
-      where: { id: computerId, tenantId: ctx.tenantId, storeId: ctx.storeId },
+      where: {
+        id: computerId,
+        tenantId: ctx.tenantId,
+        storeId: ctx.storeId,
+        identityKind: 'LEGACY_AGENT',
+      },
     })
     if (!current) return apiError('COMPUTER_NOT_FOUND', 404)
     if (current.disabledAt) {
@@ -138,7 +143,12 @@ export async function POST(
 
     if (!disabled) {
       const latest = await prisma.computerBinding.findFirst({
-        where: { id: computerId, tenantId: ctx.tenantId, storeId: ctx.storeId },
+        where: {
+          id: computerId,
+          tenantId: ctx.tenantId,
+          storeId: ctx.storeId,
+          identityKind: 'LEGACY_AGENT',
+        },
       })
       if (latest?.disabledAt) {
         return noStoreJson({ computer: serializeManagedComputer(latest), idempotent: true })

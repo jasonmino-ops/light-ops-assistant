@@ -42,6 +42,10 @@ describe('bounded DesktopDevice managed Add-on handoff', () => {
 
   it('keeps server-derived context and local single-use protection fail-closed', async () => {
     const source = await readFile(path.join(__dirname, '..', 'network-addon', 'main.ts'), 'utf8')
+    expect(source).toContain("const managedRuntime = process.argv.includes('--settings-only')")
+    expect(source).toContain("if (!child) throw new Error('PRINT_CHILD_HANDOFF_UNAVAILABLE')")
+    expect(source).toContain("managedPrintChild = false")
+    expect(source).toContain('readDesktopBindingIdentity(desktopBindingIdentityPath(app.getPath(\'appData\')))')
     expect(source).toContain('row.managedAddonContext !== true')
     expect(source).toContain("row.principal !== 'DESKTOP_POS_DEVICE'")
     expect(source).toContain('await rename(source, consumed)')

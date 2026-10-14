@@ -160,16 +160,18 @@ async function consumeManagedAddonHandoff(): Promise<ManagedAddonHandoff | null>
   }
 }
 
+const managedRuntime = process.argv.includes('--settings-only')
+
 async function resolveBinding(): Promise<DesktopBindingIdentity> {
-  const child = readManagedPrintChildIdentity
-    ? await readManagedPrintChildIdentity(app.getPath('appData'))
-    : null
-  if (child) {
+  if (managedRuntime) {
+    if (!readManagedPrintChildIdentity) throw new Error('PRINT_CHILD_HANDOFF_UNAVAILABLE')
+    const child = await readManagedPrintChildIdentity(app.getPath('appData'))
+    if (!child) throw new Error('PRINT_CHILD_HANDOFF_UNAVAILABLE')
     managedPrintChild = true
     return child as DesktopBindingIdentity
   }
-  // Legacy RC9/RC10 ComputerBinding remains supported for existing agents.
-  // A missing managed child handoff never falls back to a fabricated identity.
+  // Legacy RC9/RC10 ComputerBinding remains supported for explicit legacy
+  // runtime intents; the managed settings-only intent never falls back here.
   managedPrintChild = false
   return readDesktopBindingIdentity(desktopBindingIdentityPath(app.getPath('appData')))
 }

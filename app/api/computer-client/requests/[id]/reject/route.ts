@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params
 
     const binding = await prisma.computerBinding.findFirst({
-      where: { id, tenantId: ctx.tenantId, storeId: ctx.storeId },
+      where: { id, tenantId: ctx.tenantId, storeId: ctx.storeId, identityKind: 'LEGACY_AGENT' },
     })
     if (!binding) return apiError('REQUEST_NOT_FOUND', 404)
 

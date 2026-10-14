@@ -24,7 +24,12 @@ export async function GET(req: NextRequest) {
     if (ctx.role !== 'OWNER') return apiError('OWNER_REQUIRED', 403)
 
     const pending = await prisma.computerBinding.findMany({
-      where: { tenantId: ctx.tenantId, storeId: ctx.storeId, status: 'PENDING' },
+      where: {
+        tenantId: ctx.tenantId,
+        storeId: ctx.storeId,
+        identityKind: 'LEGACY_AGENT',
+        status: 'PENDING',
+      },
       orderBy: { requestedAt: 'asc' },
       take: 50,
     })
@@ -42,6 +47,7 @@ export async function GET(req: NextRequest) {
         where: {
           tenantId: ctx.tenantId,
           storeId: ctx.storeId,
+          identityKind: 'LEGACY_AGENT',
           status: 'APPROVED',
           boundAt: { not: null },
           disabledAt: null,
@@ -53,6 +59,7 @@ export async function GET(req: NextRequest) {
         where: {
           tenantId: ctx.tenantId,
           storeId: ctx.storeId,
+          identityKind: 'LEGACY_AGENT',
           disabledAt: { not: null },
         },
         include: {

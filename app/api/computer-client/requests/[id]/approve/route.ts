@@ -27,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // 同时按 id + tenantId + storeId 定位：跨商户/跨门店一律 404，不泄露存在性
     const binding = await prisma.computerBinding.findFirst({
-      where: { id, tenantId: ctx.tenantId, storeId: ctx.storeId },
+      where: { id, tenantId: ctx.tenantId, storeId: ctx.storeId, identityKind: 'LEGACY_AGENT' },
     })
     if (!binding) return apiError('REQUEST_NOT_FOUND', 404)
 
