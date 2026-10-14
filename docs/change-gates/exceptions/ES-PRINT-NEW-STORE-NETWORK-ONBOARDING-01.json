@@ -59,7 +59,7 @@
       "authorizedPathSha256": {
         "prisma/schema.prisma": "3812e7be0f0042278ea8eb93e32989ace9030f35a50160f74e8ad0d3138c237b",
         "prisma/migrations/20261014000000_add_desktop_print_child_identity/migration.sql": "6408870bb82159df6483037937cbc4c74e0242cd1502ba57837a84e055a0ef69",
-        "lib/computer-client/service.ts": "df48104eec3590fb1b3c81a58bb4972d8a89f2e6d2f02a3ef9fd9127598bb78d",
+        "lib/computer-client/service.ts": "5ef54288de3452aed82246f18752cb7cf15781e6fd2b8d3f01a8c6cf3fa3b718",
         "lib/es-tray-relay/auth.ts": "9659a161f4c1426c066bf6027bc288d1c77d0ce986ce94196f4f18b9d842a24d",
         "app/api/desktop/print-child/route.ts": "6b8ba1789373ae1b098a5baf8dc2e8e459ef7f625796bfe8444ed6819ffae62a",
         "app/api/computer-client/terminals/route.ts": "153f367679fe60c896d33eac3095c47c84715bc81ce82ff696a1da1190172ea9",
@@ -67,7 +67,7 @@
         "desktop/src/main/managedPrintChildHandoff.ts": "f9a1df8c39443a340eb0c5101cf95e79e1bdd5051b974ab070f15a71c8119ac4",
         "e-shop-tray/network-addon/main.ts": "4e3bb8d9a7fe6a2fe220487ea9b7ae1edb6d76edda3a77a0b8bf81d740481b24",
         "e-shop-tray/src/managedPrintChildIdentity.ts": "a95456e4de23a5547fe69694bf9a5f0bc8791c0f9f747acd5d3ef1963098a408",
-        "tests/desktop-print-child-lifecycle.test.ts": "12cd6d3a48af644ee8fd8326c151339ea8e83a115fe9b0dd36166c31fbc1e355",
+        "tests/desktop-print-child-lifecycle.test.ts": "4c296e30e8d6d8e7dd5d7e4787ef105f18d9ac083c2dd0e1cbda9aad2d020ec6",
         "tests/es-tray-relay-runtime.test.ts": "a16bfb2aff1f3d955487bc32845b11c37decd9afb6dab740f32d9b021fde1228",
         "tests/computer-console-static.test.ts": "9d7f696d6673f051c24770abb37fe6f5ec43aaae30fd8ddaebd7c16df74bdfe8",
         "desktop/tests/network-print-settings-launcher.test.ts": "207c0bb4608e0a245a89f07693d9e7f8be1b22c499f2026b324e194fa7778c4a",
