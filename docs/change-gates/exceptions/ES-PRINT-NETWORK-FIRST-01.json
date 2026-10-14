@@ -1793,8 +1793,10 @@
         "desktop/tests/network-print-settings-launcher.test.ts",
         "desktop/tests/pos-session-bridge-static.test.ts",
         "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/scripts/build-network-addon.mjs",
         "e-shop-tray/src/desktopBindingIdentity.ts",
         "e-shop-tray/tests/managed-addon-handoff.test.ts",
+        "e-shop-tray/tests/network-addon.test.ts",
         "lib/es-tray-relay/device-routes.ts",
         "tests/desktop-pos-session-bridge.test.ts",
         "tests/es-tray-device-print-contract.test.ts"
@@ -1806,8 +1808,10 @@
         "desktop/tests/network-print-settings-launcher.test.ts": "8a95d42571e53e1d6f411a9fde00eba33baca22e9ca9e48cdfc546f663b9f5ac",
         "desktop/tests/pos-session-bridge-static.test.ts": "840f746ec2f882c8e10a21fc259a961a7a14e33d1ac070fa25ede445d0f90e9f",
         "e-shop-tray/network-addon/main.ts": "158de6bebcc2819334f335a7c3570a71e151df064c7e099a59a2e8f62a522b19",
+        "e-shop-tray/scripts/build-network-addon.mjs": "fc7bee4fabd9280a6f8a90e7088e96624c2e7826fd505895aec029ffb5dd0ef8",
         "e-shop-tray/src/desktopBindingIdentity.ts": "b30c4767a2cc9bb0b28479cefdbd929f2d2504f7ed47e5ce89bda490508f23f6",
         "e-shop-tray/tests/managed-addon-handoff.test.ts": "58d727321efee98d38b70c4de171ce73643cb34a6dfd092ec585977857d48a97",
+        "e-shop-tray/tests/network-addon.test.ts": "701b2fea77dcdd72cab1e291aa5ef076ca1da2133b0d817c9f072d746dd76eaf",
         "lib/es-tray-relay/device-routes.ts": "6fd82bb535696f9bd66cf99d866c4b20b3bcfc89d47d21e0cc176e5285faa5b5",
         "tests/desktop-pos-session-bridge.test.ts": "79f715cf94f7264672aa9f8b0b1b7dd977ad293d20088aa5524e89db5cba276a",
         "tests/es-tray-device-print-contract.test.ts": "df77ac19de8b1063f1424bebc0ddd9075b771362a770a101fcb9fc97edbf2718"
