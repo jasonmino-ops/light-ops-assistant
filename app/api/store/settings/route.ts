@@ -2,8 +2,8 @@
  * GET /api/store/settings
  * PATCH /api/store/settings
  *
- * 商户端轻量门店设置接口。本期暴露 businessType（店铺类型）、currencyCode（门店货币）
- * 和 printKitchenTicket（浏览器厨房小票）。
+ * 商户端轻量门店设置接口。本期暴露 name（门店名称）、businessType（店铺类型）、
+ * currencyCode（门店货币）和 printKitchenTicket（浏览器厨房小票）。
  *
  * 鉴权：
  *   - GET:   登录即可（OWNER / STAFF）
@@ -25,6 +25,14 @@ import {
 
 const VALID_TYPES = ['FOOD', 'RETAIL', 'SERVICE', 'GENERAL'] as const
 type BizType = typeof VALID_TYPES[number]
+const STORE_NAME_MAX_LENGTH = 120
+
+function normalizeStoreName(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const name = value.trim()
+  if (!name || name.length > STORE_NAME_MAX_LENGTH) return null
+  return name
+}
 
 export async function GET(req: NextRequest) {
   const ctx = await getContext(req)
@@ -61,14 +69,19 @@ export async function PATCH(req: NextRequest) {
   const ctx = await getContext(req)
   if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
   if (ctx.role !== 'OWNER') {
-    return NextResponse.json({ error: 'FORBIDDEN', message: '只有老板可以修改店铺类型' }, { status: 403 })
+    return NextResponse.json({ error: 'FORBIDDEN', message: '只有老板可以修改店铺设置' }, { status: 403 })
   }
 
-  let body: { businessType?: string; currencyCode?: string; printKitchenTicket?: boolean; contactPhone?: string; contactTelegram?: string; contactWhatsApp?: string }
+  let body: { name?: unknown; businessType?: string; currencyCode?: string; printKitchenTicket?: boolean; contactPhone?: string; contactTelegram?: string; contactWhatsApp?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 }) }
 
-  const data: { businessType?: BizType; currencyCode?: string; printKitchenTicket?: boolean } = {}
+  const data: { name?: string; businessType?: BizType; currencyCode?: string; printKitchenTicket?: boolean } = {}
   const contactData: { contactPhone?: string | null; contactTelegram?: string | null; contactWhatsApp?: string | null } = {}
+  if (body.name !== undefined) {
+    const name = normalizeStoreName(body.name)
+    if (!name) return NextResponse.json({ error: 'INVALID_STORE_NAME' }, { status: 400 })
+    data.name = name
+  }
   if (body.businessType !== undefined) {
     const bt = body.businessType.trim()
     if (!VALID_TYPES.includes(bt as BizType)) {
@@ -110,6 +123,7 @@ export async function PATCH(req: NextRequest) {
     contactData.contactWhatsApp = next
   }
   if (
+    !data.name &&
     !data.businessType &&
     !data.currencyCode &&
     data.printKitchenTicket === undefined &&
@@ -122,7 +136,7 @@ export async function PATCH(req: NextRequest) {
 
   const store = await prisma.store.findFirst({
     where:  { id: ctx.storeId, tenantId: ctx.tenantId },
-    select: { id: true, businessType: true, currencyCode: true, printKitchenTicket: true },
+    select: { id: true, name: true, businessType: true, currencyCode: true, printKitchenTicket: true },
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
 
@@ -148,12 +162,13 @@ export async function PATCH(req: NextRequest) {
     ? await prisma.store.update({
       where: { id: store.id },
       data,
-      select: { id: true, businessType: true, currencyCode: true, printKitchenTicket: true },
+      select: { id: true, name: true, businessType: true, currencyCode: true, printKitchenTicket: true },
     })
     : store
 
   return NextResponse.json({
     ok: true,
+    name: updated.name,
     businessType: updated.businessType,
     currencyCode: updated.currencyCode,
     printKitchenTicket: updated.printKitchenTicket,

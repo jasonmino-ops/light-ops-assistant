@@ -142,6 +142,7 @@ export default function SettingsPage() {
             businessType: draft.businessType,
             currencyCode: draft.currencyCode,
             printKitchenTicket: draft.printKitchenTicket,
+            name: draft.storeName,
             contactPhone: draft.contactPhone ?? '',
             contactTelegram: draft.contactTelegram ?? '',
             contactWhatsApp: draft.contactWhatsApp ?? '',
@@ -201,7 +202,7 @@ export default function SettingsPage() {
           </div>
           <div style={styles.headerActions}>
             <span style={styles.ownerBadge}>{t('settings.ownerOnly')}</span>
-            <button type="button" style={styles.saveButton} disabled={!draft || loading || saving} onClick={saveSettings}>
+            <button type="button" style={styles.saveButton} disabled={!draft || !draft.storeName.trim() || loading || saving} onClick={saveSettings}>
               {saving ? t('settings.saving') : t('settings.save')}
             </button>
           </div>
@@ -224,7 +225,7 @@ export default function SettingsPage() {
                   <h3 style={styles.cardTitle}>{t('settings.storeInfo')}</h3>
                   <p style={styles.cardDescription}>{t('settings.storeInfoDesc')}</p>
                   <div className="settings-fields" style={styles.fields}>
-                    <ReadOnlyField label={t('settings.storeName')} value={settings.storeName || '—'} />
+                    <label style={styles.field}><span style={styles.label}>{t('settings.storeName')}</span><input data-settings-store-name="editable" value={draft.storeName} onChange={(event) => updateDraft('storeName', event.target.value)} style={styles.input} maxLength={120} required /></label>
                     <ReadOnlyField label={t('settings.storeCode')} value={settings.storeCode || '—'} />
                     <label style={styles.field}><span style={styles.label}>{t('settings.businessType')}</span><select value={draft.businessType} onChange={(event) => updateDraft('businessType', event.target.value)} style={styles.input}>{BUSINESS_TYPES.map((type) => <option key={type} value={type}>{t(`settings.businessTypes.${type}`)}</option>)}</select></label>
                     <label style={styles.field}><span style={styles.label}>{t('settings.address')}</span><input value={draft.storeAddress ?? ''} onChange={(event) => updateDraft('storeAddress', event.target.value)} style={styles.input} placeholder={t('settings.addressPlaceholder')} /></label>
