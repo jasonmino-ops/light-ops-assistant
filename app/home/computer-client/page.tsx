@@ -442,7 +442,11 @@ export default function ComputerClientPage() {
                     <span style={terminal.status === 'ACTIVE' ? s.statusActive : s.statusDisabled}>
                       {terminal.status === 'ACTIVE'
                         ? t('home.computerClientStatusActive')
-                        : t('home.computerClientStatusUnavailable')}
+                        : terminal.status === 'DISABLED'
+                          ? t('home.computerClientStatusDisabled')
+                          : terminal.status === 'REVOKED'
+                            ? t('home.computerClientStatusRevoked')
+                            : t('home.computerClientStatusExpired')}
                     </span>
                   </div>
                   <dl style={s.metaList}>
@@ -450,7 +454,11 @@ export default function ComputerClientPage() {
                       <dt style={s.metaKey}>{t('home.computerClientCurrentStatus')}</dt>
                       <dd style={s.metaValue}>{terminal.status === 'ACTIVE'
                         ? t('home.computerClientStatusActive')
-                        : t('home.computerClientStatusUnavailable')}</dd>
+                        : terminal.status === 'DISABLED'
+                          ? t('home.computerClientStatusDisabled')
+                          : terminal.status === 'REVOKED'
+                            ? t('home.computerClientStatusRevoked')
+                            : t('home.computerClientStatusExpired')}</dd>
                     </div>
                     <div style={s.metaRow}>
                       <dt style={s.metaKey}>{t('home.computerClientPosSession')}</dt>

@@ -116,6 +116,8 @@ const km = {
     computerClientDesktopIdentity: 'E-Shop Desktop (ដំណើរការដោយ PIN)',
     computerClientLegacyIdentity: 'ការភ្ជាប់កម្មវិធីកុំព្យូទ័រចាស់',
     computerClientStatusUnavailable: 'មិនអាចប្រើបាន',
+    computerClientStatusRevoked: 'បានលុបចោល',
+    computerClientStatusExpired: 'លិខិតសម្គាល់ផុតកំណត់',
     computerClientPosSession: 'សម័យ POS',
     computerClientPosSessionActive: 'បានបង្កើត',
     computerClientPosSessionExpired: 'ផុតកំណត់',

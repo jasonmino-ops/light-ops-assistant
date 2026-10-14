@@ -116,6 +116,8 @@ const en = {
     computerClientDesktopIdentity: 'E-Shop Desktop (PIN activated)',
     computerClientLegacyIdentity: 'Legacy computer client binding',
     computerClientStatusUnavailable: 'Unavailable',
+    computerClientStatusRevoked: 'Revoked',
+    computerClientStatusExpired: 'Credential expired',
     computerClientPosSession: 'POS session',
     computerClientPosSessionActive: 'Established',
     computerClientPosSessionExpired: 'Expired',

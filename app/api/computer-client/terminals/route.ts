@@ -30,7 +30,12 @@ export async function GET(_req: NextRequest) {
         take: 100,
       }),
       prisma.computerBinding.findMany({
-        where: { tenantId: ctx.tenantId, storeId: ctx.storeId, status: 'APPROVED' },
+        where: {
+          tenantId: ctx.tenantId,
+          storeId: ctx.storeId,
+          status: 'APPROVED',
+          boundAt: { not: null },
+        },
         select: {
           id: true,
           storeId: true,

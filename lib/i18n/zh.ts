@@ -116,6 +116,8 @@ const zh = {
     computerClientDesktopIdentity: 'E-Shop Desktop（PIN 激活）',
     computerClientLegacyIdentity: '旧电脑客户端绑定',
     computerClientStatusUnavailable: '不可用',
+    computerClientStatusRevoked: '已撤销',
+    computerClientStatusExpired: '凭证已过期',
     computerClientPosSession: 'POS 会话',
     computerClientPosSessionActive: '已建立',
     computerClientPosSessionExpired: '已过期',

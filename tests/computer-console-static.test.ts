@@ -116,6 +116,7 @@ assert.match(terminalsRoute, /tenantId:\s*ctx\.tenantId[\s\S]*storeId:\s*ctx\.st
 assert.match(terminalsRoute, /desktopDevice\.findMany/, 'the unified terminal view must read DesktopDevice')
 assert.match(terminalsRoute, /computerBinding\.findMany/, 'the unified terminal view must read legacy ComputerBinding')
 assert.match(terminalsRoute, /browserPosDevice\.findMany/, 'the unified terminal view must report derived POS session state')
+assert.match(terminalsRoute, /status:\s*'APPROVED'[\s\S]*boundAt:\s*\{\s*not:\s*null\s*\}/, 'only completed legacy bindings may appear as terminals')
 assert.doesNotMatch(terminalsRoute, /(?:create|update|delete)(?:Many)?\(/, 'the unified terminal view must be read-only')
 assert.match(
   revokeDesktopRoute,
@@ -329,6 +330,8 @@ for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) 
     'computerClientDesktopIdentity',
     'computerClientLegacyIdentity',
     'computerClientStatusUnavailable',
+    'computerClientStatusRevoked',
+    'computerClientStatusExpired',
     'computerClientPosSession',
     'computerClientPosSessionActive',
     'computerClientPosSessionExpired',
