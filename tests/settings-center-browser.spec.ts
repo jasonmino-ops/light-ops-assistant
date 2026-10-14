@@ -42,6 +42,64 @@ test('Browser Settings renders owner-safe Store settings without Desktop-only se
   await expect(page.locator('[data-settings-auto-print="desktop-only"]')).toHaveCount(0)
   await expect(page.locator('[data-settings-display="desktop-only"]')).toHaveCount(0)
   await expect(page.getByRole('link', { name: /Table QR/i })).toBeVisible()
+  await expect(page.locator('[data-settings-store-name="editable"]')).toHaveValue(settingsPayload.storeName)
+})
+
+test('OWNER can edit a Store name through the existing Settings save flow', async ({ page }) => {
+  let savedName = settingsPayload.storeName
+  await page.addInitScript(() => localStorage.setItem('lang', 'en'))
+  await page.route('**/api/**', async (route) => {
+    const requestUrl = new URL(route.request().url())
+    if (requestUrl.pathname === '/api/auth/status') return route.fulfill({ json: { ok: true } })
+    if (requestUrl.pathname === '/api/me') return route.fulfill({ json: { tier: 'STANDARD', storeName: savedName, storeCode: settingsPayload.storeCode, currencyCode: settingsPayload.currencyCode } })
+    if (requestUrl.pathname === '/api/store/settings') {
+      if (route.request().method() === 'PATCH') {
+        const body = JSON.parse(route.request().postData() ?? '{}') as { name?: string }
+        savedName = String(body.name ?? savedName).trim()
+        return route.fulfill({ json: { ...settingsPayload, storeName: savedName, name: savedName } })
+      }
+      return route.fulfill({ json: { ...settingsPayload, storeName: savedName } })
+    }
+    if (requestUrl.pathname === '/api/stores') return route.fulfill({ json: [{ id: settingsPayload.storeId, code: settingsPayload.storeCode, name: savedName, checkoutMode: settingsPayload.checkoutMode, currency: settingsPayload.currencyCode }] })
+    if (requestUrl.pathname.endsWith('/checkout-mode') || requestUrl.pathname.endsWith('/menu-config')) return route.fulfill({ json: {} })
+    return route.fulfill({ json: {} })
+  })
+  await page.goto('/settings')
+  const nameInput = page.locator('[data-settings-store-name="editable"]')
+  await expect(nameInput).toHaveValue(settingsPayload.storeName)
+  await nameInput.fill('  饭得标.东北下饭菜  ')
+  await page.getByRole('button', { name: /Save settings/i }).click()
+  await expect(page.getByRole('status')).toContainText('Settings saved')
+  expect(savedName).toBe('饭得标.东北下饭菜')
+})
+
+test('Store name cannot be submitted empty from Settings', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('lang', 'en'))
+  await stubOwnerApis(page)
+  await page.goto('/settings')
+  await page.locator('[data-settings-store-name="editable"]').fill('   ')
+  await expect(page.getByRole('button', { name: /Save settings/i })).toBeDisabled()
+})
+
+test('Store name remains in the form when the save request fails', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('lang', 'en'))
+  await page.route('**/api/**', async (route) => {
+    const requestUrl = new URL(route.request().url())
+    if (requestUrl.pathname === '/api/auth/status') return route.fulfill({ json: { ok: true } })
+    if (requestUrl.pathname === '/api/me') return route.fulfill({ json: { tier: 'STANDARD', storeName: settingsPayload.storeName, storeCode: settingsPayload.storeCode, currencyCode: settingsPayload.currencyCode } })
+    if (requestUrl.pathname === '/api/store/settings' && route.request().method() === 'PATCH') {
+      return route.fulfill({ status: 500, json: { error: 'STORE_SETTINGS_FAILED' } })
+    }
+    if (requestUrl.pathname === '/api/store/settings') return route.fulfill({ json: settingsPayload })
+    if (requestUrl.pathname === '/api/stores') return route.fulfill({ json: [{ id: settingsPayload.storeId, code: settingsPayload.storeCode, name: settingsPayload.storeName, checkoutMode: settingsPayload.checkoutMode, currency: settingsPayload.currencyCode }] })
+    return route.fulfill({ json: {} })
+  })
+  await page.goto('/settings')
+  const nameInput = page.locator('[data-settings-store-name="editable"]')
+  await nameInput.fill('饭得标.东北下饭菜')
+  await page.getByRole('button', { name: /Save settings/i }).click()
+  await expect(page.getByRole('status')).toContainText('Save failed')
+  await expect(nameInput).toHaveValue('饭得标.东北下饭菜')
 })
 
 test('Desktop Settings exposes only the authorized Desktop-only preferences', async ({ page }) => {

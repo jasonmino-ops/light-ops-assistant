@@ -372,6 +372,17 @@ async function main() {
     'e-shop-tray/tests/network-dual-endpoint.test.ts',
   ]
   const m4SuccessorPath = 'tests/cashier-realtime-integration.test.ts'
+  // E-SHOP-STORE-NAME-EDIT-01: exact governance registration for the reviewed
+  // Store.name candidate. This registration admits only the four reviewed
+  // paths and does not authorize any cashier/realtime source changes.
+  const storeNameApprovedBase = '0e52807f54035b16e02b43d171439995c10abcc0'
+  const storeNameCandidate = '3efcb643a2b474ec24257dd9dfeb00c308dc0a1f'
+  const storeNamePaths = [
+    'app/api/store/settings/route.ts',
+    'app/settings/page.tsx',
+    'tests/settings-center-static.test.cjs',
+    'tests/settings-center-browser.spec.ts',
+  ]
   const gitPaths = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
   const gitIsAncestor = (ancestor: string, descendant: string) => spawnSync(
     'git', ['merge-base', '--is-ancestor', ancestor, descendant], { cwd: root },
@@ -385,6 +396,9 @@ async function main() {
   const isM4 = gitIsAncestor(m4ApprovedBase, gitPaths('rev-parse', 'origin/main')[0])
     && unmergedCommits.includes(m4Candidate)
     && changed.some(path => m4Paths.includes(path))
+  const isStoreName = gitPaths('rev-parse', 'origin/main')[0] === storeNameApprovedBase
+    && unmergedCommits.includes(storeNameCandidate)
+    && storeNamePaths.every(path => changed.includes(path))
   // Once merged, the candidate is no longer an unmerged task grant. Later M1
   // path edits still enter this branch and fail without that exact grant.
   const isM1 = !isM4 && (unmergedCommits.includes(productCandidate) || changed.some(path => productPaths.includes(path)))
@@ -446,6 +460,11 @@ async function main() {
       'M4 product candidate may only receive the approved dual-SHA packaging corrective',
     )
     assertBoundary(changed, new Set([...m4Paths, m4SuccessorPath, m4AuthorizationPath]))
+  } else if (isStoreName) {
+    assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [storeNameApprovedBase], 'Store.name candidate requires its trusted baseline')
+    assert.ok(gitIsAncestor(storeNameApprovedBase, storeNameCandidate), 'Store.name candidate must descend from its trusted baseline')
+    assert.ok(storeNamePaths.every(path => changed.includes(path)), 'Store.name candidate requires all four exact paths')
+    assertBoundary(changed, new Set([...storeNamePaths, 'tests/cashier-realtime-integration.test.ts']))
   } else {
     // ES-CASHIER-COST-01 exclusions and the existing H5/Dine-in approved set
     // retain their prior semantics. Closed historical grants are not reopened.
