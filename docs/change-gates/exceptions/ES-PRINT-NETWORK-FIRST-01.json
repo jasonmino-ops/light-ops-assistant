@@ -1812,6 +1812,14 @@
         "tests/desktop-pos-session-bridge.test.ts": "79f715cf94f7264672aa9f8b0b1b7dd977ad293d20088aa5524e89db5cba276a",
         "tests/es-tray-device-print-contract.test.ts": "df77ac19de8b1063f1424bebc0ddd9075b771362a770a101fcb9fc97edbf2718"
       },
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
       "allowedPurposes": [
         "Use the existing authenticated /api/pos-session/desktop primitive to create a bounded Desktop-derived capability for the official settings-only Managed Add-on.",
         "Validate the server-derived Desktop principal, browser device and store context through the existing device relay recovery contract; consume the local encrypted handoff once and fail closed on mismatch, expiry, replay or malformed data."
