@@ -64,6 +64,7 @@ let lastEvent: { event: string; jobId?: string; resultCode?: string; effectBound
 let quitting = false
 let shortcutCode = 'SHORTCUT_NOT_CHECKED'
 const recordedContinuityDiagnostics = new Set<string>()
+const INSTALLER_UPGRADE_EXIT_TIMEOUT_MS = 30_000
 
 async function shortcutManager() {
   const snapshot = await readShortcutRegistration()
@@ -258,6 +259,22 @@ async function finishExit() {
   renderer?.dispose()
   quitting = true
   app.quit()
+}
+
+async function safeExitForInstallerUpgrade() {
+  const operation = entry.exit(async () => {
+    scanner?.abort()
+    if (lifecycle) await lifecycle.safeExit()
+    else { await poller?.stopAndWait(); await finishExit() }
+  })
+  let timer: NodeJS.Timeout | undefined
+  try {
+    await Promise.race([operation, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('ADDON_SAFE_EXIT_TIMEOUT')), INSTALLER_UPGRADE_EXIT_TIMEOUT_MS)
+    })])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 async function initializeDependencies() {
@@ -613,16 +630,26 @@ function showWindow() {
 
 const helper = process.argv.filter(value => value === '--install-shortcuts' || value === '--uninstall-shortcuts')
 const silentShortcutArgs = process.argv.filter(value => value === '--silent-shortcuts')
+const installerUpgradeArgs = process.argv.slice(2).filter(value => value === '--installer-upgrade')
+const installerUpgradeMode = installerUpgradeArgs.length === 1 && process.argv.slice(2).length === 1
+const invalidInstallerUpgradeArgs = process.argv.includes('--installer-upgrade') && !installerUpgradeMode
 const helperMode = helper.length === 1 && !process.argv.some(value => ['--cashier', '--manage', '--background', '--settings-only'].includes(value))
   && (silentShortcutArgs.length === 0 || (helper[0] === '--install-shortcuts' && silentShortcutArgs.length === 1))
 // Reject conflicting cold-start intents before dependency initialization or
 // runtime activation (and before requesting the resident instance lock).
 let startupIntent: EntryIntent | undefined
-if (!helperMode) {
+if (!helperMode && !installerUpgradeMode) {
   try { startupIntent = entryIntent(process.argv) } catch { /* Fail closed below. */ }
 }
-if (!helperMode && !startupIntent) app.exit(8)
+if (invalidInstallerUpgradeArgs) app.exit(8)
+else if (!helperMode && !installerUpgradeMode && !startupIntent) app.exit(8)
 else if (!app.requestSingleInstanceLock()) { if (helperMode) app.exit(8); else app.quit() }
+else if (installerUpgradeMode) {
+  // A short-lived helper delivers this intent through Electron's existing
+  // single-instance channel. If no resident owns the lock, exit cleanly so
+  // the installer can verify process absence before replacing files.
+  app.whenReady().then(() => app.exit(0)).catch(() => app.exit(8))
+}
 else if (helperMode) {
   // Deliberately separate from initialize(): no binding, print profile, journal,
   // polling, renderer, ticket or network discovery in installer maintenance.
@@ -653,6 +680,13 @@ else if (helperMode) {
 } else {
   app.on('second-instance', (_event, argv) => {
     if (argv.some(value => ['--install-shortcuts', '--uninstall-shortcuts'].includes(value))) return
+    if (argv.includes('--installer-upgrade')) {
+      void app.whenReady().then(async () => {
+        try { await safeExitForInstallerUpgrade() }
+        catch (error) { lastCode = error instanceof Error ? error.message : 'ADDON_SAFE_EXIT_FAILED'; showWindow() }
+      })
+      return
+    }
     void app.whenReady().then(async () => {
       const intent = entryIntent(argv)
       // A settings-only resident process may have started before Desktop

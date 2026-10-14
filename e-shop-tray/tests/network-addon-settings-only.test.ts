@@ -313,6 +313,28 @@ describe('M1 actual main settings-only lifecycle', () => {
     expect(f.windows).toHaveLength(1)
   })
 
+  it('installer-upgrade second-instance drains the resident lifecycle before replacement', async () => {
+    const f = await mainFixture({ args: ['--manage'] })
+    await f.second(['--installer-upgrade'])
+
+    expect(f.counts.stops).toBe(1)
+    expect(f.app.quit).toHaveBeenCalledTimes(1)
+    expect(f.lifecycle?.restartRequired).toBe(true)
+  })
+
+  it('installer-upgrade remains fail-closed when safe exit does not complete', async () => {
+    const f = await mainFixture({ args: ['--manage'] })
+    const safeExit = vi.spyOn(f.lifecycle!, 'safeExit').mockImplementation(() => new Promise<void>(() => {}))
+    f.app.emit('second-instance', {}, ['synthetic.exe', '--installer-upgrade'])
+    for (let index = 0; index < 20; index += 1) await Promise.resolve()
+    await vi.advanceTimersByTimeAsync(30_001)
+    for (let index = 0; index < 20; index += 1) await Promise.resolve()
+
+    expect(f.app.quit).not.toHaveBeenCalled()
+    expect(f.windows).toHaveLength(1)
+    safeExit.mockRestore()
+  })
+
   it('normal retryBinding retains existing automatic startup after the explicit retry', async () => {
     const f = await mainFixture({ args: ['--manage'], missingBinding: true })
     f.bind(); await f.perform('retryBinding', {})

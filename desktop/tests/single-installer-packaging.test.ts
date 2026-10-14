@@ -27,6 +27,9 @@ describe('single installer packaging contract', () => {
     expect(installer).toContain('An independently installed Network Print Add-on cannot be adopted. Stopping.')
     expect(installer).toContain('ESHOP_NETWORK_ADDON_UNINSTALLER')
     expect(installer).toContain('ExecWait \'"${ESHOP_NETWORK_ADDON_UNINSTALLER}" /S\' $R2')
+    expect(installer).toContain('Call eshopRequestManagedAddonExit')
+    expect(installer).toContain('The managed Network Print Add-on did not exit safely before timeout. Stopping.')
+    expect(installer).toContain('The managed Network Print Add-on executable is missing. Stopping.')
     const install = installer.split('!macro customInstall\n')[1].split('!macroend')[0]
     expect(install.indexOf('!insertmacro eshopVerifyManagedAddonLifecycle')).toBeGreaterThan(
       install.indexOf('ExecWait \'"${ESHOP_NETWORK_ADDON_INSTALLER}" /S\' $R0'),
@@ -40,7 +43,7 @@ describe('single installer packaging contract', () => {
     const uninit = installer.split('!macro customUnInit\n')[1].split('!macroend')[0]
     expect(init).not.toContain('!insertmacro eshopCheckNetworkAddonInstallState')
     expect(running.indexOf('!insertmacro eshopCheckNetworkAddonInstallState')).toBeGreaterThan(
-      running.indexOf('nsProcess::_FindProcess'),
+      running.indexOf('!insertmacro eshopCheckNetworkAddonProcess'),
     )
     expect(running.indexOf('!insertmacro eshopCheckNetworkAddonInstallState')).toBeGreaterThan(
       running.indexOf('  ${EndIf}\n\n  !ifndef BUILD_UNINSTALLER'),

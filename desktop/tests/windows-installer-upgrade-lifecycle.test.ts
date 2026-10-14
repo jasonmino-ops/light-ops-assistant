@@ -82,25 +82,28 @@ function createNsisBinary(
 }
 
 describe('ES-DESKTOP-INSTALLER-UPGRADE-LIFECYCLE-FIX-01', () => {
-  it('replaces the builder tasklist/taskkill path with exact executable detection', () => {
+  it('uses the existing safe-exit lifecycle instead of tasklist/taskkill replacement', () => {
     const body = macroBody('customCheckAppRunning')
 
     expect(processTemplate).toMatch(/!ifmacrodef customCheckAppRunning\s+!insertmacro customCheckAppRunning/)
-    expect(body).toContain('nsProcess::_FindProcess /NOUNLOAD "${APP_EXECUTABLE_FILENAME}"')
-    expect(body).toMatch(/\$R0 == 0/)
-    expect(body).toMatch(/\$R0 != 603/)
+    expect(body).toContain('!insertmacro eshopCheckNetworkAddonInstallState')
+    expect(installerInclude).toContain('Function eshopRequestManagedAddonExit')
+    expect(installerInclude).toContain('--installer-upgrade')
+    expect(installerInclude).toContain('Sleep 250')
+    expect(installerInclude).toContain('eshopNetworkAddonExitTimeout')
     expect(instructionsOnly(installerInclude)).not.toMatch(/tasklist|find\.exe|taskkill|_KillProcess/i)
   })
 
-  it('fails closed for a running app and never force terminates it', () => {
+  it('fails closed on failed or timed-out Add-on exit and never force terminates it', () => {
     const body = macroBody('customCheckAppRunning')
 
     expect(body).toContain('Exit E-Shop Desktop from its tray menu')
     expect(body).toContain('SetErrorLevel 2')
     expect(body).toContain('SetErrorLevel 3')
     expect(body.match(/\bQuit\b/g)).toHaveLength(2)
-    expect(instructionsOnly(body)).not.toMatch(
-      /nsExec|ExecWait|ExecShell|taskkill|_KillProcess|CloseWindow|SendMessage/i,
+    expect(installerInclude).toContain('The managed Network Print Add-on did not exit safely before timeout. Stopping.')
+    expect(instructionsOnly(installerInclude)).not.toMatch(
+      /nsExec|ExecShell|taskkill|_KillProcess|CloseWindow|SendMessage/i,
     )
   })
 
