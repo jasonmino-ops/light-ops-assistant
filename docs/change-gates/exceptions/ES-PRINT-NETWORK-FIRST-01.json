@@ -1834,6 +1834,56 @@
       ],
       "expirationCondition": "Close this single-use grant after the bounded handoff candidate is reviewed and packaged, or if any security predicate fails.",
       "sourceDraft": {"fileCount": 11, "review": "Founder-approved exact-path handoff design; final independent security and implementation review required before FIELD."}
+    },
+    {
+      "authorizationId": "NETWORK-M4-PRINT-CHILD-PACKAGING-27",
+      "featureBranch": "codex/es-print-m4-print-child-identity",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "f1e134190ef69473e7880ab02d6e5d5bc32f7fab",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-14T13:00:00Z",
+      "approvedAt": "2026-10-14T13:00:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder approved one single-use packaging authorization for the current DesktopDevice-owned hidden print child candidate. It binds only the Add-on source inputs that differ from trusted origin/main and are required to build the exact RC10 TEST-only Add-on candidate and its Single Installer; it does not authorize product changes, migration, deployment or FIELD.",
+      "authorizedPaths": [
+        "e-shop-tray/scripts/build-network-addon.mjs",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/src/desktopBindingIdentity.ts",
+        "e-shop-tray/src/managedPrintChildIdentity.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/scripts/build-network-addon.mjs": "fc7bee4fabd9280a6f8a90e7088e96624c2e7826fd505895aec029ffb5dd0ef8",
+        "e-shop-tray/network-addon/main.ts": "a5a4d2d68bf5f77ded7cd74d67099409000af75f2b1bafc48a095e6e42a87cfe",
+        "e-shop-tray/src/desktopBindingIdentity.ts": "b30c4767a2cc9bb0b28479cefdbd929f2d2504f7ed47e5ce89bda490508f23f6",
+        "e-shop-tray/src/managedPrintChildIdentity.ts": "a95456e4de23a5547fe69694bf9a5f0bc8791c0f9f747acd5d3ef1963098a408"
+      },
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "commit": "f5ec1f537575ab116535de1c4417e2661b6e8d13",
+        "exactMatchRequired": true
+      },
+      "governanceState": {
+        "commit": "e4563bbf0dd0e61606dcd6bcb37cc83862abdb30",
+        "exactMatchRequired": true,
+        "zeroNonGovernanceDiff": true
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Add-on candidate and one source-bound Single Installer candidate from the current legal implementation.",
+        "Record exact package bytes, dual source/governance identity and SHA-256 evidence; this grant does not authorize installation, FIELD, Production migration, Production deploy, signing or formal publication."
+      ],
+      "prohibitedChanges": [
+        "Any source or product change outside the four exact packaging inputs above; no schema, migration, relay redesign, print-core, RC10, Provider, Local First, UI or unrelated behavior change.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production migration/deploy or FIELD execution."
+      ],
+      "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package has been built, independently reviewed and evidence retained, or when a required gate fails."
     }
   ]
 }
