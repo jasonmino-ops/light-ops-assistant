@@ -379,6 +379,7 @@ async function main() {
   const unifiedTerminalCandidate = '449fd4e533753d4ac759346575a55b268e12cdc7'
   const unifiedTerminalPaths = [
     'app/api/computer-client/terminals/route.ts',
+    'app/api/desktop/devices/[id]/revoke/route.ts',
     'app/home/computer-client/page.tsx',
     'desktop/src/main/ipcRouter.ts',
     'desktop/src/main/posSessionBridge.ts',
