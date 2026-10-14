@@ -100,6 +100,56 @@ export async function provisionManagedPrintChild(
         idempotent: true,
       }
     }
+
+    const previousParent = existingByInstallation.parentDesktopDevice
+    const previousParentIsInactive = Boolean(previousParent && (
+      previousParent.status !== 'ACTIVE'
+      || previousParent.activeSlot !== 'ACTIVE'
+      || previousParent.tokenExpiresAt.getTime() <= now.getTime()
+      || previousParent.tenant.status !== 'ACTIVE'
+      || previousParent.store.status !== 'ACTIVE'
+    ))
+    if (
+      existingByInstallation.identityKind === 'DESKTOP_PRINT_CHILD'
+      && existingByInstallation.parentDesktopDeviceId !== input.parentDesktopDeviceId
+      && existingByInstallation.tenantId === input.tenantId
+      && existingByInstallation.storeId === input.storeId
+      && previousParentIsInactive
+      && existingByInstallation.childActiveSlot === 'ACTIVE'
+      && existingByInstallation.status === 'APPROVED'
+      && existingByInstallation.boundAt !== null
+      && existingByInstallation.disabledAt === null
+    ) {
+      const competingChild = await db.computerBinding.findFirst({
+        where: {
+          identityKind: 'DESKTOP_PRINT_CHILD',
+          parentDesktopDeviceId: input.parentDesktopDeviceId,
+          childActiveSlot: 'ACTIVE',
+          NOT: { id: existingByInstallation.id },
+        },
+      })
+      if (competingChild) throw new Error('PRINT_CHILD_ALREADY_PROVISIONED')
+
+      const rebound = await db.computerBinding.update({
+        where: { id: existingByInstallation.id },
+        data: {
+          parentDesktopDeviceId: input.parentDesktopDeviceId,
+          deviceSecretHash,
+          expiresAt: input.tokenExpiresAt,
+          credentialStatus: 'ACTIVE',
+          credentialActivatedAt: now,
+          credentialExpiresAt: input.tokenExpiresAt,
+          lastSeenAt: now,
+        },
+        include: { parentDesktopDevice: { include: { tenant: true, store: true } } },
+      })
+      return {
+        childId: rebound.id,
+        storeCode: rebound.parentDesktopDevice?.store.code ?? '',
+        credentialExpiresAt: rebound.credentialExpiresAt ?? input.tokenExpiresAt,
+        idempotent: true,
+      }
+    }
     throw new Error('PRINT_CHILD_IDENTITY_CONFLICT')
   }
 

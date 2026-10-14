@@ -15,12 +15,19 @@ const parent = {
 
 function fakeDb() {
   let row: any = null
-  return {
-    computerBinding: {
-      findUnique: async ({ where }: any) => where.installationIdHash === hashInstallationId(installationId) ? row : null,
-      findFirst: async () => row,
-      create: async ({ data }: any) => {
-        row = { id: 'child-1', ...data, parentDesktopDeviceId: parent.parentDesktopDeviceId,
+    return {
+      computerBinding: {
+        findUnique: async ({ where }: any) => where.installationIdHash === hashInstallationId(installationId) ? row : null,
+        findFirst: async ({ where }: any = {}) => {
+          if (where?.NOT?.id === row?.id) return null
+          return row
+        },
+        update: async ({ data }: any) => {
+          row = { ...row, ...data, parentDesktopDevice: { store: { code: 'STORE-1' } } }
+          return row
+        },
+        create: async ({ data }: any) => {
+        row = { id: 'child-1', ...data, disabledAt: null, parentDesktopDeviceId: parent.parentDesktopDeviceId,
           parentDesktopDevice: { store: { code: 'STORE-1' } } }
         return row
       },
@@ -46,6 +53,20 @@ async function main() {
       /PRINT_CHILD_IDENTITY_CONFLICT/,
     )
     assert.notEqual(hashDeviceSecret(deviceSecret), '')
+  }
+
+  {
+    const db = fakeDb()
+    await provisionManagedPrintChild(parent, db)
+    // A replacement DesktopDevice may recover the same hidden child only
+    // after the previous parent is no longer active; the child id remains
+    // stable and the credential is refreshed for the new parent.
+    const replacement = await provisionManagedPrintChild({
+      ...parent,
+      parentDesktopDeviceId: 'desktop-parent-2',
+    }, db)
+    assert.equal(replacement.childId, 'child-1')
+    assert.equal(replacement.idempotent, true)
   }
 
   {
