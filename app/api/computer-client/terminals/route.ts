@@ -33,6 +33,7 @@ export async function GET(_req: NextRequest) {
         where: {
           tenantId: ctx.tenantId,
           storeId: ctx.storeId,
+          identityKind: 'LEGACY_AGENT',
           status: 'APPROVED',
           boundAt: { not: null },
         },

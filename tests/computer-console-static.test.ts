@@ -117,6 +117,7 @@ assert.match(terminalsRoute, /desktopDevice\.findMany/, 'the unified terminal vi
 assert.match(terminalsRoute, /computerBinding\.findMany/, 'the unified terminal view must read legacy ComputerBinding')
 assert.match(terminalsRoute, /browserPosDevice\.findMany/, 'the unified terminal view must report derived POS session state')
 assert.match(terminalsRoute, /status:\s*'APPROVED'[\s\S]*boundAt:\s*\{\s*not:\s*null\s*\}/, 'only completed legacy bindings may appear as terminals')
+assert.match(terminalsRoute, /identityKind:\s*'LEGACY_AGENT'/, 'hidden Desktop-owned print children must stay out of OWNER terminals')
 assert.doesNotMatch(terminalsRoute, /(?:create|update|delete)(?:Many)?\(/, 'the unified terminal view must be read-only')
 assert.match(
   revokeDesktopRoute,

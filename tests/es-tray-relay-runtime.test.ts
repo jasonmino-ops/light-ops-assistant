@@ -9,6 +9,7 @@ import {
   hashInstallationId,
 } from '../lib/computer-client/crypto'
 import { authenticateRelayAgent } from '../lib/es-tray-relay/auth'
+import { authenticateAgent } from '../lib/computer-client/service'
 import type { RelayTimingConfig } from '../lib/es-tray-relay/config'
 import {
   type EshopTrayPrintRequest,
@@ -114,6 +115,47 @@ function authRequest(installationId: string, deviceSecret: string) {
   })
 }
 
+async function seedManagedPrintChild() {
+  const scope = await seedScope('relay-print-child')
+  const parent = await prisma.desktopDevice.create({
+    data: {
+      tenantId: scope.tenant.id,
+      storeId: scope.store.id,
+      installationIdHash: hashInstallationId(`desktop-parent-${randomUUID()}`),
+      status: 'ACTIVE',
+      activeSlot: 'ACTIVE',
+      tokenHash: createHash('sha256').update(randomUUID()).digest('hex'),
+      tokenHashVersion: 1,
+      tokenVersion: 1,
+      tokenIssuedAt: new Date(),
+      tokenExpiresAt: new Date(Date.now() + 86_400_000),
+    },
+  })
+  const installationId = `print-child-${randomUUID().replaceAll('-', '')}`
+  const deviceSecret = `ecc_v1_${'p'.repeat(48)}`
+  const child = await prisma.computerBinding.create({
+    data: {
+      tenantId: scope.tenant.id,
+      storeId: scope.store.id,
+      installationIdHash: hashInstallationId(installationId),
+      identityKind: 'DESKTOP_PRINT_CHILD',
+      parentDesktopDeviceId: parent.id,
+      childActiveSlot: 'ACTIVE',
+      computerName: 'E-Shop Managed Network Print Add-on',
+      status: 'APPROVED',
+      expiresAt: new Date(Date.now() + 86_400_000),
+      claimSecretHash: hashClaimSecret(`ecr_v1_${'q'.repeat(48)}`),
+      deviceSecretHash: hashDeviceSecret(deviceSecret),
+      credentialStatus: 'ACTIVE',
+      credentialActivatedAt: new Date(),
+      credentialExpiresAt: new Date(Date.now() + 86_400_000),
+      decidedAt: new Date(),
+      boundAt: new Date(),
+    },
+  })
+  return { parent, child, installationId, deviceSecret }
+}
+
 async function expectServiceError(code: string, run: () => Promise<unknown>) {
   await assert.rejects(run, (error: unknown) => {
     assert.ok(error instanceof RelayServiceError)
@@ -132,6 +174,24 @@ async function main() {
       name: 'second store',
       status: 'ACTIVE',
     },
+  })
+
+  await test('hidden Desktop print child uses relay only while parent is active', async () => {
+    const child = await seedManagedPrintChild()
+    const request = authRequest(child.installationId, child.deviceSecret)
+    const allowed = await authenticateRelayAgent(request)
+    assert.equal(allowed.ok, true)
+    if (allowed.ok) {
+      assert.equal(allowed.context.binding.identityKind, 'DESKTOP_PRINT_CHILD')
+      assert.equal(allowed.context.binding.parentDesktopDeviceId, child.parent.id)
+      assert.equal(allowed.context.tenantId, child.parent.tenantId)
+      assert.equal(allowed.context.storeId, child.parent.storeId)
+    }
+    const genericAgent = await authenticateAgent(request, 'device')
+    assert.deepEqual(genericAgent, { ok: false, status: 401, error: 'AGENT_AUTH_REQUIRED' })
+    await prisma.desktopDevice.update({ where: { id: child.parent.id }, data: { status: 'REVOKED', activeSlot: null } })
+    const revoked = await authenticateRelayAgent(authRequest(child.installationId, child.deviceSecret))
+    assert.deepEqual(revoked, { ok: false, status: 403, error: 'PRINT_CHILD_PARENT_NOT_ACTIVE' })
   })
 
   await test('enqueue idempotency returns the original job', async () => {

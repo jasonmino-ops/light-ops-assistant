@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
-import type { ComputerBinding } from '@prisma/client'
+import { randomBytes } from 'node:crypto'
+import type { ComputerBinding, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import {
   hashClaimSecret,
@@ -10,6 +11,20 @@ import {
   isValidInstallationId,
   safeHashEqual,
 } from './crypto'
+
+type BindingWithPrintParent = ComputerBinding & {
+  parentDesktopDevice: {
+    id: string
+    tenantId: string
+    storeId: string
+    status: 'ACTIVE' | 'REVOKED'
+    activeSlot: string | null
+    tokenIssuedAt: Date
+    tokenExpiresAt: Date
+    tenant: { status: string }
+    store: { id: string; tenantId: string; code: string; status: string }
+  } | null
+}
 
 /**
  * 电脑客户端服务层。
@@ -25,8 +40,110 @@ export const INSTALLATION_HEADER = 'x-installation-id'
 export type AgentChannel = 'claim' | 'device'
 
 export type AgentAuthFailure = { ok: false; status: number; error: string }
-export type AgentAuthSuccess = { ok: true; binding: ComputerBinding }
+export type AgentAuthSuccess = { ok: true; binding: BindingWithPrintParent }
 export type AgentAuthResult = AgentAuthFailure | AgentAuthSuccess
+
+export type ManagedPrintChildProvisionInput = {
+  parentDesktopDeviceId: string
+  tenantId: string
+  storeId: string
+  tokenExpiresAt: Date
+  installationId: string
+  deviceSecret: string
+  agentVersion?: string | null
+}
+
+export type ManagedPrintChildProvisionResult = {
+  childId: string
+  storeCode: string
+  credentialExpiresAt: Date
+  idempotent: boolean
+}
+
+/**
+ * Provisions the one hidden print-only ComputerBinding owned by a verified
+ * DesktopDevice. The caller must already have authenticated the parent via a
+ * server-side DesktopDevice-derived session; this function never trusts a
+ * client-supplied tenant/store as authority.
+ */
+export async function provisionManagedPrintChild(
+  input: ManagedPrintChildProvisionInput,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
+): Promise<ManagedPrintChildProvisionResult> {
+  if (!isValidInstallationId(input.installationId) || !isValidDeviceSecretFormat(input.deviceSecret)) {
+    throw new Error('PRINT_CHILD_CREDENTIAL_INVALID')
+  }
+
+  const installationIdHash = hashInstallationId(input.installationId)
+  const deviceSecretHash = hashDeviceSecret(input.deviceSecret)
+  const now = new Date()
+  const existingByInstallation = await db.computerBinding.findUnique({
+    where: { installationIdHash },
+    include: { parentDesktopDevice: { include: { tenant: true, store: true } } },
+  })
+  if (existingByInstallation) {
+    if (
+      existingByInstallation.identityKind === 'DESKTOP_PRINT_CHILD'
+      && existingByInstallation.parentDesktopDeviceId === input.parentDesktopDeviceId
+      && existingByInstallation.tenantId === input.tenantId
+      && existingByInstallation.storeId === input.storeId
+      && existingByInstallation.childActiveSlot === 'ACTIVE'
+      && safeHashEqual(existingByInstallation.deviceSecretHash, deviceSecretHash)
+      && existingByInstallation.status === 'APPROVED'
+      && existingByInstallation.boundAt !== null
+      && existingByInstallation.credentialStatus === 'ACTIVE'
+    ) {
+      return {
+        childId: existingByInstallation.id,
+        storeCode: existingByInstallation.parentDesktopDevice?.store.code ?? '',
+        credentialExpiresAt: existingByInstallation.credentialExpiresAt ?? input.tokenExpiresAt,
+        idempotent: true,
+      }
+    }
+    throw new Error('PRINT_CHILD_IDENTITY_CONFLICT')
+  }
+
+  const activeChild = await db.computerBinding.findFirst({
+    where: {
+      identityKind: 'DESKTOP_PRINT_CHILD',
+      parentDesktopDeviceId: input.parentDesktopDeviceId,
+      childActiveSlot: 'ACTIVE',
+    },
+    include: { parentDesktopDevice: { include: { tenant: true, store: true } } },
+  })
+  if (activeChild) throw new Error('PRINT_CHILD_ALREADY_PROVISIONED')
+
+  const claimSecret = `ecr_v1_${randomBytes(48).toString('base64url')}`
+  const binding = await db.computerBinding.create({
+    data: {
+      tenantId: input.tenantId,
+      storeId: input.storeId,
+      installationIdHash,
+      identityKind: 'DESKTOP_PRINT_CHILD',
+      parentDesktopDeviceId: input.parentDesktopDeviceId,
+      childActiveSlot: 'ACTIVE',
+      computerName: 'E-Shop Managed Network Print Add-on',
+      agentVersion: input.agentVersion ?? null,
+      status: 'APPROVED',
+      requestedAt: now,
+      expiresAt: input.tokenExpiresAt,
+      claimSecretHash: hashClaimSecret(claimSecret),
+      deviceSecretHash,
+      credentialStatus: 'ACTIVE',
+      credentialActivatedAt: now,
+      credentialExpiresAt: input.tokenExpiresAt,
+      decidedAt: now,
+      boundAt: now,
+      lastSeenAt: now,
+    },
+  })
+  return {
+    childId: binding.id,
+    storeCode: (await db.store.findUniqueOrThrow({ where: { id: input.storeId }, select: { code: true } })).code,
+    credentialExpiresAt: input.tokenExpiresAt,
+    idempotent: false,
+  }
+}
 
 /**
  * 老板允许一台已停用电脑重新走绑定申请链时写入的不可变审计事件。
@@ -117,6 +234,7 @@ export async function transitionFromPending(
 export async function authenticateAgent(
   req: NextRequest,
   channel: AgentChannel,
+  options: { allowManagedPrintChild?: boolean } = {},
 ): Promise<AgentAuthResult> {
   const installationId = req.headers.get(INSTALLATION_HEADER)?.trim() ?? ''
   const secret = readBearer(req)
@@ -132,6 +250,14 @@ export async function authenticateAgent(
 
   const binding = await prisma.computerBinding.findUnique({
     where: { installationIdHash: hashInstallationId(installationId) },
+    include: {
+      parentDesktopDevice: {
+        include: {
+          tenant: { select: { status: true } },
+          store: { select: { id: true, tenantId: true, code: true, status: true } },
+        },
+      },
+    },
   })
   if (!binding) return { ok: false, status: 401, error: 'AGENT_AUTH_REQUIRED' }
 
@@ -140,6 +266,26 @@ export async function authenticateAgent(
   const storedHash = channel === 'claim' ? binding.claimSecretHash : binding.deviceSecretHash
   if (!safeHashEqual(expectedHash, storedHash)) {
     return { ok: false, status: 401, error: 'AGENT_AUTH_REQUIRED' }
+  }
+
+  if (binding.identityKind === 'DESKTOP_PRINT_CHILD') {
+    if (channel !== 'device' || !options.allowManagedPrintChild) {
+      return { ok: false, status: 401, error: 'AGENT_AUTH_REQUIRED' }
+    }
+    const parent = binding.parentDesktopDevice
+    if (
+      !parent
+      || parent.id !== binding.parentDesktopDeviceId
+      || parent.tenantId !== binding.tenantId
+      || parent.storeId !== binding.storeId
+      || parent.status !== 'ACTIVE'
+      || parent.activeSlot !== 'ACTIVE'
+      || parent.tokenExpiresAt.getTime() <= Date.now()
+      || parent.tenant.status !== 'ACTIVE'
+      || parent.store.status !== 'ACTIVE'
+    ) {
+      return { ok: false, status: 403, error: 'PRINT_CHILD_PARENT_NOT_ACTIVE' }
+    }
   }
 
   // 设备通道：批准前不可用，且凭证过期即失效（credentialExpiresAt 真实参与鉴权）

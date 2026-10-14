@@ -105,6 +105,11 @@ enum ComputerCredentialStatus {
   VOID
 }
 
+enum ComputerBindingIdentityKind {
+  LEGACY_AGENT
+  DESKTOP_PRINT_CHILD
+}
+
 // ES-PRINT-DUAL-CHANNEL-01 — Production Relay V0.1 job lifecycle.
 // SUCCEEDED means the Windows transport accepted the command stream; it does
 // not mean that physical paper output has been observed.
@@ -1733,6 +1738,7 @@ model DesktopDevice {
   claimedStoreRuntimePrintTasks StoreRuntimePrintTask[]  @relation("StoreRuntimeClaimedDevice")
   ownedV3PrintControlPlanes     V3PrintControlPlane[]     @relation("V3PrintControlPlaneOwner")
   v3PrintExecutionBatches       V3PrintExecutionBatch[]   @relation("V3PrintExecutionBatchOwner")
+  printChildBindings             ComputerBinding[]         @relation("DesktopPrintChild")
 
   @@unique([installationIdHash, activeSlot])
   @@unique([id, tenantId, storeId])
@@ -1886,6 +1892,13 @@ model ComputerBinding {
   // 安装实例身份（哈希存储）。一个安装实例一行，作为幂等键。
   installationIdHash String @unique
 
+  // LEGACY_AGENT is the unchanged RC9/RC10 Computer Client identity. The
+  // Desktop print child is server-owned, hidden from terminal views, and can
+  // only authenticate the bounded Network Print relay surface.
+  identityKind          ComputerBindingIdentityKind @default(LEGACY_AGENT)
+  parentDesktopDeviceId String?
+  childActiveSlot       String?
+
   // 申请信息（客户端上报，仅作展示与投递线索，不构成授权）
   computerName String
   agentVersion String?
@@ -1923,6 +1936,7 @@ model ComputerBinding {
   // 复合外键：数据库层面保证 storeId 必须属于 tenantId，
   // 杜绝「绑定记录的门店不属于该租户」这类非法组合。
   store                Store                         @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  parentDesktopDevice  DesktopDevice?                @relation("DesktopPrintChild", fields: [parentDesktopDeviceId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
   decidedByUser        User?                         @relation("ComputerBindingDecidedBy", fields: [decidedByUserId], references: [id], onDelete: SetNull)
   disabledByUser       User?                         @relation("ComputerBindingDisabledBy", fields: [disabledByUserId], references: [id], onDelete: SetNull)
   audits               ComputerBindingAudit[]
@@ -1936,6 +1950,7 @@ model ComputerBinding {
   @@index([status, expiresAt])
   @@index([decidedByUserId])
   @@index([disabledByUserId])
+  @@index([parentDesktopDeviceId, identityKind, childActiveSlot])
 }
 
 // These two Store Runtime models preserve the already-applied

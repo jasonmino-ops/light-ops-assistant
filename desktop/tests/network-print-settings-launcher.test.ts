@@ -39,16 +39,19 @@ describe('Desktop Network Print settings launcher', () => {
 
   it('opens the verified shortcut and never falls back when the contract is old', async () => {
     const opened: string[] = []
+    const childHandoffs: string[] = []
     const result = await openNetworkPrintSettings({
       platform: 'win32',
       appDataPath,
       readShortcutLink: () => validShortcut,
       openPath: async (file) => { opened.push(file); return '' },
       issueManagedAddonSession,
+      writeManagedPrintChildHandoff: async (_path, session) => { childHandoffs.push(session.storeCode) },
       writeManagedAddonHandoff: async () => undefined,
     })
     expect(result).toEqual({ ok: true })
     expect(opened).toEqual([networkPrintSettingsShortcutPath({ platform: 'win32', appDataPath })])
+    expect(childHandoffs).toEqual(['STORE-A'])
 
     opened.length = 0
     const legacy = await openNetworkPrintSettings({

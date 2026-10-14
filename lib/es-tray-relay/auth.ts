@@ -18,7 +18,10 @@ export type RelayAgentAuthResult =
   | { ok: false; status: number; error: string }
 
 export async function authenticateRelayAgent(req: NextRequest): Promise<RelayAgentAuthResult> {
-  const auth = await authenticateAgent(req, 'device')
+  // The only non-legacy identity admitted here is the server-provisioned,
+  // hidden DesktopDevice print child. All other ComputerBinding callers keep
+  // the legacy auth path, while claim/self-management endpoints do not opt in.
+  const auth = await authenticateAgent(req, 'device', { allowManagedPrintChild: true })
   if (!auth.ok) return auth
 
   // Tray 0.1.2 understands neither claim tokens nor terminal ACK. It must not

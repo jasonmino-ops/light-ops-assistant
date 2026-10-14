@@ -2,6 +2,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { mkdir, open, rename } from 'node:fs/promises'
 import { safeStorage } from 'electron'
+import { writeManagedPrintChildHandoff } from './managedPrintChildHandoff'
 
 // This is the bounded on-disk wire contract. The Add-on owns parsing and
 // validation; Desktop only emits a fresh, encrypted handoff after the server
@@ -74,6 +75,7 @@ export type NetworkPrintSettingsLauncherDeps = {
   readShortcutLink: (file: string) => NetworkPrintSettingsShortcut
   openPath: (file: string) => Promise<string>
   issueManagedAddonSession: () => Promise<{ browserDeviceId: string; storeCode: string; token: string; expiresAt: string } | null>
+  writeManagedPrintChildHandoff?: (appDataPath: string, session: { browserDeviceId: string; storeCode: string; token: string; expiresAt: string }) => Promise<void>
   writeManagedAddonHandoff?: (appDataPath: string, session: { browserDeviceId: string; storeCode: string; token: string; expiresAt: string }) => Promise<void>
 }
 
@@ -128,7 +130,9 @@ export async function openNetworkPrintSettings(
     return { ok: false, code: 'NETWORK_PRINT_SETTINGS_HANDOFF_UNAVAILABLE' }
   }
   try {
-    await (deps.writeManagedAddonHandoff ?? writeManagedAddonHandoff)(deps.appDataPath, session)
+    await (deps.writeManagedPrintChildHandoff
+      ?? deps.writeManagedAddonHandoff
+      ?? ((appDataPath, value) => writeManagedPrintChildHandoff(appDataPath, value)))(deps.appDataPath, session)
   } catch {
     return { ok: false, code: 'NETWORK_PRINT_SETTINGS_HANDOFF_WRITE_FAILED' }
   }

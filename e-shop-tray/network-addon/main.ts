@@ -17,6 +17,22 @@ import { NETWORK_PROFILE, parseNetworkMode, exactObject, type NetworkRequest, ty
 import { NetworkRawTcpTransport, NetworkDeliveryError } from '../src/printing/networkRawTcpTransport'
 import { RelayPoller } from '../src/relayPoller'
 import { RelayResultLog } from '../src/resultLog'
+
+type ManagedPrintChildReader = (appDataPath: string) => Promise<{
+  installationId: string
+  deviceSecret: string
+  bindingState: 'CLOUD_BOUND'
+  computerId: string
+  storeCode: string
+  boundAt: string
+} | null>
+
+// Keep the RC9/RC10 source-isolated harness able to load the historical main
+// program while the packaged build resolves the new child reader normally.
+let readManagedPrintChildIdentity: ManagedPrintChildReader | undefined
+try {
+  readManagedPrintChildIdentity = require('../src/managedPrintChildIdentity').consumeManagedPrintChildIdentity as ManagedPrintChildReader
+} catch { readManagedPrintChildIdentity = undefined }
 import { createGuardedNetworkClient, createNetworkStrategy, createNetworkRenderer, submitLocalNetworkTest } from '../src/networkRuntime'
 import { NetworkAddonProfile, bindingTuple, sameBinding, type ColdModePreflightContext } from './profile'
 import { ColdModeLifecycle } from './coldModeLifecycle'
@@ -32,6 +48,7 @@ let window: BrowserWindow | null = null
 let tray: Tray | null = null
 let binding: DesktopBindingIdentity | undefined
 let managedHandoff: ManagedAddonHandoff | undefined
+let managedPrintChild = false
 let profile: NetworkAddonProfile | undefined
 let poller: RelayPoller | undefined
 let lifecycle: ColdModeLifecycle | undefined
@@ -144,16 +161,24 @@ async function consumeManagedAddonHandoff(): Promise<ManagedAddonHandoff | null>
 }
 
 async function resolveBinding(): Promise<DesktopBindingIdentity> {
-  const handoff = await consumeManagedAddonHandoff()
-  if (handoff) {
-    await verifyManagedHandoff(handoff)
-    managedHandoff = handoff
-    return managedAddonBindingIdentity(handoff)
+  const child = readManagedPrintChildIdentity
+    ? await readManagedPrintChildIdentity(app.getPath('appData'))
+    : null
+  if (child) {
+    managedPrintChild = true
+    return child as DesktopBindingIdentity
   }
+  // Legacy RC9/RC10 ComputerBinding remains supported for existing agents.
+  // A missing managed child handoff never falls back to a fabricated identity.
+  managedPrintChild = false
   return readDesktopBindingIdentity(desktopBindingIdentityPath(app.getPath('appData')))
 }
 
 async function assertIdentity() {
+  if (managedPrintChild) {
+    if (!binding || binding.bindingState !== 'CLOUD_BOUND') throw new Error('PRINT_CHILD_IDENTITY_UNAVAILABLE')
+    return
+  }
   if (binding?.source === 'desktop-device-handoff') {
     if (!managedHandoff) throw new Error('DESKTOP_ADDON_HANDOFF_UNAVAILABLE')
     await verifyManagedHandoff(managedHandoff)
@@ -407,6 +432,7 @@ async function sendTest(input: Record<string, unknown>) {
 }
 
 async function openCashier(config: NetworkPrinterConfig) {
+  if (managedPrintChild) throw new Error('PRINT_CHILD_CAPABILITY_REJECTED')
   await assertIdentity()
   const candidates = [process.env.LOCALAPPDATA, process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)']]
     .filter((value): value is string => !!value).map(base => path.join(base, 'Google', 'Chrome', 'Application', 'chrome.exe'))
