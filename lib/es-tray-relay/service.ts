@@ -352,8 +352,12 @@ async function lockActiveClaimScope(
   // lock all authorization rows in this transaction so a concurrent disable,
   // credential revoke, or store/tenant deactivation wins before any job can be
   // claimed by the stale authorization state.
-  const active = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    SELECT binding."id"
+  const active = await tx.$queryRaw<Array<{
+    id: string
+    identityKind: string
+    parentDesktopDeviceId: string | null
+  }>>(Prisma.sql`
+    SELECT binding."id", binding."identityKind", binding."parentDesktopDeviceId"
       FROM "ComputerBinding" AS binding
       JOIN "Store" AS store
         ON store."id" = binding."storeId"
@@ -377,6 +381,39 @@ async function lockActiveClaimScope(
   `)
   if (!active[0]) {
     throw new RelayServiceError('COMPUTER_BINDING_NOT_ACTIVE', 403)
+  }
+
+  // Legacy ComputerBinding rows keep their existing authorization contract.
+  // Only the server-owned Desktop print child additionally requires its
+  // parent DesktopDevice to be locked and revalidated in this same mutation
+  // transaction. This prevents a parent revoke/expiry/unbind from racing
+  // between stale child authentication and a durable job state change.
+  if (active[0].identityKind === 'DESKTOP_PRINT_CHILD') {
+    if (!active[0].parentDesktopDeviceId) {
+      throw new RelayServiceError('COMPUTER_BINDING_NOT_ACTIVE', 403)
+    }
+    const parent = await tx.$queryRaw<Array<{
+      id: string
+      status: string
+      activeSlot: string | null
+      tokenExpiresAt: Date
+    }>>(Prisma.sql`
+      SELECT "id", "status", "activeSlot", "tokenExpiresAt"
+        FROM "DesktopDevice"
+       WHERE "id" = ${active[0].parentDesktopDeviceId}
+         AND "tenantId" = ${scope.tenantId}
+         AND "storeId" = ${scope.storeId}
+       FOR UPDATE
+    `)
+    const parentRow = parent[0]
+    if (
+      !parentRow
+      || parentRow.status !== 'ACTIVE'
+      || parentRow.activeSlot !== 'ACTIVE'
+      || parentRow.tokenExpiresAt.getTime() <= now.getTime()
+    ) {
+      throw new RelayServiceError('COMPUTER_BINDING_NOT_ACTIVE', 403)
+    }
   }
 }
 
@@ -628,9 +665,16 @@ export async function claimNextRelayPrintJob(
   })
 }
 
-async function findClaimedJob(scope: RelayAgentScope, jobId: string, proof: RelayClaimProof) {
+type RelayJobClient = Pick<typeof prisma, 'eshopTrayPrintJob'>
+
+async function findClaimedJob(
+  client: RelayJobClient,
+  scope: RelayAgentScope,
+  jobId: string,
+  proof: RelayClaimProof,
+) {
   if (proof.schemaVersion !== (scope.schemaVersion ?? 1)) return null
-  return prisma.eshopTrayPrintJob.findFirst({
+  return client.eshopTrayPrintJob.findFirst({
     where: {
       id: jobId,
       schemaVersion: scope.schemaVersion ?? 1,
@@ -650,45 +694,52 @@ export async function markRelayPrintJobExecuting(
   timing: RelayTimingConfig,
   now = new Date(),
 ) {
-  const current = await findClaimedJob(scope, jobId, proof)
-  if (!current) throw new RelayServiceError('ES_TRAY_02_STALE_CLAIM', 409)
-  if (current.status === 'EXECUTING') return { idempotent: true, job: serializeJob(current) }
-  if (current.status !== 'CLAIMED') {
-    throw new RelayServiceError('ES_TRAY_02_JOB_NOT_CLAIMED', 409)
-  }
-  if (!current.leaseExpiresAt || current.leaseExpiresAt.getTime() <= now.getTime()) {
-    throw new RelayServiceError('ES_TRAY_02_CLAIM_LEASE_EXPIRED', 409)
-  }
+  return prisma.$transaction(async (tx) => {
+    // Authentication happens before this service call. Revalidate and lock
+    // the parent/child authorization in the same transaction as the durable
+    // job transition so a stale child proof cannot advance the job after the
+    // DesktopDevice parent is revoked, expired, disabled, or unbound.
+    await lockActiveClaimScope(tx, scope, now)
+    const current = await findClaimedJob(tx, scope, jobId, proof)
+    if (!current) throw new RelayServiceError('ES_TRAY_02_STALE_CLAIM', 409)
+    if (current.status === 'EXECUTING') return { idempotent: true, job: serializeJob(current) }
+    if (current.status !== 'CLAIMED') {
+      throw new RelayServiceError('ES_TRAY_02_JOB_NOT_CLAIMED', 409)
+    }
+    if (!current.leaseExpiresAt || current.leaseExpiresAt.getTime() <= now.getTime()) {
+      throw new RelayServiceError('ES_TRAY_02_CLAIM_LEASE_EXPIRED', 409)
+    }
 
-  const executionDeadline = new Date(now.getTime() + timing.executionTimeoutMs)
-  const updated = await prisma.eshopTrayPrintJob.updateMany({
-    where: {
-      id: current.id,
-      schemaVersion: scope.schemaVersion ?? 1,
-      tenantId: scope.tenantId,
-      storeId: scope.storeId,
-      claimedByComputerBindingId: scope.computerBindingId,
-      claimAttempt: proof.claimAttempt,
-      claimTokenHash: current.claimTokenHash,
-      status: 'CLAIMED',
-      leaseExpiresAt: { gt: now },
-    },
-    data: {
-      status: 'EXECUTING',
-      executingAt: now,
-      leaseExpiresAt: executionDeadline,
-      effectBoundary: 'CROSSING_UNKNOWN',
-      physicalCompletionKnown: false,
-    },
+    const executionDeadline = new Date(now.getTime() + timing.executionTimeoutMs)
+    const updated = await tx.eshopTrayPrintJob.updateMany({
+      where: {
+        id: current.id,
+        schemaVersion: scope.schemaVersion ?? 1,
+        tenantId: scope.tenantId,
+        storeId: scope.storeId,
+        claimedByComputerBindingId: scope.computerBindingId,
+        claimAttempt: proof.claimAttempt,
+        claimTokenHash: current.claimTokenHash,
+        status: 'CLAIMED',
+        leaseExpiresAt: { gt: now },
+      },
+      data: {
+        status: 'EXECUTING',
+        executingAt: now,
+        leaseExpiresAt: executionDeadline,
+        effectBoundary: 'CROSSING_UNKNOWN',
+        physicalCompletionKnown: false,
+      },
+    })
+    if (updated.count !== 1) {
+      const latest = await findClaimedJob(tx, scope, jobId, proof)
+      if (latest?.status === 'EXECUTING') return { idempotent: true, job: serializeJob(latest) }
+      throw new RelayServiceError('ES_TRAY_02_CLAIM_STATE_CHANGED', 409)
+    }
+    const job = await findClaimedJob(tx, scope, jobId, proof)
+    if (!job) throw new RelayServiceError('ES_TRAY_02_STALE_CLAIM', 409)
+    return { idempotent: false, job: serializeJob(job) }
   })
-  if (updated.count !== 1) {
-    const latest = await findClaimedJob(scope, jobId, proof)
-    if (latest?.status === 'EXECUTING') return { idempotent: true, job: serializeJob(latest) }
-    throw new RelayServiceError('ES_TRAY_02_CLAIM_STATE_CHANGED', 409)
-  }
-  const job = await findClaimedJob(scope, jobId, proof)
-  if (!job) throw new RelayServiceError('ES_TRAY_02_STALE_CLAIM', 409)
-  return { idempotent: false, job: serializeJob(job) }
 }
 
 function sameTerminalResult(job: EshopTrayPrintJob, result: RelayTerminalResult) {
@@ -706,52 +757,58 @@ export async function completeRelayPrintJob(
   result: RelayTerminalResult,
   now = new Date(),
 ) {
-  const current = await findClaimedJob(scope, jobId, result)
-  if (!current) throw new RelayServiceError('ES_TRAY_02_STALE_CLAIM', 409)
-  if (current.status === 'SUCCEEDED' || current.status === 'FAILED') {
-    if (!sameTerminalResult(current, result)) {
+  return prisma.$transaction(async (tx) => {
+    // Keep parent authorization revalidation and the terminal job mutation in
+    // one lock boundary. A result submitted with stale child authorization
+    // must not commit after the DesktopDevice parent loses authorization.
+    await lockActiveClaimScope(tx, scope, now)
+    const current = await findClaimedJob(tx, scope, jobId, result)
+    if (!current) throw new RelayServiceError('ES_TRAY_02_STALE_CLAIM', 409)
+    if (current.status === 'SUCCEEDED' || current.status === 'FAILED') {
+      if (!sameTerminalResult(current, result)) {
+        throw new RelayServiceError('ES_TRAY_02_RESULT_CONFLICT', 409)
+      }
+      return { idempotent: true, job: serializeJob(current) }
+    }
+
+    const preExecutionFailure = current.status === 'CLAIMED'
+      && result.state === 'FAILED'
+      && result.effectBoundary !== 'CROSSED'
+    if (current.status !== 'EXECUTING' && !preExecutionFailure) {
+      throw new RelayServiceError('ES_TRAY_02_JOB_NOT_EXECUTING', 409)
+    }
+
+    const updated = await tx.eshopTrayPrintJob.updateMany({
+      where: {
+        id: current.id,
+        schemaVersion: scope.schemaVersion ?? 1,
+        tenantId: scope.tenantId,
+        storeId: scope.storeId,
+        claimedByComputerBindingId: scope.computerBindingId,
+        claimAttempt: result.claimAttempt,
+        claimTokenHash: current.claimTokenHash,
+        status: { in: preExecutionFailure ? ['CLAIMED'] : ['EXECUTING'] },
+      },
+      data: {
+        status: result.state,
+        completedAt: now,
+        leaseExpiresAt: null,
+        resultStatus: result.state === 'SUCCEEDED' ? 'SUCCESS' : 'FAILURE',
+        resultCode: result.resultCode,
+        resultMessage: result.resultMessage ?? null,
+        effectBoundary: result.effectBoundary,
+        physicalCompletionKnown: false,
+      },
+    })
+    if (updated.count !== 1) {
+      const latest = await findClaimedJob(tx, scope, jobId, result)
+      if (latest && sameTerminalResult(latest, result)) {
+        return { idempotent: true, job: serializeJob(latest) }
+      }
       throw new RelayServiceError('ES_TRAY_02_RESULT_CONFLICT', 409)
     }
-    return { idempotent: true, job: serializeJob(current) }
-  }
-
-  const preExecutionFailure = current.status === 'CLAIMED'
-    && result.state === 'FAILED'
-    && result.effectBoundary !== 'CROSSED'
-  if (current.status !== 'EXECUTING' && !preExecutionFailure) {
-    throw new RelayServiceError('ES_TRAY_02_JOB_NOT_EXECUTING', 409)
-  }
-
-  const updated = await prisma.eshopTrayPrintJob.updateMany({
-    where: {
-      id: current.id,
-      schemaVersion: scope.schemaVersion ?? 1,
-      tenantId: scope.tenantId,
-      storeId: scope.storeId,
-      claimedByComputerBindingId: scope.computerBindingId,
-      claimAttempt: result.claimAttempt,
-      claimTokenHash: current.claimTokenHash,
-      status: { in: preExecutionFailure ? ['CLAIMED'] : ['EXECUTING'] },
-    },
-    data: {
-      status: result.state,
-      completedAt: now,
-      leaseExpiresAt: null,
-      resultStatus: result.state === 'SUCCEEDED' ? 'SUCCESS' : 'FAILURE',
-      resultCode: result.resultCode,
-      resultMessage: result.resultMessage ?? null,
-      effectBoundary: result.effectBoundary,
-      physicalCompletionKnown: false,
-    },
+    const job = await findClaimedJob(tx, scope, jobId, result)
+    if (!job) throw new RelayServiceError('ES_TRAY_02_STALE_CLAIM', 409)
+    return { idempotent: false, job: serializeJob(job) }
   })
-  if (updated.count !== 1) {
-    const latest = await findClaimedJob(scope, jobId, result)
-    if (latest && sameTerminalResult(latest, result)) {
-      return { idempotent: true, job: serializeJob(latest) }
-    }
-    throw new RelayServiceError('ES_TRAY_02_RESULT_CONFLICT', 409)
-  }
-  const job = await findClaimedJob(scope, jobId, result)
-  if (!job) throw new RelayServiceError('ES_TRAY_02_STALE_CLAIM', 409)
-  return { idempotent: false, job: serializeJob(job) }
 }

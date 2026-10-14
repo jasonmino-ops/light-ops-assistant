@@ -153,7 +153,14 @@ async function seedManagedPrintChild() {
       boundAt: new Date(),
     },
   })
-  return { parent, child, installationId, deviceSecret }
+  return {
+    parent,
+    child,
+    installationId,
+    deviceSecret,
+    scope: { tenantId: scope.tenant.id, storeId: scope.store.id },
+    agent: { tenantId: scope.tenant.id, storeId: scope.store.id, computerBindingId: child.id },
+  }
 }
 
 async function expectServiceError(code: string, run: () => Promise<unknown>) {
@@ -162,6 +169,30 @@ async function expectServiceError(code: string, run: () => Promise<unknown>) {
     assert.equal(error.code, code)
     return true
   })
+}
+
+async function assertParentAuthorizationRace(
+  parentId: string,
+  mutation: string,
+  operation: () => Promise<unknown>,
+  code = 'COMPUTER_BINDING_NOT_ACTIVE',
+) {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL })
+  await client.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query(mutation, [parentId])
+    let settled = false
+    const pending = operation().finally(() => { settled = true })
+    void pending.catch(() => undefined)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    assert.equal(settled, false, 'relay mutation must wait for the authorization row lock')
+    await client.query('COMMIT')
+    await expectServiceError(code, () => pending)
+  } finally {
+    await client.query('ROLLBACK').catch(() => undefined)
+    await client.end()
+  }
 }
 
 async function main() {
@@ -336,6 +367,124 @@ async function main() {
       await client.query('ROLLBACK').catch(() => undefined)
       await client.end()
     }
+  })
+
+  await test('authenticated child cannot claim after a concurrent parent revoke', async () => {
+    const child = await seedManagedPrintChild()
+    const auth = await authenticateRelayAgent(authRequest(child.installationId, child.deviceSecret))
+    assert.equal(auth.ok, true)
+    await enqueueRelayPrintJob(child.scope, request('child-claim-parent-revoke-race-0001'), timing)
+    await assertParentAuthorizationRace(
+      child.parent.id,
+      'UPDATE "DesktopDevice" SET "status" = \'REVOKED\', "activeSlot" = NULL WHERE "id" = $1',
+      () => claimNextRelayPrintJob(child.agent, timing),
+    )
+    const row = await prisma.eshopTrayPrintJob.findFirstOrThrow({ where: child.scope })
+    assert.equal(row.status, 'PENDING')
+  })
+
+  await test('authenticated child cannot claim after a concurrent parent expiry', async () => {
+    const child = await seedManagedPrintChild()
+    const auth = await authenticateRelayAgent(authRequest(child.installationId, child.deviceSecret))
+    assert.equal(auth.ok, true)
+    await enqueueRelayPrintJob(child.scope, request('child-claim-parent-expiry-race-0001'), timing)
+    await assertParentAuthorizationRace(
+      child.parent.id,
+      'UPDATE "DesktopDevice" SET "tokenExpiresAt" = NOW() WHERE "id" = $1',
+      () => claimNextRelayPrintJob(child.agent, timing),
+    )
+    const row = await prisma.eshopTrayPrintJob.findFirstOrThrow({ where: child.scope })
+    assert.equal(row.status, 'PENDING')
+  })
+
+  await test('authenticated child cannot transition to EXECUTING after parent revoke', async () => {
+    const child = await seedManagedPrintChild()
+    const auth = await authenticateRelayAgent(authRequest(child.installationId, child.deviceSecret))
+    assert.equal(auth.ok, true)
+    await enqueueRelayPrintJob(child.scope, request('child-executing-parent-revoke-race-0001'), timing)
+    const claim = await claimNextRelayPrintJob(child.agent, timing)
+    assert.ok(claim)
+    const proof = { schemaVersion: 1 as const, claimAttempt: claim.claimAttempt, claimToken: claim.claimToken }
+    await assertParentAuthorizationRace(
+      child.parent.id,
+      'UPDATE "DesktopDevice" SET "status" = \'REVOKED\', "activeSlot" = NULL WHERE "id" = $1',
+      () => markRelayPrintJobExecuting(child.agent, claim.id, proof, timing),
+    )
+    const row = await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: claim.id } })
+    assert.equal(row.status, 'CLAIMED')
+  })
+
+  await test('authenticated child cannot commit a result after parent revoke', async () => {
+    const child = await seedManagedPrintChild()
+    const auth = await authenticateRelayAgent(authRequest(child.installationId, child.deviceSecret))
+    assert.equal(auth.ok, true)
+    await enqueueRelayPrintJob(child.scope, request('child-result-parent-revoke-race-0001'), timing)
+    const claim = await claimNextRelayPrintJob(child.agent, timing)
+    assert.ok(claim)
+    const proof = { schemaVersion: 1 as const, claimAttempt: claim.claimAttempt, claimToken: claim.claimToken }
+    await markRelayPrintJobExecuting(child.agent, claim.id, proof, timing)
+    await assertParentAuthorizationRace(
+      child.parent.id,
+      'UPDATE "DesktopDevice" SET "status" = \'REVOKED\', "activeSlot" = NULL WHERE "id" = $1',
+      () => completeRelayPrintJob(child.agent, claim.id, {
+        ...proof,
+        state: 'SUCCEEDED',
+        resultCode: 'SUBMITTED_TO_WINDOWS_SPOOLER',
+        effectBoundary: 'CROSSED',
+        physicalCompletionKnown: false,
+      }),
+    )
+    const row = await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: claim.id } })
+    assert.equal(row.status, 'EXECUTING')
+  })
+
+  await test('authenticated child cannot claim after parent becomes unbound', async () => {
+    const child = await seedManagedPrintChild()
+    const auth = await authenticateRelayAgent(authRequest(child.installationId, child.deviceSecret))
+    assert.equal(auth.ok, true)
+    await enqueueRelayPrintJob(child.scope, request('child-claim-parent-unbound-race-0001'), timing)
+    await assertParentAuthorizationRace(
+      child.parent.id,
+      'UPDATE "DesktopDevice" SET "activeSlot" = NULL WHERE "id" = $1',
+      () => claimNextRelayPrintJob(child.agent, timing),
+    )
+    const row = await prisma.eshopTrayPrintJob.findFirstOrThrow({ where: child.scope })
+    assert.equal(row.status, 'PENDING')
+  })
+
+  await test('authenticated child cannot commit a result after store deactivation', async () => {
+    const child = await seedManagedPrintChild()
+    const auth = await authenticateRelayAgent(authRequest(child.installationId, child.deviceSecret))
+    assert.equal(auth.ok, true)
+    await enqueueRelayPrintJob(child.scope, request('child-result-store-revoke-race-0001'), timing)
+    const claim = await claimNextRelayPrintJob(child.agent, timing)
+    assert.ok(claim)
+    const proof = { schemaVersion: 1 as const, claimAttempt: claim.claimAttempt, claimToken: claim.claimToken }
+    await markRelayPrintJobExecuting(child.agent, claim.id, proof, timing)
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL })
+    await client.connect()
+    try {
+      await client.query('BEGIN')
+      await client.query('UPDATE "Store" SET "status" = \'DISABLED\' WHERE "id" = $1', [child.scope.storeId])
+      let settled = false
+      const pending = completeRelayPrintJob(child.agent, claim.id, {
+        ...proof,
+        state: 'SUCCEEDED',
+        resultCode: 'SUBMITTED_TO_WINDOWS_SPOOLER',
+        effectBoundary: 'CROSSED',
+        physicalCompletionKnown: false,
+      }).finally(() => { settled = true })
+      void pending.catch(() => undefined)
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      assert.equal(settled, false, 'relay mutation must wait for the store authorization row lock')
+      await client.query('COMMIT')
+      await expectServiceError('COMPUTER_BINDING_NOT_ACTIVE', () => pending)
+    } finally {
+      await client.query('ROLLBACK').catch(() => undefined)
+      await client.end()
+    }
+    const row = await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: claim.id } })
+    assert.equal(row.status, 'EXECUTING')
   })
 
   await test('claim cannot cross a tenant or store boundary', async () => {
