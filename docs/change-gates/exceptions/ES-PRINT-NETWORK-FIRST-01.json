@@ -1803,7 +1803,7 @@
       ],
       "authorizedPathSha256": {
         "desktop/src/main/ipcRouter.ts": "613e807f4fefca15c15848976a4d5da3d0a9c09489314c4ac44f06cd6d93f2c9",
-        "desktop/src/main/networkPrintSettingsLauncher.ts": "414644f88bf09d2f10e9dbe809c4968ab92c04f9b827f1ce3143362388b0ef93",
+        "desktop/src/main/networkPrintSettingsLauncher.ts": "e5c91daea6086a3df0d94b29e65482f47a90e507c20011f104c11843b12765f1",
         "desktop/src/main/posSessionBridge.ts": "665a19f647d41858c04dae413aeadb34a2750c391a7e0e9b0075bd3f60744fb2",
         "desktop/tests/network-print-settings-launcher.test.ts": "8a95d42571e53e1d6f411a9fde00eba33baca22e9ca9e48cdfc546f663b9f5ac",
         "desktop/tests/pos-session-bridge-static.test.ts": "840f746ec2f882c8e10a21fc259a961a7a14e33d1ac070fa25ede445d0f90e9f",
