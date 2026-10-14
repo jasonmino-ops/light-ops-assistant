@@ -67,10 +67,16 @@ export async function handleDeviceRelayConfigRequest(
   return withRelayApiError(async () => {
     const auth = await dependencies.authenticate(req)
     if (!auth.ok) return relayError(auth.error, auth.status)
+    const browserDeviceId = req.headers.get('x-pos-device-id')?.trim()
+    if (!browserDeviceId) return relayError('POS_DEVICE_AUTH_REQUIRED', 401)
 
     return relayJson({
       fieldOnly: true,
       productionContract: true,
+      principal: auth.context.principal,
+      browserDeviceId,
+      storeCode: auth.context.storeCode,
+      managedAddonContext: auth.context.principal === 'DESKTOP_POS_DEVICE' && auth.context.enabled,
       enabled: auth.context.enabled && auth.context.principal === 'BROWSER_POS_DEVICE',
     })
   })

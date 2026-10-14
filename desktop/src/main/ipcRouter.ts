@@ -144,6 +144,7 @@ export function registerIpcHandlers(windowManager: WindowManager) {
       appDataPath: app.getPath('appData'),
       readShortcutLink: (file) => shell.readShortcutLink(file),
       openPath: (file) => shell.openPath(file),
+      issueManagedAddonSession: () => posSessionBridge.issue(),
     })
   })
 

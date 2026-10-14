@@ -1,12 +1,13 @@
 import * as electron from 'electron'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, shell, Tray } from 'electron'
 import { randomUUID, createHash } from 'node:crypto'
-import { lstat, mkdir } from 'node:fs/promises'
+import { lstat, mkdir, readFile, rename, unlink } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { CloudRelayClient } from '../src/cloudRelayClient'
-import { desktopBindingIdentityPath, readDesktopBindingIdentity, type DesktopBindingIdentity } from '../src/desktopBindingIdentity'
+import { desktopBindingIdentityPath, managedAddonBindingIdentity, managedAddonHandoffPath,
+  parseManagedAddonHandoff, readDesktopBindingIdentity, type DesktopBindingIdentity, type ManagedAddonHandoff } from '../src/desktopBindingIdentity'
 import { networkRoleEndpoints, protectNetworkDirectory, type NetworkNode, type NetworkPrinterConfig } from '../src/networkNodeConfig'
 import { getWindowsLocalNetworks, getWindowsEndpointContinuitySnapshot, validateLocalPrinterEndpoint,
   validateConfirmedPrinterPath, discoverNetworkPrinters, readLocalPrinterHardware, assertConfirmedPrinter,
@@ -30,6 +31,7 @@ const PAGE = path.join(__dirname, 'ui.html')
 let window: BrowserWindow | null = null
 let tray: Tray | null = null
 let binding: DesktopBindingIdentity | undefined
+let managedHandoff: ManagedAddonHandoff | undefined
 let profile: NetworkAddonProfile | undefined
 let poller: RelayPoller | undefined
 let lifecycle: ColdModeLifecycle | undefined
@@ -101,7 +103,62 @@ function code(error: unknown) {
   const value = error instanceof Error ? ('code' in error ? String(error.code) : error.message) : ''
   return /^[A-Z0-9_:-]{3,120}$/.test(value) ? value : 'ADDON_OPERATION_FAILED'
 }
+async function verifyManagedHandoff(handoff: ManagedAddonHandoff) {
+  if (Date.parse(handoff.expiresAt) <= Date.now()) throw new Error('DESKTOP_ADDON_HANDOFF_EXPIRED')
+  const response = await fetch(`${SERVER}/api/es-tray-02/device/config`, {
+    method: 'GET', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(10_000),
+    headers: {
+      Accept: 'application/json',
+      'x-pos-device-id': handoff.browserDeviceId,
+      'x-pos-device-token': handoff.token,
+    },
+  })
+  if (!response.ok) throw new Error('DESKTOP_ADDON_HANDOFF_REJECTED')
+  const body: unknown = await response.json().catch(() => null)
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('DESKTOP_ADDON_HANDOFF_INVALID_RESPONSE')
+  const row = body as Record<string, unknown>
+  if (row.productionContract !== true || row.managedAddonContext !== true || row.principal !== 'DESKTOP_POS_DEVICE'
+    || row.browserDeviceId !== handoff.browserDeviceId || row.storeCode !== handoff.storeCode) {
+    throw new Error('DESKTOP_ADDON_HANDOFF_SCOPE_MISMATCH')
+  }
+}
+
+async function consumeManagedAddonHandoff(): Promise<ManagedAddonHandoff | null> {
+  const source = managedAddonHandoffPath(app.getPath('appData'))
+  let encrypted: string
+  try { encrypted = await readFile(source, 'utf8') }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw new Error('DESKTOP_ADDON_HANDOFF_UNAVAILABLE')
+  }
+  const consumed = `${source}.consumed-${process.pid}-${Date.now()}`
+  try {
+    await rename(source, consumed)
+  } catch { throw new Error('DESKTOP_ADDON_HANDOFF_REPLAYED') }
+  try {
+    const raw = safeStorage.decryptString(Buffer.from(encrypted, 'base64'))
+    return parseManagedAddonHandoff(raw)
+  } finally {
+    await unlink(consumed).catch(() => undefined)
+  }
+}
+
+async function resolveBinding(): Promise<DesktopBindingIdentity> {
+  const handoff = await consumeManagedAddonHandoff()
+  if (handoff) {
+    await verifyManagedHandoff(handoff)
+    managedHandoff = handoff
+    return managedAddonBindingIdentity(handoff)
+  }
+  return readDesktopBindingIdentity(desktopBindingIdentityPath(app.getPath('appData')))
+}
+
 async function assertIdentity() {
+  if (binding?.source === 'desktop-device-handoff') {
+    if (!managedHandoff) throw new Error('DESKTOP_ADDON_HANDOFF_UNAVAILABLE')
+    await verifyManagedHandoff(managedHandoff)
+    return
+  }
   const current = await readDesktopBindingIdentity(desktopBindingIdentityPath(app.getPath('appData')))
   if (!binding || !sameBinding(bindingTuple(binding), bindingTuple(current)) || binding.deviceSecret !== current.deviceSecret) {
     throw new Error('NETWORK_BINDING_CHANGED_RESTART_REQUIRED')
@@ -181,7 +238,7 @@ async function initializeDependencies() {
   if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('ADDON_WINDOWS_X64_REQUIRED')
   if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' || process.env.NODE_EXTRA_CA_CERTS) throw new Error('ADDON_CUSTOM_TLS_NOT_ALLOWED')
   if (!safeStorage.isEncryptionAvailable()) throw new Error('ADDON_WINDOWS_ENCRYPTION_REQUIRED')
-  binding = await readDesktopBindingIdentity(desktopBindingIdentityPath(app.getPath('appData')))
+  binding = await resolveBinding()
   const directory = path.join(USER_DATA, 'state')
   await protectNetworkDirectory(directory)
   const protector = { protect: (value: string) => safeStorage.encryptString(value).toString('base64'),

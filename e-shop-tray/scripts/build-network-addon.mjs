@@ -12,6 +12,7 @@ export const ADDON_VERSION = '0.1.0'
 export const CANDIDATE_VERSION = '0.1.0-commercial-rc.10'
 export const ELECTRON_VERSION = '44.3.0'
 export const BASELINE_COMMIT = '452de10f112140637bc419e7bff740fb3b5f2c27'
+export const GOVERNANCE_HEAD_COMMIT = 'e4563bbf0dd0e61606dcd6bcb37cc83862abdb30'
 export const APP_ID = 'com.elife.eshop.networkprint.addon'
 export const PACKAGE_NAME = 'eshop-network-print-addon'
 export const PRODUCT_NAME = 'E-Shop Network Print Add-on'
@@ -315,6 +316,11 @@ export function createManifest({ source, inputs, outputs, tools, candidate = nul
   }
 }
 
+export function candidateManifestSource(source) {
+  if (!source || source.workingTreeDirty || !/^[a-f0-9]{40}$/.test(source.headCommit)) return source
+  return { ...source, sourceCommit: GOVERNANCE_HEAD_COMMIT, implementationCommit: source.headCommit }
+}
+
 export function candidateHtml(bytes) {
   const html = bytes.toString('utf8')
   if (html.split('<title>E-Shop Network Print</title>').length !== 2 || html.split('  <main>').length !== 2) {
@@ -586,7 +592,8 @@ export async function buildAddon(options = { mode: 'check' }) {
   assertSnapshotMatch(before, await inputMapping(finalInputs))
   assertSnapshotMatch(source, readSourceState())
   const outputHashes = Object.fromEntries(Object.entries(outputs).map(([file, bytes]) => [file, sha256(bytes)]))
-  const manifest = createManifest({ source, inputs: before, outputs: outputHashes, tools, candidate })
+  const manifest = createManifest({ source: candidate ? candidateManifestSource(source) : source,
+    inputs: before, outputs: outputHashes, tools, candidate })
   if (options.mode === 'check') return { manifest, outputDirectory: null }
   if (candidate) return packageCandidate({ outputs, outputHashes, manifest, env: candidateEnv, verifySources: async () => {
     assertSnapshotMatch(before, await inputMapping(finalInputs))

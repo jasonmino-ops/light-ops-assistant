@@ -78,6 +78,15 @@ export class PosSessionBridge {
     return payload
   }
 
+  /**
+   * Issue a fresh, server-derived short-lived session for a managed local
+   * companion. The Desktop device credential remains main-process-only; the
+   * returned payload is the bounded BrowserPosDevice capability.
+   */
+  issue(): Promise<PosSessionPayload | null> {
+    return this.requestSession()
+  }
+
   private async requestSession(): Promise<PosSessionPayload | null> {
     const credential = await this.options.credentialReader.readCredential()
     if (!credential.ok) {

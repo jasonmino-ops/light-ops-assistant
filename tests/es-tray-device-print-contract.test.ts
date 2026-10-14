@@ -65,7 +65,9 @@ function printBody(overrides: Record<string, unknown> = {}) {
 }
 
 function request(path: string, init?: ConstructorParameters<typeof NextRequest>[1]) {
-  return new NextRequest(`http://localhost${path}`, init)
+  const headers = new Headers(init?.headers)
+  if (!headers.has('x-pos-device-id')) headers.set('x-pos-device-id', context.browserPosDeviceId)
+  return new NextRequest(`http://localhost${path}`, { ...init, headers })
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -132,7 +134,7 @@ async function main() {
       authenticate: auth(),
     })
     assert.deepEqual(Object.keys(await responseBody(response)).sort(), [
-      'enabled', 'fieldOnly', 'productionContract',
+      'browserDeviceId', 'enabled', 'fieldOnly', 'managedAddonContext', 'principal', 'productionContract', 'storeCode',
     ])
   })
 
@@ -163,8 +165,12 @@ async function main() {
       }),
     })
     assert.deepEqual(await responseBody(response), {
+      browserDeviceId: context.browserPosDeviceId,
       fieldOnly: true,
+      managedAddonContext: false,
       productionContract: true,
+      principal: context.principal,
+      storeCode: context.storeCode,
       enabled: false,
     })
   })

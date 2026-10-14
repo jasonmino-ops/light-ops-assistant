@@ -285,7 +285,15 @@ async function testDesktopDerivedSessionCanUseRecoveryRoutesOnly() {
   assert.equal(config.status, 200)
   // Direct Desktop sessions can prove their identity to this recovery
   // endpoint, but must never be promoted into the legacy relay path.
-  assert.equal((await config.json() as { enabled: boolean }).enabled, false)
+  assert.deepEqual(await config.json(), {
+    fieldOnly: true,
+    productionContract: true,
+    principal: 'DESKTOP_POS_DEVICE',
+    browserDeviceId: issued.body.browserDeviceId,
+    storeCode: seeded.store.code,
+    managedAddonContext: true,
+    enabled: false,
+  })
 
   let availabilityScope: { tenantId: string; storeId: string } | null = null
   const availabilityDependencies: V3ReprintRouteDependencies = {

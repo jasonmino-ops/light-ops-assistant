@@ -267,6 +267,13 @@ describe('Network Add-on build and release boundary', () => {
     expect(() => build.candidateHtml(Buffer.from('<main>unexpected</main>'))).toThrow('ADDON_CANDIDATE_UI_MARKER_MISMATCH')
   })
 
+  it('candidate provenance keeps the governance head separate from the implementation commit', () => {
+    const source = { baselineCommit: build.BASELINE_COMMIT, headCommit: 'a'.repeat(40), sourceCommit: 'a'.repeat(40), workingTreeDirty: false }
+    expect(build.candidateManifestSource(source)).toEqual({ ...source,
+      sourceCommit: build.GOVERNANCE_HEAD_COMMIT, implementationCommit: source.headCommit })
+    expect(build.candidateManifestSource({ ...source, workingTreeDirty: true })).toEqual({ ...source, workingTreeDirty: true })
+  })
+
   it('rejects frozen Desktop/Windows/QZ code and credential material in packaged inputs', () => {
     for (const file of ['e-shop-tray/src/main.ts', 'desktop/src/main/main.ts', 'node_modules/qz-tray/qz.js',
       'e-shop-tray/src/printing/windowsQueueTransport.ts', 'e-shop-tray/network-candidate/bootstrap.cjs']) {

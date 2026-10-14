@@ -10,6 +10,10 @@ import {
 const appDataPath = 'C:\\Users\\owner\\AppData\\Roaming'
 const target = `C:\\Program Files\\E-Shop\\${NETWORK_PRINT_SETTINGS_EXECUTABLE}`
 const validShortcut = { target, args: '--settings-only', appUserModelId: NETWORK_PRINT_SETTINGS_APP_ID }
+const issueManagedAddonSession = async () => ({
+  browserDeviceId: 'desktop-test-device', storeCode: 'STORE-A',
+  token: `${'a'.repeat(96)}.${'b'.repeat(43)}`, expiresAt: '2099-01-01T00:00:00.000Z',
+})
 
 describe('Desktop Network Print settings launcher', () => {
   it('resolves only the official per-user Start Menu shortcut', () => {
@@ -40,6 +44,8 @@ describe('Desktop Network Print settings launcher', () => {
       appDataPath,
       readShortcutLink: () => validShortcut,
       openPath: async (file) => { opened.push(file); return '' },
+      issueManagedAddonSession,
+      writeManagedAddonHandoff: async () => undefined,
     })
     expect(result).toEqual({ ok: true })
     expect(opened).toEqual([networkPrintSettingsShortcutPath({ platform: 'win32', appDataPath })])
@@ -50,6 +56,7 @@ describe('Desktop Network Print settings launcher', () => {
       appDataPath,
       readShortcutLink: () => ({ ...validShortcut, args: '--manage' }),
       openPath: async (file) => { opened.push(file); return '' },
+      issueManagedAddonSession,
     })
     expect(legacy).toEqual({ ok: false, code: 'NETWORK_PRINT_SETTINGS_SHORTCUT_INVALID' })
     expect(opened).toEqual([])
@@ -60,18 +67,22 @@ describe('Desktop Network Print settings launcher', () => {
       platform: 'win32', appDataPath,
       readShortcutLink: () => { throw new Error('missing') },
       openPath: async () => '',
+      issueManagedAddonSession,
     })).toEqual({ ok: false, code: 'NETWORK_PRINT_SETTINGS_SHORTCUT_UNAVAILABLE' })
 
     expect(await openNetworkPrintSettings({
       platform: 'win32', appDataPath,
       readShortcutLink: () => validShortcut,
       openPath: async () => 'open failed',
+      issueManagedAddonSession,
+      writeManagedAddonHandoff: async () => undefined,
     })).toEqual({ ok: false, code: 'NETWORK_PRINT_SETTINGS_OPEN_FAILED' })
 
     expect(await openNetworkPrintSettings({
       platform: 'linux', appDataPath,
       readShortcutLink: () => validShortcut,
       openPath: async () => '',
+      issueManagedAddonSession,
     })).toEqual({ ok: false, code: 'NETWORK_PRINT_SETTINGS_WINDOWS_REQUIRED' })
   })
 })

@@ -15,6 +15,21 @@ export type DesktopBindingIdentity = {
   computerId: string
   storeCode: string
   boundAt: string
+  source?: 'legacy-computer-binding' | 'desktop-device-handoff'
+  browserDeviceId?: string
+}
+
+export const MANAGED_ADDON_HANDOFF_AUDIENCE = 'eshop-managed-network-print-addon' as const
+export const MANAGED_ADDON_HANDOFF_SCHEMA_VERSION = 1 as const
+
+export type ManagedAddonHandoff = {
+  schemaVersion: typeof MANAGED_ADDON_HANDOFF_SCHEMA_VERSION
+  audience: typeof MANAGED_ADDON_HANDOFF_AUDIENCE
+  browserDeviceId: string
+  storeCode: string
+  token: string
+  expiresAt: string
+  nonce: string
 }
 
 export class DesktopBindingIdentityError extends Error {
@@ -32,6 +47,60 @@ function object(value: unknown): Record<string, unknown> | null {
 
 export function desktopBindingIdentityPath(appDataPath: string): string {
   return path.join(appDataPath, DESKTOP_PRODUCT_DIRECTORY, IDENTITY_FILENAME)
+}
+
+export function managedAddonHandoffPath(appDataPath: string): string {
+  return path.join(appDataPath, 'E-Shop-Network-Print-Addon', 'handoff.bin')
+}
+
+function parseManagedAddonHandoffValue(value: unknown): ManagedAddonHandoff {
+  const candidate = object(value)
+  if (!candidate
+    || Object.keys(candidate).sort().join(',') !== 'audience,browserDeviceId,expiresAt,nonce,schemaVersion,storeCode,token') {
+    throw new DesktopBindingIdentityError('DESKTOP_ADDON_HANDOFF_INVALID')
+  }
+  const row = candidate
+  if (row.schemaVersion !== MANAGED_ADDON_HANDOFF_SCHEMA_VERSION
+    || row.audience !== MANAGED_ADDON_HANDOFF_AUDIENCE
+    || typeof row.browserDeviceId !== 'string' || !/^desktop-[A-Za-z0-9_-]+$/.test(row.browserDeviceId)
+    || typeof row.storeCode !== 'string' || !STORE_CODE_PATTERN.test(row.storeCode)
+    || typeof row.token !== 'string' || row.token.length < 40 || row.token.length > 4096 || !row.token.includes('.')
+    || typeof row.expiresAt !== 'string' || !Number.isFinite(Date.parse(row.expiresAt))
+    || Date.parse(row.expiresAt) <= Date.now()
+    || typeof row.nonce !== 'string' || !/^[0-9a-f-]{32,128}$/i.test(row.nonce)) {
+    throw new DesktopBindingIdentityError('DESKTOP_ADDON_HANDOFF_INVALID')
+  }
+  return {
+    schemaVersion: MANAGED_ADDON_HANDOFF_SCHEMA_VERSION,
+    audience: MANAGED_ADDON_HANDOFF_AUDIENCE,
+    browserDeviceId: row.browserDeviceId,
+    storeCode: row.storeCode,
+    token: row.token,
+    expiresAt: row.expiresAt,
+    nonce: row.nonce,
+  }
+}
+
+export function parseManagedAddonHandoff(raw: string): ManagedAddonHandoff {
+  try {
+    return parseManagedAddonHandoffValue(JSON.parse(raw))
+  } catch (cause) {
+    if (cause instanceof DesktopBindingIdentityError) throw cause
+    throw new DesktopBindingIdentityError('DESKTOP_ADDON_HANDOFF_INVALID', { cause })
+  }
+}
+
+export function managedAddonBindingIdentity(handoff: ManagedAddonHandoff): DesktopBindingIdentity {
+  return {
+    installationId: handoff.browserDeviceId,
+    deviceSecret: handoff.token,
+    bindingState: 'CLOUD_BOUND',
+    computerId: handoff.browserDeviceId,
+    storeCode: handoff.storeCode,
+    boundAt: new Date().toISOString(),
+    source: 'desktop-device-handoff',
+    browserDeviceId: handoff.browserDeviceId,
+  }
 }
 
 /** Read-only adapter over the Desktop 0.4.7 ComputerBinding identity. */
@@ -79,5 +148,6 @@ export async function readDesktopBindingIdentity(identityPath: string): Promise<
     computerId,
     storeCode,
     boundAt,
+    source: 'legacy-computer-binding',
   }
 }
