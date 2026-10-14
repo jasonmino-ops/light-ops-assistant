@@ -100,6 +100,34 @@
         "e-shop-tray/network-addon/main.ts": "c5e9ac722c6837edf8ed05105b44b9c3d63b3c8ba4cc3b25cfc03566a0d06659",
         "e-shop-tray/tests/network-addon-settings-only.test.ts": "a54559324853522c43f012f498e726c7c75d13bb796cbfe40077338ae9487947"
       }
+    },
+    {
+      "authorizationId": "M4-ADDON-UPGRADE-LIFECYCLE-26",
+      "featureBranch": "codex/es-print-m4-addon-upgrade-lifecycle",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "8a2441998cfd6be8c40f06ffa528dc953e1bf0af",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T00:40:00Z",
+      "approvedAt": "2026-10-15T00:40:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized one-time Single Installer / Managed Add-on safe upgrade lifecycle corrective: reuse the existing Electron safeExit/stopAndWait lifecycle, request and wait for resident process exit before /S replacement, verify the replacement artifact and fail closed on any incomplete or unsafe transition. No identity, relay, schema, migration, provider, Local First, M4 UI or printing semantic change.",
+      "authorizedPaths": [
+        "desktop/build/installer.nsh",
+        "e-shop-tray/network-addon/main.ts",
+        "desktop/tests/windows-installer-upgrade-lifecycle.test.ts",
+        "desktop/tests/single-installer-packaging.test.ts",
+        "e-shop-tray/tests/network-addon.test.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "desktop/build/installer.nsh": "9a3ef567f7bc06b8f6d769fb4d3d6551234f68d3",
+        "e-shop-tray/network-addon/main.ts": "5ffee8cabccb5f2e982f57816bed270c63ebc8a3",
+        "desktop/tests/windows-installer-upgrade-lifecycle.test.ts": "3cf6465f8adce39ffd24df5f1d9605362934e2b6",
+        "desktop/tests/single-installer-packaging.test.ts": "860ba0f60a6bbe65f363d4d018270eb3e7c724c3",
+        "e-shop-tray/tests/network-addon.test.ts": "da25fd567d61dc85aca3f614f7defc465a3eaebb",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "251517cf940d04b5ad9ddd49c6f1f4ec87a1a23e"
+      }
     }
   ]
 }
