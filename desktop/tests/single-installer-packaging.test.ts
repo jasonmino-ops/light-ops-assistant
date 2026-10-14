@@ -13,6 +13,12 @@ describe('single installer packaging contract', () => {
     expect(config).toContain('to: network-print-addon')
     expect(config).toContain('E-Shop-Network-Print-Addon-TEST-0.1.0-commercial-rc.10-x64.exe')
     expect(installer).toContain('ExecWait \'"${ESHOP_NETWORK_ADDON_INSTALLER}" /S\' $R0')
+    expect(installer).toContain('!insertmacro eshopVerifyManagedAddonLifecycle')
+    expect(installer).toContain('The managed Network Print Add-on lifecycle artifacts are incomplete. Stopping.')
+    expect(installer).toContain('$DESKTOP\\店小二收银.lnk')
+    expect(installer).toContain('$SMPROGRAMS\\店小二\\管理与维护\\Network 打印设置.lnk')
+    expect(installer).toContain('$SMPROGRAMS\\店小二\\Desktop 门店绑定.lnk')
+    expect(installer).toContain('$SMPROGRAMS\\店小二\\卸载 Network Print.lnk')
     expect(installer).toContain('ESHOP_NETWORK_ADDON_MARKER_KEY')
     expect(installer).toContain('ESHOP_NETWORK_ADDON_INSTALL_REGISTRY_KEY')
     expect(installer).toContain('ESHOP_NETWORK_ADDON_UNINSTALL_REGISTRY_KEY')
@@ -21,6 +27,13 @@ describe('single installer packaging contract', () => {
     expect(installer).toContain('An independently installed Network Print Add-on cannot be adopted. Stopping.')
     expect(installer).toContain('ESHOP_NETWORK_ADDON_UNINSTALLER')
     expect(installer).toContain('ExecWait \'"${ESHOP_NETWORK_ADDON_UNINSTALLER}" /S\' $R2')
+    const install = installer.split('!macro customInstall\n')[1].split('!macroend')[0]
+    expect(install.indexOf('!insertmacro eshopVerifyManagedAddonLifecycle')).toBeGreaterThan(
+      install.indexOf('ExecWait \'"${ESHOP_NETWORK_ADDON_INSTALLER}" /S\' $R0'),
+    )
+    expect(install.indexOf('!insertmacro eshopVerifyManagedAddonLifecycle')).toBeLessThan(
+      install.indexOf('WriteRegStr HKCU "${ESHOP_NETWORK_ADDON_MARKER_KEY}" "Managed" "true"'),
+    )
     expect(installer).toContain('${IfNot} ${isUpdated}')
     const init = installer.split('!macro customInit\n')[1].split('!macroend')[0]
     const running = installer.split('!macro customCheckAppRunning\n')[1].split('!macroend')[0]

@@ -211,6 +211,43 @@ FunctionEnd
   eshopNetworkAddonUninstallPrepared:
 !macroend
 
+!macro eshopVerifyManagedAddonLifecycle
+  ; ExecWait success only proves that the bundled helper process returned 0.
+  ; The managed marker is written only after the existing Add-on installer
+  ; contract is observable on disk and in the current-user registrations.
+  ReadRegStr $R1 HKCU "${ESHOP_NETWORK_ADDON_INSTALL_REGISTRY_KEY}" InstallLocation
+  ReadRegStr $R2 HKCU "${ESHOP_NETWORK_ADDON_UNINSTALL_REGISTRY_KEY}" UninstallString
+  ReadRegStr $R3 HKCU "${ESHOP_NETWORK_ADDON_UNINSTALL_REGISTRY_KEY}" DisplayVersion
+  ReadRegStr $R4 HKCU "${ESHOP_NETWORK_ADDON_INSTALL_REGISTRY_KEY}" KeepShortcuts
+  ReadRegStr $R5 HKCU "${ESHOP_NETWORK_ADDON_INSTALL_REGISTRY_KEY}" ShortcutName
+  ${If} $R1 != "${ESHOP_NETWORK_ADDON_ROOT}"
+  ${OrIf} $R2 != '"${ESHOP_NETWORK_ADDON_UNINSTALLER}" /currentuser'
+  ${OrIf} $R3 != "${ESHOP_NETWORK_ADDON_VERSION}"
+  ${OrIf} $R4 != "true"
+    DetailPrint "The managed Network Print Add-on registration is incomplete. Stopping."
+    SetErrorLevel 34
+    Quit
+  ${EndIf}
+  StrCmp $R5 "E-Shop Network Print Add-on" eshopNetworkAddonLifecycleShortcutNameOk
+  StrCmp $R5 "E-Shop Network Print Add-on (TEST ONLY)" eshopNetworkAddonLifecycleShortcutNameOk 0
+    DetailPrint "The managed Network Print Add-on registration is not an official product entry. Stopping."
+    SetErrorLevel 34
+    Quit
+  eshopNetworkAddonLifecycleShortcutNameOk:
+  IfFileExists "${ESHOP_NETWORK_ADDON_ROOT}\E-Shop-Network-Print-Addon.exe" 0 eshopNetworkAddonLifecycleMissing
+  IfFileExists "${ESHOP_NETWORK_ADDON_UNINSTALLER}" 0 eshopNetworkAddonLifecycleMissing
+  IfFileExists "$DESKTOP\店小二收银.lnk" 0 eshopNetworkAddonLifecycleMissing
+  IfFileExists "$SMPROGRAMS\店小二\管理与维护\Network 打印设置.lnk" 0 eshopNetworkAddonLifecycleMissing
+  IfFileExists "$SMPROGRAMS\店小二\Desktop 门店绑定.lnk" 0 eshopNetworkAddonLifecycleMissing
+  IfFileExists "$SMPROGRAMS\店小二\卸载 Network Print.lnk" 0 eshopNetworkAddonLifecycleMissing
+  Goto eshopNetworkAddonLifecycleVerified
+  eshopNetworkAddonLifecycleMissing:
+    DetailPrint "The managed Network Print Add-on lifecycle artifacts are incomplete. Stopping."
+    SetErrorLevel 34
+    Quit
+  eshopNetworkAddonLifecycleVerified:
+!macroend
+
 !macro customCheckAppRunning
   ; This macro replaces electron-builder's tasklist/find + taskkill fallback.
   ; nsProcess result 0 means running and 603 means verified absence. Any other
@@ -285,6 +322,7 @@ FunctionEnd
     SetErrorLevel 20
     Quit
   ${EndIf}
+  !insertmacro eshopVerifyManagedAddonLifecycle
   WriteRegStr HKCU "${ESHOP_NETWORK_ADDON_MARKER_KEY}" "Managed" "true"
   WriteRegStr HKCU "${ESHOP_NETWORK_ADDON_MARKER_KEY}" "Version" "${ESHOP_NETWORK_ADDON_VERSION}"
   WriteRegStr HKCU "${ESHOP_DESKTOP_AUTOSTART_KEY}" "${ESHOP_DESKTOP_AUTOSTART_VALUE}" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
