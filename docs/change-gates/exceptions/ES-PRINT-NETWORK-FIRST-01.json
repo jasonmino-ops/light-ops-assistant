@@ -1884,6 +1884,52 @@
         "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production migration/deploy or FIELD execution."
       ],
       "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package has been built, independently reviewed and evidence retained, or when a required gate fails."
+    },
+    {
+      "authorizationId": "NETWORK-M4-ADDON-RESIDENT-RETRY-PACKAGING-26",
+      "featureBranch": "codex/es-print-m4-addon-resident-retry",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "5c0b037e69c9b137d5238143accbe8cfbe511331",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T00:25:00Z",
+      "approvedAt": "2026-10-15T00:25:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized the one-time Add-on and Single Installer rebuild for the approved resident settings-only handoff retry corrective. This packaging grant binds the current branch and exact runtime/test inputs to the existing unsigned TEST-only rc.10 candidate contract; it does not authorize installation, FIELD, Production migration/deploy, signing or publication.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/main.ts": "c5e9ac722c6837edf8ed05105b44b9c3d63b3c8ba4cc3b25cfc03566a0d06659",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "a54559324853522c43f012f498e726c7c75d13bb796cbfe40077338ae9487947"
+      },
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "commit": "9cd89ebefc6272e6e1a11d63641945c7b70722d1",
+        "exactMatchRequired": true
+      },
+      "governanceState": {
+        "commit": "e4563bbf0dd0e61606dcd6bcb37cc83862abdb30",
+        "exactMatchRequired": true,
+        "zeroNonGovernanceDiff": true
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Add-on candidate and one Single Installer candidate from the reviewed resident handoff retry implementation.",
+        "Retain exact source, candidate, installer and SHA-256 evidence; no installation, FIELD, Production migration, Production deploy, signing or formal publication."
+      ],
+      "prohibitedChanges": [
+        "Any source or product change outside the two exact authorized inputs; no identity, relay, schema, migration, provider, RC10, Local First, M4 UI or printing semantic change.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build or FIELD execution."
+      ],
+      "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package is built and review evidence is retained, or when a required gate fails."
     }
   ]
 }
