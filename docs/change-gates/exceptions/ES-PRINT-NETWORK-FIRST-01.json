@@ -1810,7 +1810,7 @@
         "e-shop-tray/network-addon/main.ts": "b8bdd0d02b83ccccb3ffce786a60f944d7415dca0d162d5144498f841b3f6bac",
         "e-shop-tray/scripts/build-network-addon.mjs": "fc7bee4fabd9280a6f8a90e7088e96624c2e7826fd505895aec029ffb5dd0ef8",
         "e-shop-tray/src/desktopBindingIdentity.ts": "b30c4767a2cc9bb0b28479cefdbd929f2d2504f7ed47e5ce89bda490508f23f6",
-        "e-shop-tray/tests/managed-addon-handoff.test.ts": "58d727321efee98d38b70c4de171ce73643cb34a6dfd092ec585977857d48a97",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts": "296800056347e45bc0ba11525a4d42d01f217786329d0a502b012b70243c9226",
         "e-shop-tray/tests/network-addon.test.ts": "701b2fea77dcdd72cab1e291aa5ef076ca1da2133b0d817c9f072d746dd76eaf",
         "lib/es-tray-relay/device-routes.ts": "faac4e1b03345dade7df1da7702ace111e43b751aa34d7ba1a885876a1bb2b2b",
         "tests/desktop-pos-session-bridge.test.ts": "be033b9e14c164504fc821125a5d7b1b58b530aff5da5c19f7d2846a217f60fc",
