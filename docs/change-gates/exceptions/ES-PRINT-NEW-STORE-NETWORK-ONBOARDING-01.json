@@ -19,5 +19,53 @@
   "authorizedPathSha256": {
     "desktop/build/installer.nsh": "451a0bdd762b44b8c2e2d85c2d37f27771a21c881d5477c1a75c07bdc3415aa1",
     "desktop/tests/single-installer-packaging.test.ts": "2cc67444d36d7e1f0974d78a5c505a5ef47b3be6db6efc74a43025e3bb68e673"
-  }
+  },
+  "additionalAuthorizations": [
+    {
+      "authorizationId": "M4-DESKTOP-PRINT-CHILD-IDENTITY-26",
+      "featureBranch": "codex/es-print-m4-print-child-identity",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "fff758067800190bc3611c102a3b2f5f24ffb1f4",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-14T12:00:00Z",
+      "approvedAt": "2026-10-14T12:00:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized one exact-path DesktopDevice-owned hidden print child ComputerBinding implementation to reuse the existing RC9/RC10 relay chain. This record excludes product expansion, unrelated identity migration, Production migration/deploy and FIELD.",
+      "authorizedPaths": [
+        "prisma/schema.prisma",
+        "prisma/migrations/20261014000000_add_desktop_print_child_identity/migration.sql",
+        "lib/computer-client/service.ts",
+        "lib/es-tray-relay/auth.ts",
+        "app/api/desktop/print-child/route.ts",
+        "app/api/computer-client/terminals/route.ts",
+        "desktop/src/main/networkPrintSettingsLauncher.ts",
+        "desktop/src/main/managedPrintChildHandoff.ts",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/src/managedPrintChildIdentity.ts",
+        "tests/desktop-print-child-lifecycle.test.ts",
+        "tests/es-tray-relay-runtime.test.ts",
+        "tests/computer-console-static.test.ts",
+        "desktop/tests/network-print-settings-launcher.test.ts",
+        "e-shop-tray/tests/managed-print-child-identity.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "prisma/schema.prisma": "3812e7be0f0042278ea8eb93e32989ace9030f35a50160f74e8ad0d3138c237b",
+        "prisma/migrations/20261014000000_add_desktop_print_child_identity/migration.sql": "6408870bb82159df6483037937cbc4c74e0242cd1502ba57837a84e055a0ef69",
+        "lib/computer-client/service.ts": "df48104eec3590fb1b3c81a58bb4972d8a89f2e6d2f02a3ef9fd9127598bb78d",
+        "lib/es-tray-relay/auth.ts": "9659a161f4c1426c066bf6027bc288d1c77d0ce986ce94196f4f18b9d842a24d",
+        "app/api/desktop/print-child/route.ts": "6b8ba1789373ae1b098a5baf8dc2e8e459ef7f625796bfe8444ed6819ffae62a",
+        "app/api/computer-client/terminals/route.ts": "153f367679fe60c896d33eac3095c47c84715bc81ce82ff696a1da1190172ea9",
+        "desktop/src/main/networkPrintSettingsLauncher.ts": "bc2cbe76049aa04bde3a45091f1fa97ee63147b3731b166636eee645e2532cc5",
+        "desktop/src/main/managedPrintChildHandoff.ts": "f9a1df8c39443a340eb0c5101cf95e79e1bdd5051b974ab070f15a71c8119ac4",
+        "e-shop-tray/network-addon/main.ts": "a5a4d2d68bf5f77ded7cd74d67099409000af75f2b1bafc48a095e6e42a87cfe",
+        "e-shop-tray/src/managedPrintChildIdentity.ts": "a95456e4de23a5547fe69694bf9a5f0bc8791c0f9f747acd5d3ef1963098a408",
+        "tests/desktop-print-child-lifecycle.test.ts": "12cd6d3a48af644ee8fd8326c151339ea8e83a115fe9b0dd36166c31fbc1e355",
+        "tests/es-tray-relay-runtime.test.ts": "ad05b75cc1a54b401aab03f87f64e9a612f2b9c7f43dd8864e042f7f1f106c56",
+        "tests/computer-console-static.test.ts": "bbf171e944640aba72589fce76cbca3bc2837342a02e05ff2e937eb71315c7f5",
+        "desktop/tests/network-print-settings-launcher.test.ts": "207c0bb4608e0a245a89f07693d9e7f8be1b22c499f2026b324e194fa7778c4a",
+        "e-shop-tray/tests/managed-print-child-identity.test.ts": "00203f2d94fb350677e9e77da9b6d15499dd696d7ed9f9a72632ea8ae43a9a5e"
+      }
+    }
+  ]
 }
