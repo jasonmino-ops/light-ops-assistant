@@ -121,10 +121,10 @@
         "e-shop-tray/tests/network-addon-settings-only.test.ts"
       ],
       "authorizedPathSha256": {
-        "desktop/build/installer.nsh": "fa2195a39fabaf57b992a57b5dfb13d3c7cbfd81cd9c2ed58a0a0c3595bdcac9",
+        "desktop/build/installer.nsh": "324e17e306163408309553a274c31ad6834ad216473d7d4d910d9201702166b8",
         "e-shop-tray/network-addon/main.ts": "93a361fc2ea14b12a03da2eb2e9a6bcefdbf35276f09b01e2f3c5c0a4acab6fb",
         "desktop/tests/windows-installer-upgrade-lifecycle.test.ts": "a9b80beeb2ef337215da65905bab483ced8153b793f5f0b67f30ba8cd9a986c9",
-        "desktop/tests/single-installer-packaging.test.ts": "b970c6a1faf056e23fb1ee9f386b6e91af9949787feec4ec35ad940107920c9f",
+        "desktop/tests/single-installer-packaging.test.ts": "a2fdae0c391e6ded6e2df4e708bd0dec07d6a9c44b8600baa986890530bcd4bf",
         "e-shop-tray/tests/network-addon.test.ts": "701b2fea77dcdd72cab1e291aa5ef076ca1da2133b0d817c9f072d746dd76eaf",
         "e-shop-tray/tests/network-addon-settings-only.test.ts": "08e3ee591ca567c4676746597b0d58bb22199ff763b434187e58c0bab884b12f"
       }
