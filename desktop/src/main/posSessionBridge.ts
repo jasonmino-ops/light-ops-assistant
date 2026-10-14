@@ -1,3 +1,5 @@
+import { logger } from './logger'
+
 export type PosSessionPayload = {
   browserDeviceId: string
   storeCode: string
@@ -78,7 +80,10 @@ export class PosSessionBridge {
 
   private async requestSession(): Promise<PosSessionPayload | null> {
     const credential = await this.options.credentialReader.readCredential()
-    if (!credential.ok) return null
+    if (!credential.ok) {
+      logger.warn('pos-session.handoff-unavailable', { reason: credential.reason })
+      return null
+    }
 
     const fetchImpl = this.options.fetchImpl ?? globalThis.fetch
     try {
@@ -93,9 +98,15 @@ export class PosSessionBridge {
           },
         },
       )
-      if (!response.ok) return null
-      return parsePayload(await response.text())
-    } catch {
+      if (!response.ok) {
+        logger.warn('pos-session.handoff-rejected', { status: response.status })
+        return null
+      }
+      const payload = parsePayload(await response.text())
+      if (!payload) logger.warn('pos-session.handoff-invalid-payload')
+      return payload
+    } catch (error) {
+      logger.warn('pos-session.handoff-request-failed', { error: String(error) })
       return null
     }
   }

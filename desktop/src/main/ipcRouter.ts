@@ -93,8 +93,6 @@ export function registerIpcHandlers(windowManager: WindowManager) {
     credentialReader: new CredentialStore(app.getPath('userData')),
     baseUrl: config.baseUrl,
   })
-  void posSessionBridge.prepare()
-
   ipcMain.on(IPC_CHANNELS.CART_PUBLISH, (event, payload: unknown) => {
     if (!authorize(windowManager, event, IPC_CHANNELS.CART_PUBLISH, 'send')) return
     cartSyncService.ingest(payload)

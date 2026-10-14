@@ -98,7 +98,9 @@ describe('Desktop managed POS-session bridge', () => {
     expect(preloadSource).not.toContain('edt_v1_')
     expect(preloadSource).not.toMatch(/exposeInMainWorld\([^\n]+(?:posDeviceToken|deviceToken|posSession)/i)
     expect(customerPreloadSource).not.toContain('eshop:pos-session:take')
-    expect(bridgeSource).not.toMatch(/logger|console\.|argv|location\./)
+    expect(bridgeSource).toContain("logger.warn('pos-session.handoff-unavailable'")
+    expect(bridgeSource).not.toMatch(/console\.|argv|location\./)
+    expect(ipcRouterSource).not.toContain('void posSessionBridge.prepare()')
   })
 
   it('derives scope server-side, serializes issuance/revoke, and cascades revocation', () => {

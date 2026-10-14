@@ -4,6 +4,7 @@ import React, { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import ComputerConsoleModal from '../app/home/ComputerConsoleModal'
 import { buildComputerConsoleCashierUrl } from '../app/home/computer-console-url'
+import { buildUnifiedTerminalView } from '../lib/computer-client/unified-terminal'
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -11,6 +12,7 @@ const home = fs.readFileSync('app/home/page.tsx', 'utf8')
 const modal = fs.readFileSync('app/home/ComputerConsoleModal.tsx', 'utf8')
 const computerClientPage = fs.readFileSync('app/home/computer-client/page.tsx', 'utf8')
 const requestListRoute = fs.readFileSync('app/api/computer-client/requests/route.ts', 'utf8')
+const terminalsRoute = fs.readFileSync('app/api/computer-client/terminals/route.ts', 'utf8')
 const disableRoute = fs.readFileSync(
   'app/api/computer-client/computers/[computerId]/disable/route.ts',
   'utf8',
@@ -106,6 +108,14 @@ assert.match(computerClientPage, /effectiveRole !== 'OWNER'[\s\S]*router\.replac
 assert.doesNotMatch(computerClientPage, /realRole/, 'the management shell must not bypass staff work mode through real owner identity')
 assert.match(computerClientPage, /computerClientManagementTitle/, 'the management page should render its product title')
 assert.match(computerClientPage, /computerClientManagementDesc/, 'the management page should explain its purpose')
+assert.match(computerClientPage, /apiFetch\(\s*'\/api\/computer-client\/terminals'/, 'the owner page must load the unified terminal view')
+assert.match(computerClientPage, /terminals\.map\(/, 'the owner page must render unified terminals')
+assert.match(terminalsRoute, /ctx\.role !== 'OWNER'/, 'the unified terminal view must require OWNER')
+assert.match(terminalsRoute, /tenantId:\s*ctx\.tenantId[\s\S]*storeId:\s*ctx\.storeId/, 'the unified terminal view must be tenant/store scoped')
+assert.match(terminalsRoute, /desktopDevice\.findMany/, 'the unified terminal view must read DesktopDevice')
+assert.match(terminalsRoute, /computerBinding\.findMany/, 'the unified terminal view must read legacy ComputerBinding')
+assert.match(terminalsRoute, /browserPosDevice\.findMany/, 'the unified terminal view must report derived POS session state')
+assert.doesNotMatch(terminalsRoute, /(?:create|update|delete)(?:Many)?\(/, 'the unified terminal view must be read-only')
 assert.match(computerClientPage, /computerClientPendingTitle/, 'the management page should expose the pending-computers section')
 assert.match(computerClientPage, /computerClientEmptyTitle/, 'the management page should expose the empty state')
 assert.match(
@@ -192,6 +202,26 @@ assert.match(requestListRoute, /reapplyAllowed/, 'the OWNER list must expose res
 assert.match(requestListRoute, /reapplyConsumed/, 'the OWNER list must expose consumed restore permission state')
 assert.match(computerClientPage, /computerClientRestoreUseAgain/, 'a consumed permit must expose explicit OWNER reissuance')
 assert.doesNotMatch(computerClientPage, /item\.reapplyConsumed === true/, 'a consumed permit must not permanently disable the OWNER action')
+
+const unifiedTerminals = buildUnifiedTerminalView({
+  now: new Date('2026-10-14T00:00:00.000Z'),
+  desktopDevices: [{
+    id: 'desktop-1', storeId: 'store-1', status: 'ACTIVE', activeSlot: 'ACTIVE',
+    tokenExpiresAt: new Date('2026-10-15T00:00:00.000Z'), lastSeenAt: null,
+    activatedAt: new Date('2026-10-13T00:00:00.000Z'),
+  }],
+  legacyBindings: [{
+    id: 'legacy-1', storeId: 'store-1', computerName: 'Legacy till', agentVersion: '0.4.0',
+    credentialStatus: 'ACTIVE', credentialExpiresAt: null,
+    boundAt: new Date('2026-10-12T00:00:00.000Z'), lastSeenAt: null, disabledAt: null,
+  }],
+  posSessions: new Map([['desktop-desktop-1', {
+    status: 'ACTIVE', activeSlot: 'ACTIVE', tokenExpiresAt: new Date('2026-10-15T00:00:00.000Z'), lastSeenAt: null,
+  }]]),
+})
+assert.deepEqual(unifiedTerminals.map((item) => item.terminalId), ['desktop:desktop-1', 'legacy:legacy-1'])
+assert.equal(unifiedTerminals[0].posSession?.state, 'ACTIVE')
+assert.equal(unifiedTerminals[1].identityKind, 'LEGACY_COMPUTER_BINDING')
 assert.match(
   consumeReapplyRoute,
   /authenticateAgent\(req,\s*'claim'\)/,
@@ -287,6 +317,24 @@ for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) 
     'manageComputers',
     'computerClientManagementTitle',
     'computerClientManagementDesc',
+    'computerClientTerminalsTitle',
+    'computerClientTerminalsDesc',
+    'computerClientTerminalsEmpty',
+    'computerClientDesktopIdentity',
+    'computerClientLegacyIdentity',
+    'computerClientStatusUnavailable',
+    'computerClientPosSession',
+    'computerClientPosSessionActive',
+    'computerClientPosSessionExpired',
+    'computerClientPosSessionMissing',
+    'computerClientNotApplicable',
+    'computerClientActivatedAt',
+    'computerClientLastSeenAt',
+    'computerClientRevokeDesktop',
+    'computerClientRevokingDesktop',
+    'computerClientConfirmRevokeDesktop',
+    'computerClientRevokedDesktop',
+    'computerClientRevokeDesktopFailed',
     'computerActivationTitle',
     'computerActivationDesc',
     'computerActivationCurrentStore',

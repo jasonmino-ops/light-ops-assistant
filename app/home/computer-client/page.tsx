@@ -40,6 +40,23 @@ type IssuedActivationPin = {
   storeId: string
 }
 
+type UnifiedTerminal = {
+  terminalId: string
+  identityKind: 'DESKTOP_DEVICE' | 'LEGACY_COMPUTER_BINDING'
+  displayName: string
+  status: 'ACTIVE' | 'DISABLED' | 'REVOKED' | 'EXPIRED'
+  activatedAt: string
+  lastSeenAt: string | null
+  credentialExpiresAt: string | null
+  agentVersion: string | null
+  posSession: {
+    state: 'ACTIVE' | 'NOT_ESTABLISHED' | 'EXPIRED'
+    expiresAt: string | null
+    lastSeenAt: string | null
+  } | null
+  legalActions: { disable: boolean; revoke: boolean }
+}
+
 function formatTime(iso: string | null) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -56,6 +73,7 @@ export default function ComputerClientPage() {
   const [requests, setRequests] = useState<PendingRequest[]>([])
   const [boundComputers, setBoundComputers] = useState<ManagedComputer[]>([])
   const [disabledComputers, setDisabledComputers] = useState<ManagedComputer[]>([])
+  const [terminals, setTerminals] = useState<UnifiedTerminal[]>([])
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -71,12 +89,17 @@ export default function ComputerClientPage() {
     setLoading(true)
     setLoadFailed(false)
     try {
-      const res = await apiFetch('/api/computer-client/requests', { cache: 'no-store' })
-      if (!res.ok) throw new Error('LOAD_FAILED')
+      const [res, terminalsRes] = await Promise.all([
+        apiFetch('/api/computer-client/requests', { cache: 'no-store' }),
+        apiFetch('/api/computer-client/terminals', { cache: 'no-store' }),
+      ])
+      if (!res.ok || !terminalsRes.ok) throw new Error('LOAD_FAILED')
       const data = await res.json()
+      const terminalsData = await terminalsRes.json()
       setRequests(Array.isArray(data.requests) ? data.requests : [])
       setBoundComputers(Array.isArray(data.boundComputers) ? data.boundComputers : [])
       setDisabledComputers(Array.isArray(data.disabledComputers) ? data.disabledComputers : [])
+      setTerminals(Array.isArray(terminalsData.terminals) ? terminalsData.terminals : [])
     } catch {
       setLoadFailed(true)
     } finally {
@@ -275,6 +298,33 @@ export default function ComputerClientPage() {
     [t],
   )
 
+  const revokeDesktop = useCallback(
+    async (terminalId: string) => {
+      const deviceId = terminalId.startsWith('desktop:') ? terminalId.slice('desktop:'.length) : ''
+      if (!deviceId || !window.confirm(t('home.computerClientConfirmRevokeDesktop'))) return
+      setBusyId(terminalId)
+      setNotice(null)
+      try {
+        const res = await apiFetch(`/api/desktop/devices/${deviceId}/revoke`, {
+          method: 'POST',
+          body: JSON.stringify({ reason: 'OWNER_TERMINAL_MANAGEMENT' }),
+        })
+        if (!res.ok) {
+          setNotice({ kind: 'err', text: t('home.computerClientRevokeDesktopFailed') })
+          if (res.status === 404 || res.status === 409) void load()
+          return
+        }
+        setNotice({ kind: 'ok', text: t('home.computerClientRevokedDesktop') })
+        await load()
+      } catch {
+        setNotice({ kind: 'err', text: t('home.computerClientRevokeDesktopFailed') })
+      } finally {
+        setBusyId(null)
+      }
+    },
+    [load, t],
+  )
+
   if (effectiveRole !== 'OWNER') return null
 
   return (
@@ -359,6 +409,83 @@ export default function ComputerClientPage() {
                 ? t('home.computerActivationGenerating')
                 : t('home.computerActivationGenerate')}
             </button>
+          )}
+        </section>
+
+        <section style={s.pendingSection} aria-labelledby="terminals-title">
+          <div style={s.sectionHeading}>
+            <span style={s.sectionIconActive} aria-hidden="true">🖥️</span>
+            <div>
+              <h2 id="terminals-title" style={s.sectionTitle}>
+                {t('home.computerClientTerminalsTitle')}
+              </h2>
+              <p style={s.activationDescription}>{t('home.computerClientTerminalsDesc')}</p>
+            </div>
+          </div>
+          {loading ? (
+            <div style={s.compactEmpty}>{t('home.computerClientLoading')}</div>
+          ) : loadFailed ? (
+            <div style={s.compactEmpty}>{t('home.computerClientLoadFailed')}</div>
+          ) : terminals.length === 0 ? (
+            <div style={s.compactEmpty}>{t('home.computerClientTerminalsEmpty')}</div>
+          ) : (
+            <div style={s.cardList}>
+              {terminals.map((terminal) => (
+                <div key={terminal.terminalId} style={terminal.status === 'ACTIVE' ? s.card : s.cardDisabled}>
+                  <div style={s.cardHeader}>
+                    <div>
+                      <div style={s.cardName}>{terminal.displayName}</div>
+                      <div style={s.terminalKind}>{terminal.identityKind === 'DESKTOP_DEVICE'
+                        ? t('home.computerClientDesktopIdentity')
+                        : t('home.computerClientLegacyIdentity')}</div>
+                    </div>
+                    <span style={terminal.status === 'ACTIVE' ? s.statusActive : s.statusDisabled}>
+                      {terminal.status === 'ACTIVE'
+                        ? t('home.computerClientStatusActive')
+                        : t('home.computerClientStatusUnavailable')}
+                    </span>
+                  </div>
+                  <dl style={s.metaList}>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientCurrentStatus')}</dt>
+                      <dd style={s.metaValue}>{terminal.status === 'ACTIVE'
+                        ? t('home.computerClientStatusActive')
+                        : t('home.computerClientStatusUnavailable')}</dd>
+                    </div>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientPosSession')}</dt>
+                      <dd style={s.metaValue}>{terminal.posSession
+                        ? terminal.posSession.state === 'ACTIVE'
+                          ? t('home.computerClientPosSessionActive')
+                          : terminal.posSession.state === 'EXPIRED'
+                            ? t('home.computerClientPosSessionExpired')
+                            : t('home.computerClientPosSessionMissing')
+                        : t('home.computerClientNotApplicable')}</dd>
+                    </div>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientActivatedAt')}</dt>
+                      <dd style={s.metaValue}>{formatTime(terminal.activatedAt)}</dd>
+                    </div>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientLastSeenAt')}</dt>
+                      <dd style={s.metaValue}>{formatTime(terminal.lastSeenAt)}</dd>
+                    </div>
+                  </dl>
+                  {terminal.legalActions.revoke && (
+                    <button
+                      type="button"
+                      style={s.disableBtn}
+                      disabled={busyId !== null}
+                      onClick={() => void revokeDesktop(terminal.terminalId)}
+                    >
+                      {busyId === terminal.terminalId
+                        ? t('home.computerClientRevokingDesktop')
+                        : t('home.computerClientRevokeDesktop')}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </section>
 
@@ -896,6 +1023,12 @@ const s: Record<string, CSSProperties> = {
     fontWeight: 900,
     lineHeight: 1.35,
     wordBreak: 'break-word',
+  },
+  terminalKind: {
+    marginTop: 4,
+    color: 'var(--muted)',
+    fontSize: 11.5,
+    fontWeight: 700,
   },
   metaList: {
     margin: '10px 0 0',
