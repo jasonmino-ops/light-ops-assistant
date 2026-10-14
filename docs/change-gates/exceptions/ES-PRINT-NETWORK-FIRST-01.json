@@ -1774,6 +1774,54 @@
       "closedAt": "2026-10-14T02:00:00Z",
       "closureReason": "Consumed by the one authorized dual-SHA M4 Single Installer package and governance merge; no further packaging, rebinding or FIELD authority is granted by this record.",
       "featureMergeCommitSha": "9748f5893cac3595f735b0986650207aa7d30eb9"
+    },
+    {
+      "authorizationId": "NETWORK-M4-DESKTOP-DEVICE-HANDOFF-26",
+      "featureBranch": "codex/es-print-m4-addon-lifecycle-fix",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "6d1dfa758490b0bb903b0fee8bb04bf197de0cf8",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-14T00:00:00Z",
+      "approvedAt": "2026-10-14T00:00:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder approved one bounded DesktopDevice authenticated handoff for the Managed Network Print Add-on. The exact paths below only derive a short-lived server-issued Browser POS capability, deliver it through an encrypted single-use handoff, and validate the server-derived Desktop principal/store context. No legacy identity.json, print-core or M4 UI change is authorized.",
+      "authorizedPaths": [
+        "desktop/src/main/ipcRouter.ts",
+        "desktop/src/main/networkPrintSettingsLauncher.ts",
+        "desktop/src/main/posSessionBridge.ts",
+        "desktop/tests/network-print-settings-launcher.test.ts",
+        "desktop/tests/pos-session-bridge-static.test.ts",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/src/desktopBindingIdentity.ts",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts",
+        "lib/es-tray-relay/device-routes.ts",
+        "tests/desktop-pos-session-bridge.test.ts",
+        "tests/es-tray-device-print-contract.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "desktop/src/main/ipcRouter.ts": "613e807f4fefca15c15848976a4d5da3d0a9c09489314c4ac44f06cd6d93f2c9",
+        "desktop/src/main/networkPrintSettingsLauncher.ts": "414644f88bf09d2f10e9dbe809c4968ab92c04f9b827f1ce3143362388b0ef93",
+        "desktop/src/main/posSessionBridge.ts": "665a19f647d41858c04dae413aeadb34a2750c391a7e0e9b0075bd3f60744fb2",
+        "desktop/tests/network-print-settings-launcher.test.ts": "8a95d42571e53e1d6f411a9fde00eba33baca22e9ca9e48cdfc546f663b9f5ac",
+        "desktop/tests/pos-session-bridge-static.test.ts": "840f746ec2f882c8e10a21fc259a961a7a14e33d1ac070fa25ede445d0f90e9f",
+        "e-shop-tray/network-addon/main.ts": "158de6bebcc2819334f335a7c3570a71e151df064c7e099a59a2e8f62a522b19",
+        "e-shop-tray/src/desktopBindingIdentity.ts": "b30c4767a2cc9bb0b28479cefdbd929f2d2504f7ed47e5ce89bda490508f23f6",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts": "58d727321efee98d38b70c4de171ce73643cb34a6dfd092ec585977857d48a97",
+        "lib/es-tray-relay/device-routes.ts": "6fd82bb535696f9bd66cf99d866c4b20b3bcfc89d47d21e0cc176e5285faa5b5",
+        "tests/desktop-pos-session-bridge.test.ts": "79f715cf94f7264672aa9f8b0b1b7dd977ad293d20088aa5524e89db5cba276a",
+        "tests/es-tray-device-print-contract.test.ts": "df77ac19de8b1063f1424bebc0ddd9075b771362a770a101fcb9fc97edbf2718"
+      },
+      "allowedPurposes": [
+        "Use the existing authenticated /api/pos-session/desktop primitive to create a bounded Desktop-derived capability for the official settings-only Managed Add-on.",
+        "Validate the server-derived Desktop principal, browser device and store context through the existing device relay recovery contract; consume the local encrypted handoff once and fail closed on mismatch, expiry, replay or malformed data."
+      ],
+      "prohibitedChanges": [
+        "No legacy identity.json fabrication, ComputerBinding creation, relay-auth redesign, schema/migration, print-core, RAW TCP, durable jobs, RC10, Local First, Provider, dine-in or M4 UI change.",
+        "No plaintext DesktopDevice credential delivery, metadata-only authorization, shortcut bypass, Production deploy, installer execution or DESKTOP-E475FJ4 mutation."
+      ],
+      "expirationCondition": "Close this single-use grant after the bounded handoff candidate is reviewed and packaged, or if any security predicate fails.",
+      "sourceDraft": {"fileCount": 11, "review": "Founder-approved exact-path handoff design; final independent security and implementation review required before FIELD."}
     }
   ]
 }
