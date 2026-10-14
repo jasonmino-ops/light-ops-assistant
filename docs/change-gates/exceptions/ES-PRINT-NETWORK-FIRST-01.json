@@ -1930,6 +1930,52 @@
         "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build or FIELD execution."
       ],
       "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package is built and review evidence is retained, or when a required gate fails."
+    },
+    {
+      "authorizationId": "NETWORK-M4-ADDON-UPGRADE-LIFECYCLE-PACKAGING-26",
+      "featureBranch": "codex/es-print-m4-addon-upgrade-lifecycle",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "cd5757ae6905093c6eaf441ed4700d4455717af6",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T00:55:00Z",
+      "approvedAt": "2026-10-15T00:55:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized the one-time Add-on and Single Installer candidate build for the approved safe resident replacement lifecycle corrective. This packaging successor binds only the changed Add-on runtime/test inputs to the unsigned TEST-only rc.10 candidate contract; it does not authorize installation, FIELD, Production migration/deploy, signing or publication.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/main.ts": "93a361fc2ea14b12a03da2eb2e9a6bcefdbf35276f09b01e2f3c5c0a4acab6fb",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "08e3ee591ca567c4676746597b0d58bb22199ff763b434187e58c0bab884b12f"
+      },
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "commit": "0739165abdb9e1f626bf91dfe88f8ed94bda1606",
+        "exactMatchRequired": true
+      },
+      "governanceState": {
+        "commit": "e4563bbf0dd0e61606dcd6bcb37cc83862abdb30",
+        "exactMatchRequired": true,
+        "zeroNonGovernanceDiff": true
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Add-on candidate and one Single Installer candidate from the reviewed safe resident replacement lifecycle implementation.",
+        "Retain exact source, candidate, installer and SHA-256 evidence; no installation, FIELD, Production migration, Production deploy, signing or formal publication."
+      ],
+      "prohibitedChanges": [
+        "Any source or product change outside the two exact packaging inputs above; no identity, relay, schema, migration, provider, RC10, Local First, M4 UI or printing semantic change.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production migration/deploy or FIELD execution."
+      ],
+      "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package is built, independently reviewed and evidence retained, or when a required gate fails."
     }
   ]
 }
