@@ -1854,7 +1854,7 @@
       ],
       "authorizedPathSha256": {
         "e-shop-tray/scripts/build-network-addon.mjs": "fc7bee4fabd9280a6f8a90e7088e96624c2e7826fd505895aec029ffb5dd0ef8",
-        "e-shop-tray/network-addon/main.ts": "a5a4d2d68bf5f77ded7cd74d67099409000af75f2b1bafc48a095e6e42a87cfe",
+        "e-shop-tray/network-addon/main.ts": "4e3bb8d9a7fe6a2fe220487ea9b7ae1edb6d76edda3a77a0b8bf81d740481b24",
         "e-shop-tray/src/desktopBindingIdentity.ts": "b30c4767a2cc9bb0b28479cefdbd929f2d2504f7ed47e5ce89bda490508f23f6",
         "e-shop-tray/src/managedPrintChildIdentity.ts": "a95456e4de23a5547fe69694bf9a5f0bc8791c0f9f747acd5d3ef1963098a408"
       },
@@ -1867,7 +1867,7 @@
         "releaseReady": false
       },
       "sourceState": {
-        "commit": "f5ec1f537575ab116535de1c4417e2661b6e8d13",
+        "commit": "09b43e4294491b221a281008ff46cf489ce8bee5",
         "exactMatchRequired": true
       },
       "governanceState": {
