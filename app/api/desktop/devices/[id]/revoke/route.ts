@@ -32,7 +32,7 @@ export async function POST(
     const result = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "DesktopDevice" WHERE "id" = ${id} FOR UPDATE`
       const device = await tx.desktopDevice.findFirst({
-        where: { id, tenantId: ctx.tenantId },
+        where: { id, tenantId: ctx.tenantId, storeId: ctx.storeId },
       })
       if (!device) return null
 

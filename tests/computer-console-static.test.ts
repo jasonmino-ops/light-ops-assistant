@@ -13,6 +13,7 @@ const modal = fs.readFileSync('app/home/ComputerConsoleModal.tsx', 'utf8')
 const computerClientPage = fs.readFileSync('app/home/computer-client/page.tsx', 'utf8')
 const requestListRoute = fs.readFileSync('app/api/computer-client/requests/route.ts', 'utf8')
 const terminalsRoute = fs.readFileSync('app/api/computer-client/terminals/route.ts', 'utf8')
+const revokeDesktopRoute = fs.readFileSync('app/api/desktop/devices/[id]/revoke/route.ts', 'utf8')
 const disableRoute = fs.readFileSync(
   'app/api/computer-client/computers/[computerId]/disable/route.ts',
   'utf8',
@@ -116,6 +117,11 @@ assert.match(terminalsRoute, /desktopDevice\.findMany/, 'the unified terminal vi
 assert.match(terminalsRoute, /computerBinding\.findMany/, 'the unified terminal view must read legacy ComputerBinding')
 assert.match(terminalsRoute, /browserPosDevice\.findMany/, 'the unified terminal view must report derived POS session state')
 assert.doesNotMatch(terminalsRoute, /(?:create|update|delete)(?:Many)?\(/, 'the unified terminal view must be read-only')
+assert.match(
+  revokeDesktopRoute,
+  /tenantId:\s*ctx\.tenantId[\s\S]*storeId:\s*ctx\.storeId/,
+  'Desktop revoke must remain scoped to the current tenant and store',
+)
 assert.match(computerClientPage, /computerClientPendingTitle/, 'the management page should expose the pending-computers section')
 assert.match(computerClientPage, /computerClientEmptyTitle/, 'the management page should expose the empty state')
 assert.match(
