@@ -372,6 +372,24 @@ async function main() {
     'e-shop-tray/tests/network-dual-endpoint.test.ts',
   ]
   const m4SuccessorPath = 'tests/cashier-realtime-integration.test.ts'
+  // ES-PRINT-UNIFIED-TERMINAL-IDENTITY-01: exact registration for the
+  // Founder-approved presentation unification and Desktop POS handoff race
+  // corrective. The two identity models remain separate; this branch only
+  // admits the reviewed implementation paths below.
+  const unifiedTerminalCandidate = '449fd4e533753d4ac759346575a55b268e12cdc7'
+  const unifiedTerminalPaths = [
+    'app/api/computer-client/terminals/route.ts',
+    'app/home/computer-client/page.tsx',
+    'desktop/src/main/ipcRouter.ts',
+    'desktop/src/main/posSessionBridge.ts',
+    'desktop/tests/pos-session-bridge-static.test.ts',
+    'lib/computer-client/unified-terminal.ts',
+    'lib/i18n/en.ts',
+    'lib/i18n/km.ts',
+    'lib/i18n/zh.ts',
+    'tests/computer-console-static.test.ts',
+  ]
+  const unifiedTerminalSuccessorPath = 'tests/cashier-realtime-integration.test.ts'
   // E-SHOP-STORE-NAME-EDIT-01: exact governance registration for the reviewed
   // Store.name candidate. This registration admits only the four reviewed
   // paths and does not authorize any cashier/realtime source changes.
@@ -396,6 +414,9 @@ async function main() {
   const isM4 = gitIsAncestor(m4ApprovedBase, gitPaths('rev-parse', 'origin/main')[0])
     && unmergedCommits.includes(m4Candidate)
     && changed.some(path => m4Paths.includes(path))
+  const isUnifiedTerminal = gitPaths('rev-parse', 'origin/main')[0] === 'a8c22a01da5b8cba5796decb1311f2ee174abcba'
+    && unmergedCommits.includes(unifiedTerminalCandidate)
+    && changed.some(path => unifiedTerminalPaths.includes(path))
   const isStoreName = gitPaths('rev-parse', 'origin/main')[0] === storeNameApprovedBase
     && unmergedCommits.includes(storeNameCandidate)
     && storeNamePaths.every(path => changed.includes(path))
@@ -460,6 +481,17 @@ async function main() {
       'M4 product candidate may only receive the approved dual-SHA packaging corrective',
     )
     assertBoundary(changed, new Set([...m4Paths, m4SuccessorPath, m4AuthorizationPath]))
+  } else if (isUnifiedTerminal) {
+    assert.deepEqual(
+      gitPaths('rev-parse', 'origin/main'),
+      ['a8c22a01da5b8cba5796decb1311f2ee174abcba'],
+      'unified terminal candidate requires the current trusted baseline',
+    )
+    assert.ok(
+      unifiedTerminalPaths.every(path => changed.includes(path)),
+      'unified terminal candidate requires every reviewed implementation path',
+    )
+    assertBoundary(changed, new Set([...unifiedTerminalPaths, unifiedTerminalSuccessorPath]))
   } else if (isStoreName) {
     assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [storeNameApprovedBase], 'Store.name candidate requires its trusted baseline')
     assert.ok(gitIsAncestor(storeNameApprovedBase, storeNameCandidate), 'Store.name candidate must descend from its trusted baseline')
