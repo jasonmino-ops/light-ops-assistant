@@ -68,6 +68,51 @@
         "lib/es-tray-relay/service.ts": "271125bc69512d71d10a4c53e5e387d89cd4d9723aeb8583d7f5fc02444aaf17",
         "e-shop-tray/tests/managed-print-child-identity.test.ts": "00203f2d94fb350677e9e77da9b6d15499dd696d7ed9f9a72632ea8ae43a9a5e"
       }
+    },
+    {
+      "authorizationId": "M4-DESKTOP-PRINT-CHILD-SECURITY-28",
+      "featureBranch": "codex/es-print-m4-print-child-identity",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "7caa2a1bc0c7a1a430785ac7cde3d3bf2018a451",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-14T00:00:00Z",
+      "approvedAt": "2026-10-14T00:00:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder approved a one-time exact-path corrective for the fresh-context Security Review findings: hide Desktop-owned print children from legacy OWNER Computer Client surfaces, reject legacy approve/reject/disable/reapply management actions for hidden children, and make the managed settings-only Add-on fail closed without legacy identity fallback. Legacy RC9/RC10 ComputerBinding behavior remains unchanged.",
+      "authorizedPaths": [
+        "app/api/computer-client/requests/route.ts",
+        "app/api/computer-client/requests/[id]/approve/route.ts",
+        "app/api/computer-client/requests/[id]/reject/route.ts",
+        "app/api/computer-client/computers/[computerId]/disable/route.ts",
+        "app/api/computer-client/computers/[computerId]/reapply/route.ts",
+        "e-shop-tray/network-addon/main.ts",
+        "tests/computer-console-static.test.ts",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "app/api/computer-client/requests/route.ts": "77e3941f268880c42dd40c78e7a4c6dd1abc93d4f442845e2a41ef396768749b",
+        "app/api/computer-client/requests/[id]/approve/route.ts": "9edb09a8d00220492500d8681d0e3d243aeb61309b28f9a74743912d64d75bc0",
+        "app/api/computer-client/requests/[id]/reject/route.ts": "d0499228437a74843ce654db4c8c7c381ee33e9c34470e5dab4fcf6d1b5bceda",
+        "app/api/computer-client/computers/[computerId]/disable/route.ts": "e2c53f64f98577c9db9adcfb83bf9bd18fc7da29e18e17160b725aeb2ab224ff",
+        "app/api/computer-client/computers/[computerId]/reapply/route.ts": "c1408da14645beda7b2b3bb6724946870ed54d7e4458f15a019a0918becae1a3",
+        "e-shop-tray/network-addon/main.ts": "4e3bb8d9a7fe6a2fe220487ea9b7ae1edb6d76edda3a77a0b8bf81d740481b24",
+        "tests/computer-console-static.test.ts": "9d7f696d6673f051c24770abb37fe6f5ec43aaae30fd8ddaebd7c16df74bdfe8",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts": "c8566b38a76978f8cfad6e168d51f1360cb2f73130b86a3baa46fc5b1c0364c9"
+      },
+      "sourceState": {
+        "commit": "1660b36b13f3eb21419e1b9e4781b7f70b549d93",
+        "exactMatchRequired": true
+      },
+      "allowedPurposes": [
+        "Hide Desktop-owned print children from legacy OWNER lists and reject direct legacy management operations by identity kind.",
+        "Keep explicit legacy runtime intents supported while making the managed settings-only Add-on fail closed when its authenticated child handoff is missing or invalid."
+      ],
+      "prohibitedChanges": [
+        "No relay, schema, durable-job, identity-model, M4 UI, Provider, Local First, dine-in, Production migration/deploy or FIELD changes.",
+        "No wildcard paths, legacy behavior weakening, identity fabrication or fallback from managed settings-only mode to identity.json."
+      ],
+      "expirationCondition": "Close this single-use grant after the security and implementation reviews pass and the corrected candidates are rebuilt, or when a required gate fails."
     }
   ]
 }
