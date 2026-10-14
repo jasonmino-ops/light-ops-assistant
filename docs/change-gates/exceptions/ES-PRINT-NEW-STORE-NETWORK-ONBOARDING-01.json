@@ -80,6 +80,26 @@
         "app/api/computer-client/computers/[computerId]/reapply/route.ts": "c1408da14645beda7b2b3bb6724946870ed54d7e4458f15a019a0918becae1a3",
         "e-shop-tray/tests/managed-addon-handoff.test.ts": "c8566b38a76978f8cfad6e168d51f1360cb2f73130b86a3baa46fc5b1c0364c9"
       }
+    },
+    {
+      "authorizationId": "M4-ADDON-RESIDENT-RETRY-26",
+      "featureBranch": "codex/es-print-m4-addon-resident-retry",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "cca61da1e3ab7f604359e827362f1d0d7c305460",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T00:20:00Z",
+      "approvedAt": "2026-10-15T00:20:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized the one-time resident Add-on settings-only retry corrective: after Desktop writes the authenticated managed print-child handoff, an already resident Add-on must retry its existing initialization path and consume that handoff. No identity, relay, schema, migration, provider, legacy fallback or printing semantic change is authorized.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/main.ts": "c5e9ac722c6837edf8ed05105b44b9c3d63b3c8ba4cc3b25cfc03566a0d06659",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "a54559324853522c43f012f498e726c7c75d13bb796cbfe40077338ae9487947"
+      }
     }
   ]
 }
