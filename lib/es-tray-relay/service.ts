@@ -346,7 +346,6 @@ async function recoverTimedOutJobs(
 async function lockActiveClaimScope(
   tx: Prisma.TransactionClient,
   scope: RelayAgentScope,
-  now: Date,
 ) {
   // Authentication and claim are separate HTTP/service steps. Revalidate and
   // lock all authorization rows in this transaction so a concurrent disable,
@@ -356,8 +355,19 @@ async function lockActiveClaimScope(
     id: string
     identityKind: string
     parentDesktopDeviceId: string | null
+    bindingStatus: string
+    boundAt: Date | null
+    disabledAt: Date | null
+    credentialStatus: string
+    credentialExpiresAt: Date | null
+    childActiveSlot: string | null
+    storeStatus: string
+    tenantStatus: string
   }>>(Prisma.sql`
-    SELECT binding."id", binding."identityKind", binding."parentDesktopDeviceId"
+    SELECT binding."id", binding."identityKind", binding."parentDesktopDeviceId",
+           binding."status" AS "bindingStatus", binding."boundAt", binding."disabledAt",
+           binding."credentialStatus", binding."credentialExpiresAt", binding."childActiveSlot",
+           store."status" AS "storeStatus", tenant."status" AS "tenantStatus"
       FROM "ComputerBinding" AS binding
       JOIN "Store" AS store
         ON store."id" = binding."storeId"
@@ -367,16 +377,6 @@ async function lockActiveClaimScope(
      WHERE binding."id" = ${scope.computerBindingId}
        AND binding."tenantId" = ${scope.tenantId}
        AND binding."storeId" = ${scope.storeId}
-       AND binding."status" = 'APPROVED'::"ComputerBindingStatus"
-       AND binding."boundAt" IS NOT NULL
-       AND binding."disabledAt" IS NULL
-       AND binding."credentialStatus" = 'ACTIVE'::"ComputerCredentialStatus"
-       AND (
-         binding."credentialExpiresAt" IS NULL
-         OR binding."credentialExpiresAt" > ${now}
-       )
-       AND store."status" = 'ACTIVE'::"StoreStatus"
-       AND tenant."status" = 'ACTIVE'
      FOR UPDATE OF binding, store, tenant
   `)
   if (!active[0]) {
@@ -396,9 +396,12 @@ async function lockActiveClaimScope(
       id: string
       status: string
       activeSlot: string | null
-      tokenExpiresAt: Date
+      parentNotExpired: boolean
+      tenantId: string
+      storeId: string
     }>>(Prisma.sql`
-      SELECT "id", "status", "activeSlot", "tokenExpiresAt"
+      SELECT "id", "status", "activeSlot", "tokenExpiresAt" > clock_timestamp() AS "parentNotExpired",
+             "tenantId", "storeId"
         FROM "DesktopDevice"
        WHERE "id" = ${active[0].parentDesktopDeviceId}
          AND "tenantId" = ${scope.tenantId}
@@ -406,14 +409,58 @@ async function lockActiveClaimScope(
        FOR UPDATE
     `)
     const parentRow = parent[0]
-    if (
-      !parentRow
-      || parentRow.status !== 'ACTIVE'
-      || parentRow.activeSlot !== 'ACTIVE'
-      || parentRow.tokenExpiresAt.getTime() <= now.getTime()
-    ) {
+    if (!parentRow || parentRow.tenantId !== scope.tenantId || parentRow.storeId !== scope.storeId) {
       throw new RelayServiceError('COMPUTER_BINDING_NOT_ACTIVE', 403)
     }
+    if (parentRow.status !== 'ACTIVE' || parentRow.activeSlot !== 'ACTIVE'
+      || !parentRow.parentNotExpired) {
+      throw new RelayServiceError('COMPUTER_BINDING_NOT_ACTIVE', 403)
+    }
+  }
+
+  // Re-read the binding after the optional parent lock. The database clock is
+  // evaluated after all row-lock waits, so a credential that expires while a
+  // parent revoke/expiry transaction is in flight cannot pass on stale data.
+  const fresh = await tx.$queryRaw<Array<{
+    identityKind: string
+    bindingStatus: string
+    boundAt: Date | null
+    disabledAt: Date | null
+    credentialStatus: string
+    credentialNotExpired: boolean
+    childActiveSlot: string | null
+    storeStatus: string
+    tenantStatus: string
+  }>>(Prisma.sql`
+    SELECT binding."identityKind", binding."status" AS "bindingStatus", binding."boundAt",
+           binding."disabledAt", binding."credentialStatus",
+           (binding."credentialExpiresAt" IS NULL
+             OR binding."credentialExpiresAt" > clock_timestamp()) AS "credentialNotExpired",
+           binding."childActiveSlot", store."status" AS "storeStatus", tenant."status" AS "tenantStatus"
+      FROM "ComputerBinding" AS binding
+      JOIN "Store" AS store
+        ON store."id" = binding."storeId"
+       AND store."tenantId" = binding."tenantId"
+      JOIN "Tenant" AS tenant
+        ON tenant."id" = binding."tenantId"
+     WHERE binding."id" = ${scope.computerBindingId}
+       AND binding."tenantId" = ${scope.tenantId}
+       AND binding."storeId" = ${scope.storeId}
+     FOR UPDATE OF binding, store, tenant
+  `)
+  const freshRow = fresh[0]
+  if (
+    !freshRow
+    || freshRow.bindingStatus !== 'APPROVED'
+    || !freshRow.boundAt
+    || freshRow.disabledAt
+    || freshRow.credentialStatus !== 'ACTIVE'
+    || !freshRow.credentialNotExpired
+    || freshRow.storeStatus !== 'ACTIVE'
+    || freshRow.tenantStatus !== 'ACTIVE'
+    || (freshRow.identityKind === 'DESKTOP_PRINT_CHILD' && freshRow.childActiveSlot !== 'ACTIVE')
+  ) {
+    throw new RelayServiceError('COMPUTER_BINDING_NOT_ACTIVE', 403)
   }
 }
 
@@ -497,7 +544,7 @@ export async function claimNextRelayPrintJob(
   if (!await hasPotentialRelayWork(scope)) return null
 
   return prisma.$transaction(async (tx) => {
-    await lockActiveClaimScope(tx, scope, now)
+    await lockActiveClaimScope(tx, scope)
     await assertExpectedNetworkMode(tx, scope)
     await recoverTimedOutJobs(tx, scope, now)
 
@@ -699,7 +746,7 @@ export async function markRelayPrintJobExecuting(
     // the parent/child authorization in the same transaction as the durable
     // job transition so a stale child proof cannot advance the job after the
     // DesktopDevice parent is revoked, expired, disabled, or unbound.
-    await lockActiveClaimScope(tx, scope, now)
+    await lockActiveClaimScope(tx, scope)
     const current = await findClaimedJob(tx, scope, jobId, proof)
     if (!current) throw new RelayServiceError('ES_TRAY_02_STALE_CLAIM', 409)
     if (current.status === 'EXECUTING') return { idempotent: true, job: serializeJob(current) }
@@ -761,7 +808,7 @@ export async function completeRelayPrintJob(
     // Keep parent authorization revalidation and the terminal job mutation in
     // one lock boundary. A result submitted with stale child authorization
     // must not commit after the DesktopDevice parent loses authorization.
-    await lockActiveClaimScope(tx, scope, now)
+    await lockActiveClaimScope(tx, scope)
     const current = await findClaimedJob(tx, scope, jobId, result)
     if (!current) throw new RelayServiceError('ES_TRAY_02_STALE_CLAIM', 409)
     if (current.status === 'SUCCEEDED' || current.status === 'FAILED') {

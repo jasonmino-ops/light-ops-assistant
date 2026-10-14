@@ -397,6 +397,34 @@ async function main() {
     assert.equal(row.status, 'PENDING')
   })
 
+  await test('authenticated child cannot claim after natural parent expiry during lock wait', async () => {
+    const child = await seedManagedPrintChild()
+    const auth = await authenticateRelayAgent(authRequest(child.installationId, child.deviceSecret))
+    assert.equal(auth.ok, true)
+    await enqueueRelayPrintJob(child.scope, request('child-claim-natural-expiry-race-0001'), timing)
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL })
+    await client.connect()
+    try {
+      await client.query('BEGIN')
+      await client.query(
+        'UPDATE "DesktopDevice" SET "tokenExpiresAt" = clock_timestamp() + INTERVAL \'150 milliseconds\' WHERE "id" = $1',
+        [child.parent.id],
+      )
+      let settled = false
+      const pending = claimNextRelayPrintJob(child.agent, timing).finally(() => { settled = true })
+      void pending.catch(() => undefined)
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      assert.equal(settled, false, 'claim must wait for the parent authorization row lock')
+      await client.query('COMMIT')
+      await expectServiceError('COMPUTER_BINDING_NOT_ACTIVE', () => pending)
+    } finally {
+      await client.query('ROLLBACK').catch(() => undefined)
+      await client.end()
+    }
+    const row = await prisma.eshopTrayPrintJob.findFirstOrThrow({ where: child.scope })
+    assert.equal(row.status, 'PENDING')
+  })
+
   await test('authenticated child cannot transition to EXECUTING after parent revoke', async () => {
     const child = await seedManagedPrintChild()
     const auth = await authenticateRelayAgent(authRequest(child.installationId, child.deviceSecret))
