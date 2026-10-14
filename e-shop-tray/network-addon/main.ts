@@ -653,7 +653,19 @@ else if (helperMode) {
 } else {
   app.on('second-instance', (_event, argv) => {
     if (argv.some(value => ['--install-shortcuts', '--uninstall-shortcuts'].includes(value))) return
-    void app.whenReady().then(() => dispatchEntry(entryIntent(argv))).catch(() => showWindow())
+    void app.whenReady().then(async () => {
+      const intent = entryIntent(argv)
+      // A settings-only resident process may have started before Desktop
+      // issued the authenticated child handoff. Retry only the failed,
+      // uninitialized process; an already initialized process keeps the
+      // existing idempotent show/focus behavior and is never reinitialized.
+      if (intent === 'settings' && !profile && !entry.busy) {
+        await perform('retryBinding', {})
+        showWindow()
+        return
+      }
+      await dispatchEntry(intent)
+    }).catch(() => showWindow())
   })
   app.on('window-all-closed', () => { /* Remain resident, existing Tray pattern. */ })
   app.on('before-quit', event => {

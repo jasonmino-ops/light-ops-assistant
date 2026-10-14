@@ -131,6 +131,10 @@ async function mainFixture(options: FixtureOptions = {}) {
       if (missingBinding) throw new Error('DESKTOP_BINDING_NOT_ACTIVE')
       return { ...identity, deviceSecret: 'synthetic-test-secret' }
     } },
+    '../src/managedPrintChildIdentity': { consumeManagedPrintChildIdentity: async () => {
+      if (missingBinding) return null
+      return { ...identity, deviceSecret: 'synthetic-test-secret', bindingState: 'CLOUD_BOUND' }
+    } },
     '../src/networkNodeConfig': { ...nodes, protectNetworkDirectory: async () => {} },
     '../src/networkContract': contract,
     '../src/networkDiscovery': { ...discovery, getWindowsLocalNetworks: async () => ({ interfaces, routes: [] }),
@@ -294,6 +298,19 @@ describe('M1 actual main settings-only lifecycle', () => {
     expect(f.counts.profiles).toBe(0); f.bind(); await f.perform('retryBinding', {})
     expect(await f.status()).toMatchObject({ activation: 'PENDING', enabled: true, code: 'SETTINGS_ONLY_PENDING' })
     expect(f.snapshot()).toMatchObject({ starts: 0, resume: 0, timers: 0 })
+  })
+
+  it('settings-only second-instance retries a resident process that started before the handoff', async () => {
+    const f = await mainFixture({ missingBinding: true })
+    expect(f.counts.profiles).toBe(0)
+
+    f.bind()
+    await f.second(['--settings-only'])
+
+    expect(f.counts.profiles).toBe(1)
+    expect(await f.status()).toMatchObject({ activation: 'PENDING', enabled: true, code: 'SETTINGS_ONLY_PENDING' })
+    expect(f.snapshot()).toMatchObject({ starts: 0, resume: 0, timers: 0 })
+    expect(f.windows).toHaveLength(1)
   })
 
   it('normal retryBinding retains existing automatic startup after the explicit retry', async () => {
