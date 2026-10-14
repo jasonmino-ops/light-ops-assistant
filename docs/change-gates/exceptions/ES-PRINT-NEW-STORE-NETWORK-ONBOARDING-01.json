@@ -31,11 +31,12 @@
       "createdAt": "2026-10-14T12:00:00Z",
       "approvedAt": "2026-10-14T12:00:00Z",
       "closeAfter": "FEATURE_MERGE",
-      "reason": "Founder authorized one exact-path DesktopDevice-owned hidden print child ComputerBinding implementation to reuse the existing RC9/RC10 relay chain. This record excludes product expansion, unrelated identity migration, Production migration/deploy and FIELD.",
+      "reason": "Founder authorized the DesktopDevice-owned hidden print child ComputerBinding implementation to reuse the existing RC9/RC10 relay chain, and a one-time exact-path corrective in lib/es-tray-relay/service.ts to close parent revoke/expiry authorization races during relay job state transitions. This record excludes product expansion, unrelated identity migration, Production migration/deploy and FIELD.",
       "authorizedPaths": [
         "prisma/schema.prisma",
         "prisma/migrations/20261014000000_add_desktop_print_child_identity/migration.sql",
         "lib/computer-client/service.ts",
+        "lib/es-tray-relay/service.ts",
         "lib/es-tray-relay/auth.ts",
         "app/api/desktop/print-child/route.ts",
         "app/api/computer-client/terminals/route.ts",
@@ -61,9 +62,10 @@
         "e-shop-tray/network-addon/main.ts": "a5a4d2d68bf5f77ded7cd74d67099409000af75f2b1bafc48a095e6e42a87cfe",
         "e-shop-tray/src/managedPrintChildIdentity.ts": "a95456e4de23a5547fe69694bf9a5f0bc8791c0f9f747acd5d3ef1963098a408",
         "tests/desktop-print-child-lifecycle.test.ts": "12cd6d3a48af644ee8fd8326c151339ea8e83a115fe9b0dd36166c31fbc1e355",
-        "tests/es-tray-relay-runtime.test.ts": "ad05b75cc1a54b401aab03f87f64e9a612f2b9c7f43dd8864e042f7f1f106c56",
+        "tests/es-tray-relay-runtime.test.ts": "2844ffa5cf60117859b93019fb62516d4e749d25d1e87b5e2b87110f0dacebab",
         "tests/computer-console-static.test.ts": "bbf171e944640aba72589fce76cbca3bc2837342a02e05ff2e937eb71315c7f5",
         "desktop/tests/network-print-settings-launcher.test.ts": "207c0bb4608e0a245a89f07693d9e7f8be1b22c499f2026b324e194fa7778c4a",
+        "lib/es-tray-relay/service.ts": "e21f3735ca76eedea424bd4ccfb929eb2be08311875a9b38f61391108fac73a0",
         "e-shop-tray/tests/managed-print-child-identity.test.ts": "00203f2d94fb350677e9e77da9b6d15499dd696d7ed9f9a72632ea8ae43a9a5e"
       }
     }
