@@ -151,9 +151,9 @@
       "authorizedPathSha256": {
         "desktop/src/main/managedPrintChildHandoff.ts": "474eca171d4bf6b6f94674549f6e1382dda970b16c0d60e7641cd776654ca3bf",
         "e-shop-tray/network-addon/main.ts": "d1d1c3ed03eb9a58be9fb5394fc3f07f49741e4546e1575178eb1ba12188fddf",
-        "e-shop-tray/src/managedPrintChildIdentity.ts": "50f2bb130215d1a459f5b018e23d858d423a70c9c2224d1e8ecf21db783b30ea",
+        "e-shop-tray/src/managedPrintChildIdentity.ts": "28b293a57cde8f9f7b7e07cc255ae7124e3fa0fabb10033303982d5a19ede92f",
         "e-shop-tray/tests/managed-addon-handoff.test.ts": "4d30437b653c9f73f7f751531b375232b69d8570d0ee95428d52190a0933aa1b",
-        "e-shop-tray/tests/managed-print-child-identity.test.ts": "36762d0b60406eeed6a7cc44c6a59e6123464d4720f96f7c7d5a157fa55731b8",
+        "e-shop-tray/tests/managed-print-child-identity.test.ts": "09c3ddccc66ac13d3bb82b4bc68744f5b617ad2f88c006a1df9189b075115d52",
         "e-shop-tray/tests/network-addon-settings-only.test.ts": "31fb730dc5022ec7a7195e688f0efad6a399f53466e359827f3e03720171b9d9"
       }
     }
