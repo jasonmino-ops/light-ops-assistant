@@ -2058,7 +2058,7 @@
         "desktop/src/main/networkPrintSettingsLauncher.ts": "11afffac6be9d8b90a71e7278b7705034b1a782b8f838a16e9dd571cd2d138a5",
         "e-shop-tray/tests/network-addon-shortcuts.test.ts": "936cb27e98bea1af16d80b066eb706e041a148115bcdd8b83e5dead1101e91b4",
         "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
-        "desktop/tests/single-installer-packaging.test.ts": "18edb4086d52dc7bb67023a96b2462de760db9168a1ff1e915886b3be0d307b1",
+        "desktop/tests/single-installer-packaging.test.ts": "a3b1a9ddb7ce3b8e04e8f51c8e8d4881291fb3d8802f8f95bb3a2aa259d5c142",
         "desktop/tests/network-print-settings-launcher.test.ts": "93bf24eb2a30045c9fabdbf7dbeb4cbdb5860bf8545025ec50e05cf817e64982"
       },
       "candidateBuild": {
