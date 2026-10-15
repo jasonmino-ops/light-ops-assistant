@@ -45,7 +45,7 @@ export type ShortcutResult = {
   reason?: string
   sha256?: string
 }
-type Kind = 'CREATE' | 'MIGRATE' | 'REMOVE' | 'RESTORE'
+type Kind = 'CREATE' | 'MIGRATE' | 'REMOVE' | 'RESTORE' | 'REPAIR'
 type Intent = {
   id: string; kind: Kind; subject: ShortcutRole | LegacyShortcutId; path: string
   spec: ShortcutSpec; sha256: string; bytes: number; originalId: string | null
@@ -211,7 +211,7 @@ export class ShortcutLifecycle {
   }
   private parseIntent(value: unknown): Intent {
     const data = object(value, ['id', 'kind', 'subject', 'path', 'spec', 'sha256', 'bytes', 'originalId', 'registration'])
-    if (typeof data.id !== 'string' || !UUID.test(data.id) || !['CREATE', 'MIGRATE', 'REMOVE', 'RESTORE'].includes(String(data.kind))
+    if (typeof data.id !== 'string' || !UUID.test(data.id) || !['CREATE', 'MIGRATE', 'REMOVE', 'RESTORE', 'REPAIR'].includes(String(data.kind))
       || typeof data.sha256 !== 'string' || !HASH.test(data.sha256) || !Number.isInteger(data.bytes) || Number(data.bytes) < 1 || Number(data.bytes) > MAX_LINK
       || (data.originalId !== null && (typeof data.originalId !== 'string' || !UUID.test(data.originalId)))) fail()
     const legacy = data.kind === 'MIGRATE' || data.kind === 'RESTORE'
@@ -229,7 +229,7 @@ export class ShortcutLifecycle {
     }
     if (!equalPath(spec.icon, spec.target)) fail()
     if ((data.kind === 'MIGRATE' && data.registration === null)
-      || (['REMOVE', 'RESTORE'].includes(String(data.kind)) && data.originalId === null)) fail()
+      || (['REMOVE', 'RESTORE', 'REPAIR'].includes(String(data.kind)) && data.originalId === null)) fail()
     return { ...data, spec } as Intent
   }
   private async history(): Promise<History> {
@@ -245,8 +245,8 @@ export class ShortcutLifecycle {
         const intent = this.parseIntent(data.intent)
         if (history.intents.some(old => old.id === intent.id) || history.intents.some(old => !history.decisions.has(old.id))) fail()
         if (intent.originalId !== null && !history.intents.some(old => old.id === intent.originalId && history.decisions.get(old.id)?.outcome === 'APPLIED'
-          && old.kind === (intent.kind === 'REMOVE' ? 'CREATE' : 'MIGRATE') && old.subject === intent.subject
-          && old.path === intent.path && old.sha256 === intent.sha256 && sameSpec(old.spec, intent.spec))) fail()
+          && old.kind === (intent.kind === 'REMOVE' || intent.kind === 'REPAIR' ? 'CREATE' : 'MIGRATE') && old.subject === intent.subject
+          && old.path === intent.path && (intent.kind === 'REPAIR' || (old.sha256 === intent.sha256 && sameSpec(old.spec, intent.spec))))) fail()
         const saved = await this.regular(this.saved(intent))
         if (saved.length !== intent.bytes || digest(saved) !== intent.sha256) fail('SHORTCUT_BACKUP_INVALID')
         history.intents.push(intent)
@@ -285,8 +285,14 @@ export class ShortcutLifecycle {
     return parseSpec({ target: actual.target, args: actual.args, icon: actual.icon, iconIndex: actual.iconIndex, appUserModelId: actual.appUserModelId })
   }
   private async matches(file: string, intent: Pick<Intent, 'sha256' | 'bytes' | 'spec'>) {
-    const raw = await this.optional(file)
-    return !!raw && raw.length === intent.bytes && digest(raw) === intent.sha256 && sameSpec(await this.readSpec(file), intent.spec)
+    try {
+      const raw = await this.optional(file)
+      return !!raw && raw.length === intent.bytes && digest(raw) === intent.sha256 && sameSpec(await this.readSpec(file), intent.spec)
+    } catch {
+      // A malformed or unreadable ShellLink is an invalid owned entry, not a
+      // reason to abort the whole lifecycle before the controlled repair path.
+      return false
+    }
   }
   private async exclusiveCopy(source: string, destination: string) {
     await this.normalDirectory(path.dirname(destination))
@@ -356,7 +362,8 @@ export class ShortcutLifecycle {
   private owner(history: History, role: ShortcutRole) {
     return [...history.intents].reverse().find(intent => intent.kind === 'CREATE' && intent.subject === role
       && history.decisions.get(intent.id)?.outcome === 'APPLIED'
-      && !history.intents.some(removal => removal.kind === 'REMOVE' && removal.originalId === intent.id && history.decisions.get(removal.id)?.outcome === 'APPLIED'))
+      && !history.intents.some(removal => ['REMOVE', 'REPAIR'].includes(removal.kind) && removal.originalId === intent.id
+        && history.decisions.get(removal.id)?.outcome === 'APPLIED'))
   }
   async ensure(role: ShortcutRole): Promise<ShortcutResult> {
     if (!(SHORTCUT_ROLES as readonly string[]).includes(role)) fail('SHORTCUT_ROLE_INVALID')
@@ -376,11 +383,25 @@ export class ShortcutLifecycle {
         existing = null
         owner = undefined
       }
-      if (existing) {
-        if (owner && await this.matches(destination, owner) && sameSpec(owner.spec, expected.spec)) return { subject: role, status: 'UNCHANGED', sha256: owner.sha256 }
-        return { subject: role, status: 'PRESERVED', reason: owner ? 'OWNED_LINK_CHANGED' : 'DESTINATION_OCCUPIED' }
+      if (existing && owner) {
+        if (await this.matches(destination, owner) && sameSpec(owner.spec, expected.spec)) return { subject: role, status: 'UNCHANGED', sha256: owner.sha256 }
+        // This public link is owned by the managed lifecycle. Archive the
+        // exact observed bytes before replacing it, even when the native
+        // ShellLink reader cannot parse them. Unowned/custom links remain
+        // preserved below.
+        const observed = await this.regular(destination)
+        const repair: Intent = { id: randomUUID(), kind: 'REPAIR', subject: role, path: destination,
+          spec: expected.spec, sha256: digest(observed), bytes: observed.length, originalId: owner.id, registration: expected.registration }
+        await this.newFile(this.saved(repair), observed); await this.syncDirectory(this.files)
+        await this.append(history, repair, null)
+        if (!await this.capture(history, repair, false)) return { subject: role, status: 'PRESERVED', reason: 'OWNED_LINK_CHANGED' }
+        existing = null
+        owner = undefined
       }
-      if (owner) return { subject: role, status: 'ABSENT', reason: 'USER_REMOVAL_PRESERVED' }
+      if (existing) return { subject: role, status: 'PRESERVED', reason: 'DESTINATION_OCCUPIED' }
+      // A missing public entry with a valid managed owner is repairable. The
+      // following CREATE event becomes the new authoritative owner.
+      if (owner) owner = undefined
       const id = randomUUID(), staged = this.saved({ id })
       if (await this.optional(staged)) fail('SHORTCUT_STAGE_OCCUPIED')
       if (!await this.options.shell.writeShortcutLink(staged, expected.spec)) fail('SHORTCUT_WRITE_FAILED')
@@ -416,14 +437,15 @@ export class ShortcutLifecycle {
   async inspectLegacy(id: LegacyShortcutId): Promise<ShortcutResult> {
     return this.locked(async () => { const history = await this.history(); await this.recoverHistory(history); return (await this.legacy(id)).result })
   }
-  private async capture(history: History, intent: Intent): Promise<boolean> {
-    if (!await this.matches(intent.path, intent)) {
+  private async capture(history: History, intent: Intent, semantic = true): Promise<boolean> {
+    const raw = await this.optional(intent.path)
+    if (!raw || raw.length !== intent.bytes || digest(raw) !== intent.sha256 || (semantic && !await this.matches(intent.path, intent))) {
       await this.decide(history, intent, 'PRESERVED', 'SOURCE_CHANGED'); return false
     }
     if (await this.optional(this.captured(intent))) fail('SHORTCUT_CAPTURE_OCCUPIED')
     await rename(intent.path, this.captured(intent)) // Recoverable, never permanent deletion.
     await this.syncDirectory(path.dirname(intent.path)); await this.syncFile(this.captured(intent)); await this.syncDirectory(this.files)
-    if (!await this.matches(this.captured(intent), intent)) {
+    if (semantic && !await this.matches(this.captured(intent), intent)) {
       await this.recoverHistory(history); return false
     }
     await this.decide(history, intent, 'APPLIED', 'EXACT_LINK_CAPTURED'); return true

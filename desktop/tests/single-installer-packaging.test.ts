@@ -13,6 +13,9 @@ describe('single installer packaging contract', () => {
     expect(config).toContain('to: network-print-addon')
     expect(config).toContain('E-Shop-Network-Print-Addon-TEST-0.1.0-commercial-rc.10-x64.exe')
     expect(installer).toContain('ExecWait \'"${ESHOP_NETWORK_ADDON_INSTALLER}" /S\' $R0')
+    expect(installer).toContain('ExecWait \'"${ESHOP_NETWORK_ADDON_ROOT}\\E-Shop-Network-Print-Addon.exe" --install-shortcuts --silent-shortcuts\' $R6')
+    expect(installer).toContain('The managed Network Print Add-on shortcut contract could not be verified or repaired. Stopping.')
+    expect(installer).toContain('SetErrorLevel 35')
     expect(installer).toContain('!insertmacro eshopVerifyManagedAddonLifecycle')
     expect(installer).toContain('The managed Network Print Add-on lifecycle artifacts are incomplete. Stopping.')
     expect(installer).toContain('$DESKTOP\\店小二收银.lnk')
@@ -33,6 +36,12 @@ describe('single installer packaging contract', () => {
     const install = installer.split('!macro customInstall\n')[1].split('!macroend')[0]
     expect(install.indexOf('!insertmacro eshopVerifyManagedAddonLifecycle')).toBeGreaterThan(
       install.indexOf('ExecWait \'"${ESHOP_NETWORK_ADDON_INSTALLER}" /S\' $R0'),
+    )
+    expect(install.indexOf('ExecWait \'"${ESHOP_NETWORK_ADDON_ROOT}\\E-Shop-Network-Print-Addon.exe" --install-shortcuts --silent-shortcuts\' $R6')).toBeGreaterThan(
+      install.indexOf('ExecWait \'"${ESHOP_NETWORK_ADDON_INSTALLER}" /S\' $R0'),
+    )
+    expect(install.indexOf('ExecWait \'"${ESHOP_NETWORK_ADDON_ROOT}\\E-Shop-Network-Print-Addon.exe" --install-shortcuts --silent-shortcuts\' $R6')).toBeLessThan(
+      install.indexOf('!insertmacro eshopVerifyManagedAddonLifecycle'),
     )
     expect(install.indexOf('!insertmacro eshopVerifyManagedAddonLifecycle')).toBeLessThan(
       install.indexOf('WriteRegStr HKCU "${ESHOP_NETWORK_ADDON_MARKER_KEY}" "Managed" "true"'),

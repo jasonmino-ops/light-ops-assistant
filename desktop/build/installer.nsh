@@ -368,6 +368,18 @@ FunctionEnd
     SetErrorLevel 20
     Quit
   ${EndIf}
+  ; Re-run the Add-on's authoritative shortcut lifecycle even when the
+  ; version is unchanged. Its helper performs native ShellLink semantic
+  ; validation/repair and returns non-zero when the four managed entries are
+  ; not safely established. File existence alone is not an ownership proof.
+  ClearErrors
+  ExecWait '"${ESHOP_NETWORK_ADDON_ROOT}\E-Shop-Network-Print-Addon.exe" --install-shortcuts --silent-shortcuts' $R6
+  ${If} ${Errors}
+  ${OrIf} $R6 != 0
+    DetailPrint "The managed Network Print Add-on shortcut contract could not be verified or repaired. Stopping."
+    SetErrorLevel 35
+    Quit
+  ${EndIf}
   ; /S must leave no resident process behind. Re-check the same managed
   ; lifecycle boundary before accepting registration and runtime artifacts.
   !insertmacro eshopCheckNetworkAddonProcess

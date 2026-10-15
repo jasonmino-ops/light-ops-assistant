@@ -157,6 +157,35 @@ describe('fixed product shortcut transactions on the actual filesystem', () => {
     expect(await allEvents(f)).toEqual(firstEvents)
     expect(f.shell.writeShortcutLink).toHaveBeenCalledTimes(4)
   })
+
+  it('repairs a missing owned entry on same-version maintenance', async () => {
+    const f = await fixture()
+    await f.lifecycle.ensure('manage')
+    await rm(path.join(f.options.startMenuDirectory, 'Network 打印设置.lnk'))
+    await expect(f.fresh().ensure('manage')).resolves.toMatchObject({ status: 'CREATED' })
+    expect(JSON.parse(await readFile(path.join(f.options.startMenuDirectory, 'Network 打印设置.lnk'), 'utf8')))
+      .toMatchObject({ target: f.options.networkExecutable, args: '--settings-only', appUserModelId: NETWORK_APP })
+  })
+
+  it.each([
+    ['empty target', { target: '' }],
+    ['wrong target', { target: 'C:\\Other\\E-Shop-Network-Print-Addon.exe' }],
+    ['wrong args', { args: '--manage' }],
+    ['wrong AppUserModelID', { appUserModelId: 'com.example.other' }],
+  ])('repairs an owned entry whose ShellLink contract is invalid: %s', async (_label, change) => {
+    const f = await fixture()
+    await f.lifecycle.ensure('manage')
+    const original = f.shell.readShortcutLink.getMockImplementation()!
+    let first = true
+    f.shell.readShortcutLink.mockImplementation(async file => {
+      const spec = await original(file)
+      if (first && file.endsWith('Network 打印设置.lnk')) { first = false; return { ...spec, ...change } }
+      return spec
+    })
+    await expect(f.fresh().ensure('manage')).resolves.toMatchObject({ status: 'CREATED' })
+    expect(JSON.parse(await readFile(path.join(f.options.startMenuDirectory, 'Network 打印设置.lnk'), 'utf8')))
+      .toMatchObject({ target: f.options.networkExecutable, args: '--settings-only', appUserModelId: NETWORK_APP })
+  })
   it('upgrades an owned historical manage shortcut without invalidating the full shortcut history', async () => {
     const f = await fixture()
     await f.lifecycle.ensure('manage')
@@ -268,9 +297,9 @@ describe('fixed product shortcut transactions on the actual filesystem', () => {
     expect(await f.fresh().uninstall()).toContainEqual({ subject: 'cashier', status: 'PRESERVED', reason: 'OWNED_LINK_CHANGED' })
     expect(await readFile(f.cashier, 'utf8')).toBe('user changed this shortcut')
   })
-  it('does not recreate a user-deleted owned shortcut on ordinary repeated ensure', async () => {
+  it('repairs a missing managed shortcut on repeated ensure', async () => {
     const f = await fixture(); await f.lifecycle.ensure('cashier'); await rename(f.cashier, path.join(f.root, 'user-kept.lnk'))
-    expect(await f.fresh().ensure('cashier')).toMatchObject({ status: 'ABSENT', reason: 'USER_REMOVAL_PRESERVED' })
+    expect(await f.fresh().ensure('cashier')).toMatchObject({ status: 'CREATED' })
   })
   it('restores only into an absent path and leaves all backup bytes available', async () => {
     const f = await fixture(); await f.legacy()
