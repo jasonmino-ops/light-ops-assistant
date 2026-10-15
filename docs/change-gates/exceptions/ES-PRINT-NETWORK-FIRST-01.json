@@ -1981,7 +1981,7 @@
       "authorizationId": "NETWORK-M4-DPAPI-HANDOFF-PACKAGING-26",
       "featureBranch": "codex/es-print-m4-dpapi-handoff",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "baseOriginMainSha": "805602493373ec8893d87470aa8a5ef293cf149f",
+      "baseOriginMainSha": "5c5c1fce7752ca0357153b64c8e5d6153fb3c425",
       "status": "ACTIVE",
       "approvedBy": "Founder",
       "createdAt": "2026-10-15T12:55:00Z",
