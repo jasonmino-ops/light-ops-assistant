@@ -156,6 +156,36 @@
         "e-shop-tray/tests/managed-print-child-identity.test.ts": "59bb06c06712d86cd8b32ddd586b5df4cfd221609d9e647660383041fae2696d",
         "e-shop-tray/tests/network-addon-settings-only.test.ts": "31fb730dc5022ec7a7195e688f0efad6a399f53466e359827f3e03720171b9d9"
       }
+    },
+    {
+      "authorizationId": "M4-SHORTCUT-LIFECYCLE-CORRECTIVE-26",
+      "featureBranch": "codex/es-print-m4-shortcut-lifecycle",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "40ade15491b7d671a6af61eb8519a5fdaa2d859e",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T13:00:00Z",
+      "approvedAt": "2026-10-15T13:00:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized a one-time M4 shortcut lifecycle corrective: same-version managed Add-on repair must semantically validate and repair the official Settings ShellLink before ownership is marked; Desktop verification must enforce the same contract. Desktop binding remains a required managed contract. No DPAPI, identity, relay, schema, migration, Production, Provider, Local First, M4 UI or FIELD changes are authorized.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "desktop/build/installer.nsh",
+        "desktop/src/main/networkPrintSettingsLauncher.ts",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts",
+        "desktop/tests/single-installer-packaging.test.ts",
+        "desktop/tests/network-print-settings-launcher.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "22eae61c2c071d78f4369e413241b34a1205df2f48b22dfb47fccc018ded4ab5",
+        "desktop/build/installer.nsh": "eaff752caafc4d02165a87e238fc9382dca0d0191a58309b61b1e76c8c24f226",
+        "desktop/src/main/networkPrintSettingsLauncher.ts": "bc2cbe76049aa04bde3a45091f1fa97ee63147b3731b166636eee645e2532cc5",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts": "3d08a9229067ca1c7acb110e7f6e6c2069713c884b91922469b875184173f4d5",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
+        "desktop/tests/single-installer-packaging.test.ts": "b970c6a1faf056e23fb1ee9f386b6e91af9949787feec4ec35ad940107920c9f",
+        "desktop/tests/network-print-settings-launcher.test.ts": "207c0bb4608e0a245a89f07693d9e7f8be1b22c499f2026b324e194fa7778c4a"
+      }
     }
   ]
 }
