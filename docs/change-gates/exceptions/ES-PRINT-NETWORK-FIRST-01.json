@@ -1976,6 +1976,60 @@
         "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production migration/deploy or FIELD execution."
       ],
       "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package is built, independently reviewed and evidence retained, or when a required gate fails."
+    },
+    {
+      "authorizationId": "NETWORK-M4-DPAPI-HANDOFF-PACKAGING-26",
+      "featureBranch": "codex/es-print-m4-dpapi-handoff",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "805602493373ec8893d87470aa8a5ef293cf149f",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T12:55:00Z",
+      "approvedAt": "2026-10-15T12:55:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized the one-time M4 DPAPI handoff candidate build after implementation and independent review. This packaging successor binds the existing authorized Desktop/Add-on handoff paths to the unsigned TEST-only rc.10 candidate contract; it does not authorize installation, FIELD, Production migration/deploy, signing or publication.",
+      "authorizedPaths": [
+        "desktop/src/main/managedPrintChildHandoff.ts",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/src/managedPrintChildIdentity.ts",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts",
+        "e-shop-tray/tests/managed-print-child-identity.test.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "desktop/src/main/managedPrintChildHandoff.ts": "474eca171d4bf6b6f94674549f6e1382dda970b16c0d60e7641cd776654ca3bf",
+        "e-shop-tray/network-addon/main.ts": "d1d1c3ed03eb9a58be9fb5394fc3f07f49741e4546e1575178eb1ba12188fddf",
+        "e-shop-tray/src/managedPrintChildIdentity.ts": "843b6e37928deac6450251b07a353dbc5188d7ac218784ecd0d4945be6d0a4af",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts": "4d30437b653c9f73f7f751531b375232b69d8570d0ee95428d52190a0933aa1b",
+        "e-shop-tray/tests/managed-print-child-identity.test.ts": "59bb06c06712d86cd8b32ddd586b5df4cfd221609d9e647660383041fae2696d",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "31fb730dc5022ec7a7195e688f0efad6a399f53466e359827f3e03720171b9d9"
+      },
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "commit": "6d59d87c1dc0572691b078979256b04d5ba7c514",
+        "exactMatchRequired": true
+      },
+      "governanceState": {
+        "commit": "805602493373ec8893d87470aa8a5ef293cf149f",
+        "exactMatchRequired": true,
+        "zeroNonGovernanceDiff": true
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Add-on candidate and one Single Installer candidate from the reviewed DPAPI handoff implementation.",
+        "Retain exact source, candidate, installer and SHA-256 evidence; no installation, FIELD, Production migration, Production deploy, signing or formal publication."
+      ],
+      "prohibitedChanges": [
+        "Any source or product change outside the six exact authorized inputs above; no identity, relay, schema, migration, provider, RC10, Local First, M4 UI or printing semantic change.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production migration/deploy or FIELD execution."
+      ],
+      "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package is built, independently reviewed and evidence retained, or when a required gate fails."
     }
   ]
 }
