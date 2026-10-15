@@ -2,6 +2,11 @@
 ; files while the exact Desktop executable is running, and must never force
 ; terminate the application. The operator exits through the normal tray path.
 
+; electron-builder expands this custom include before its standard NSIS
+; includes. Load LogicLib here because the managed Add-on safe-exit function
+; uses the fail-closed ${If}/${ElseIf} predicates during parsing.
+!include LogicLib.nsh
+
 ; electron-builder 25 writes the embedded uninstaller and then patches its
 ; icon. Keep both icons byte-compatible so that patching cannot invalidate the
 ; embedded uninstaller's NSIS CRC.
