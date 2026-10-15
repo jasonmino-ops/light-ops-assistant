@@ -118,10 +118,8 @@ FunctionEnd
 !macroend
 !endif
 
-!macro eshopDefineManagedAddonExitFunction
-!ifndef ESHOP_MANAGED_ADDON_EXIT_FUNCTION_DEFINED
-!define ESHOP_MANAGED_ADDON_EXIT_FUNCTION_DEFINED
-Function eshopRequestManagedAddonExit
+!macro eshopRequestManagedAddonExit id
+  !define ESHOP_MANAGED_ADDON_EXIT_ID ${id}
   ; The only permitted process replacement path is the Add-on's existing
   ; Electron safeExit/stopAndWait lifecycle. Unknown or unverifiable installs
   ; remain fail-closed and are never sent a maintenance command.
@@ -142,7 +140,7 @@ Function eshopRequestManagedAddonExit
     SetErrorLevel 26
     Quit
   ${EndIf}
-  IfFileExists "${ESHOP_NETWORK_ADDON_ROOT}\E-Shop-Network-Print-Addon.exe" 0 eshopNetworkAddonExitMissing
+  IfFileExists "${ESHOP_NETWORK_ADDON_ROOT}\E-Shop-Network-Print-Addon.exe" 0 eshopNetworkAddonExitMissing_${ESHOP_MANAGED_ADDON_EXIT_ID}
   ClearErrors
   ExecWait '"${ESHOP_NETWORK_ADDON_ROOT}\E-Shop-Network-Print-Addon.exe" --installer-upgrade' $R2
   ${If} ${Errors}
@@ -152,7 +150,7 @@ Function eshopRequestManagedAddonExit
     Quit
   ${EndIf}
   StrCpy $R3 0
-  eshopNetworkAddonExitWait:
+  eshopNetworkAddonExitWait_${ESHOP_MANAGED_ADDON_EXIT_ID}:
     nsProcess::_FindProcess /NOUNLOAD "E-Shop-Network-Print-Addon.exe"
     Pop $R0
     ${If} $R0 == 603
@@ -162,31 +160,29 @@ Function eshopRequestManagedAddonExit
       SetErrorLevel 27
       Quit
     ${EndIf}
-    IntCmp $R3 120 eshopNetworkAddonExitTimeout eshopNetworkAddonExitTimeout eshopNetworkAddonExitSleep
-  eshopNetworkAddonExitSleep:
+    IntCmp $R3 120 eshopNetworkAddonExitTimeout_${ESHOP_MANAGED_ADDON_EXIT_ID} eshopNetworkAddonExitTimeout_${ESHOP_MANAGED_ADDON_EXIT_ID} eshopNetworkAddonExitSleep_${ESHOP_MANAGED_ADDON_EXIT_ID}
+  eshopNetworkAddonExitSleep_${ESHOP_MANAGED_ADDON_EXIT_ID}:
     Sleep 250
     IntOp $R3 $R3 + 1
-    Goto eshopNetworkAddonExitWait
-  eshopNetworkAddonExitTimeout:
+    Goto eshopNetworkAddonExitWait_${ESHOP_MANAGED_ADDON_EXIT_ID}
+  eshopNetworkAddonExitTimeout_${ESHOP_MANAGED_ADDON_EXIT_ID}:
     DetailPrint "The managed Network Print Add-on did not exit safely before timeout. Stopping."
     IfSilent +2 0
       MessageBox MB_OK|MB_ICONSTOP "The Network Print Add-on could not finish safely. Nothing was replaced."
     SetErrorLevel 27
     Quit
-  eshopNetworkAddonExitMissing:
+  eshopNetworkAddonExitMissing_${ESHOP_MANAGED_ADDON_EXIT_ID}:
     DetailPrint "The managed Network Print Add-on executable is missing. Stopping."
     SetErrorLevel 31
     Quit
-FunctionEnd
-!endif
+  !undef ESHOP_MANAGED_ADDON_EXIT_ID
 !macroend
 
 !macro eshopCheckNetworkAddonProcess
   ; Run before any Desktop predecessor handoff or Desktop file removal. A
   ; verified managed resident is asked to drain and exit; every other process
   ; state fails closed before files or registrations can be replaced.
-  !insertmacro eshopDefineManagedAddonExitFunction
-  Call eshopRequestManagedAddonExit
+  !insertmacro eshopRequestManagedAddonExit ${__LINE__}
 !macroend
 
 !macro eshopCheckNetworkAddonInstallState

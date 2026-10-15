@@ -87,7 +87,7 @@ describe('ES-DESKTOP-INSTALLER-UPGRADE-LIFECYCLE-FIX-01', () => {
 
     expect(processTemplate).toMatch(/!ifmacrodef customCheckAppRunning\s+!insertmacro customCheckAppRunning/)
     expect(body).toContain('!insertmacro eshopCheckNetworkAddonInstallState')
-    expect(installerInclude).toContain('Function eshopRequestManagedAddonExit')
+    expect(installerInclude).toContain('!macro eshopRequestManagedAddonExit id')
     expect(installerInclude).toContain('--installer-upgrade')
     expect(installerInclude).toContain('Sleep 250')
     expect(installerInclude).toContain('eshopNetworkAddonExitTimeout')
