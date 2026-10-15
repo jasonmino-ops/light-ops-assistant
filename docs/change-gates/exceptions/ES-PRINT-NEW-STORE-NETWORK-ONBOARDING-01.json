@@ -128,6 +128,34 @@
         "e-shop-tray/tests/network-addon.test.ts": "701b2fea77dcdd72cab1e291aa5ef076ca1da2133b0d817c9f072d746dd76eaf",
         "e-shop-tray/tests/network-addon-settings-only.test.ts": "08e3ee591ca567c4676746597b0d58bb22199ff763b434187e58c0bab884b12f"
       }
+    },
+    {
+      "authorizationId": "M4-DPAPI-HANDOFF-26",
+      "featureBranch": "codex/es-print-m4-dpapi-handoff",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "6cbd2587abee05e0c6a0da35a6e8fe39ff2a7aa8",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T12:20:00Z",
+      "approvedAt": "2026-10-15T12:20:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized the one-time M4 client DPAPI handoff corrective: replace the cross-application Electron safeStorage transport for the managed print-child handoff with Windows CurrentUser DPAPI, preserve atomic file handoff, add expiry, bounded recovery and final consumption only after profile initialization. No Desktop activation safeStorage, legacy identity fallback, relay, schema, migration, RC10, Provider, Local First, M4 UI, Production or FIELD changes are authorized.",
+      "authorizedPaths": [
+        "desktop/src/main/managedPrintChildHandoff.ts",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/src/managedPrintChildIdentity.ts",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts",
+        "e-shop-tray/tests/managed-print-child-identity.test.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "desktop/src/main/managedPrintChildHandoff.ts": "03832ab0ed21701430be0302c7e6dd303a1d0e49328657514fa27bd1f0c5c656",
+        "e-shop-tray/network-addon/main.ts": "29f8ec0e355ce1a6646be588ed2ed24488e44b69e10dce38a08625cad4d34673",
+        "e-shop-tray/src/managedPrintChildIdentity.ts": "758c9d4522846cb5c33a379432bd3574f200a83d8bcd23a24a12514f4004f06c",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts": "4d30437b653c9f73f7f751531b375232b69d8570d0ee95428d52190a0933aa1b",
+        "e-shop-tray/tests/managed-print-child-identity.test.ts": "2b02407b5579987f924f9ead5aa4b3e9794abe5a465e468928eb311bb3c8230f",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "7db291e764e62008d0d7e7c2a1fe7fcb6ef8d4be87bf65663076457f57a202dd"
+      }
     }
   ]
 }
