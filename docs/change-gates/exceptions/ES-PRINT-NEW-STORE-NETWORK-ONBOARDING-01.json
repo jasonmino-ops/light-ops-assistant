@@ -179,7 +179,7 @@
       ],
       "authorizedPathSha256": {
         "e-shop-tray/network-addon/shortcutLifecycle.ts": "697c2e81ceb885c0c781bf28c98e9d0b7d2565c59776c7c485c8aca4ced37b9c",
-        "desktop/build/installer.nsh": "845ff14b26c3b39c53bf1b5051eb7bb39905a594476dd1e945ff1aeb9d76438c",
+        "desktop/build/installer.nsh": "297e3300727abc0ba564e2fd9632470859c5b070a2f33ab648eb56c09c25e46e",
         "desktop/src/main/networkPrintSettingsLauncher.ts": "11afffac6be9d8b90a71e7278b7705034b1a782b8f838a16e9dd571cd2d138a5",
         "e-shop-tray/tests/network-addon-shortcuts.test.ts": "936cb27e98bea1af16d80b066eb706e041a148115bcdd8b83e5dead1101e91b4",
         "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
