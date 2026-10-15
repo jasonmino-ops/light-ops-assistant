@@ -2036,7 +2036,7 @@
       "sourceTaskId": "ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01",
       "featureBranch": "codex/es-print-m4-shortcut-lifecycle",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "baseOriginMainSha": "07d2d629b5c52fb8173efe17ebd42ef1b39c8a3b",
+      "baseOriginMainSha": "84e40ec7db0485608ce85d29cf30f8ffcc9da2e1",
       "status": "ACTIVE",
       "approvedBy": "Founder",
       "createdAt": "2026-10-15T13:20:00Z",
@@ -2054,7 +2054,7 @@
       ],
       "authorizedPathSha256": {
         "e-shop-tray/network-addon/shortcutLifecycle.ts": "697c2e81ceb885c0c781bf28c98e9d0b7d2565c59776c7c485c8aca4ced37b9c",
-        "desktop/build/installer.nsh": "e827bac2a7aaba7bfbf037993c1a9cab5670190b4bbb9bd373006c5cdf2d8c57",
+        "desktop/build/installer.nsh": "9399d47696651195f8711c45f857b055fa3944e911e37108b6825f334bc82b11",
         "desktop/src/main/networkPrintSettingsLauncher.ts": "11afffac6be9d8b90a71e7278b7705034b1a782b8f838a16e9dd571cd2d138a5",
         "e-shop-tray/tests/network-addon-shortcuts.test.ts": "936cb27e98bea1af16d80b066eb706e041a148115bcdd8b83e5dead1101e91b4",
         "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
@@ -2071,7 +2071,7 @@
       },
       "sourceState": {
         "taskId": "ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01",
-        "commit": "11bc59ca3fad2979e3adf3b76bd919e33f2d74c7",
+        "commit": "21bb3447eb4c31f82a83722d2f7716d57870e52b",
         "exactMatchRequired": true
       },
       "governanceState": {
