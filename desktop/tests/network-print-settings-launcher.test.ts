@@ -8,8 +8,8 @@ import {
 } from '../src/main/networkPrintSettingsLauncher'
 
 const appDataPath = 'C:\\Users\\owner\\AppData\\Roaming'
-const target = `C:\\Program Files\\E-Shop\\${NETWORK_PRINT_SETTINGS_EXECUTABLE}`
-const validShortcut = { target, args: '--settings-only', appUserModelId: NETWORK_PRINT_SETTINGS_APP_ID }
+const target = `C:\\Users\\owner\\AppData\\Local\\Programs\\E-Shop-Network-Print-Addon\\${NETWORK_PRINT_SETTINGS_EXECUTABLE}`
+const validShortcut = { target, args: '--settings-only', icon: target, iconIndex: 0, appUserModelId: NETWORK_PRINT_SETTINGS_APP_ID }
 const issueManagedAddonSession = async () => ({
   browserDeviceId: 'desktop-test-device', storeCode: 'STORE-A',
   token: `${'a'.repeat(96)}.${'b'.repeat(43)}`, expiresAt: '2099-01-01T00:00:00.000Z',
@@ -30,7 +30,9 @@ describe('Desktop Network Print settings launcher', () => {
   it.each([
     [{ ...validShortcut, args: '--manage' }, 'legacy manage argument'],
     [{ ...validShortcut, args: '--settings-only --extra' }, 'extra argument'],
-    [{ ...validShortcut, target: 'C:\\Program Files\\Other\\other.exe' }, 'wrong target'],
+    [{ ...validShortcut, target: 'C:\\Program Files\\Other\\E-Shop-Network-Print-Addon.exe' }, 'wrong target'],
+    [{ ...validShortcut, icon: `${target}.copy` }, 'wrong icon'],
+    [{ ...validShortcut, iconIndex: 1 }, 'wrong icon index'],
     [{ ...validShortcut, appUserModelId: 'com.example.other' }, 'wrong app identity'],
     [{ ...validShortcut, target: 'E-Shop-Network-Print-Addon.exe' }, 'relative target'],
   ])('rejects %s', (shortcut) => {
