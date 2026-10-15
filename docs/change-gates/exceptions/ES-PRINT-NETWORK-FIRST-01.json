@@ -2030,6 +2030,64 @@
         "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production migration/deploy or FIELD execution."
       ],
       "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package is built, independently reviewed and evidence retained, or when a required gate fails."
+    },
+    {
+      "authorizationId": "NETWORK-M4-SHORTCUT-LIFECYCLE-PACKAGING-29",
+      "sourceTaskId": "ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01",
+      "featureBranch": "codex/es-print-m4-shortcut-lifecycle",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "07d2d629b5c52fb8173efe17ebd42ef1b39c8a3b",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T13:20:00Z",
+      "approvedAt": "2026-10-15T13:20:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized one single-use Add-on and Single Installer packaging for the M4 shortcut lifecycle corrective. This record is bound to the current M4 task, shortcut-corrective implementation and exact packaging surface; it does not alter any prior authorization or authorize installation, FIELD, Production migration/deploy, signing or publication.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "desktop/build/installer.nsh",
+        "desktop/src/main/networkPrintSettingsLauncher.ts",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts",
+        "desktop/tests/single-installer-packaging.test.ts",
+        "desktop/tests/network-print-settings-launcher.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "697c2e81ceb885c0c781bf28c98e9d0b7d2565c59776c7c485c8aca4ced37b9c",
+        "desktop/build/installer.nsh": "e827bac2a7aaba7bfbf037993c1a9cab5670190b4bbb9bd373006c5cdf2d8c57",
+        "desktop/src/main/networkPrintSettingsLauncher.ts": "11afffac6be9d8b90a71e7278b7705034b1a782b8f838a16e9dd571cd2d138a5",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts": "936cb27e98bea1af16d80b066eb706e041a148115bcdd8b83e5dead1101e91b4",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
+        "desktop/tests/single-installer-packaging.test.ts": "a3b1a9ddb7ce3b8e04e8f51c8e8d4881291fb3d8802f8f95bb3a2aa259d5c142",
+        "desktop/tests/network-print-settings-launcher.test.ts": "93bf24eb2a30045c9fabdbf7dbeb4cbdb5860bf8545025ec50e05cf817e64982"
+      },
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "taskId": "ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01",
+        "commit": "11bc59ca3fad2979e3adf3b76bd919e33f2d74c7",
+        "exactMatchRequired": true
+      },
+      "governanceState": {
+        "commit": "07d2d629b5c52fb8173efe17ebd42ef1b39c8a3b",
+        "exactMatchRequired": true,
+        "zeroNonGovernanceDiff": true
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Add-on candidate and one Single Installer candidate from the reviewed M4 shortcut lifecycle implementation.",
+        "Retain embedded Add-on correspondence, source provenance and SHA-256 evidence; no installation, FIELD, Production migration/deploy, signing or formal publication."
+      ],
+      "prohibitedChanges": [
+        "Any source or product change outside the seven exact authorized inputs above; no DPAPI, identity, relay, schema, migration, provider, RC10, Local First, M4 UI or printing semantic change.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production migration/deploy or FIELD execution."
+      ],
+      "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package is built and evidence retained, or when a required gate fails."
     }
   ]
 }
