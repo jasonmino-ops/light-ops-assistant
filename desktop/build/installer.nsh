@@ -118,7 +118,7 @@ FunctionEnd
 !macroend
 !endif
 
-Function eshopRequestManagedAddonExit
+!macro eshopRequestManagedAddonExit
   ; The only permitted process replacement path is the Add-on's existing
   ; Electron safeExit/stopAndWait lifecycle. Unknown or unverifiable installs
   ; remain fail-closed and are never sent a maintenance command.
@@ -174,13 +174,13 @@ Function eshopRequestManagedAddonExit
     DetailPrint "The managed Network Print Add-on executable is missing. Stopping."
     SetErrorLevel 31
     Quit
-FunctionEnd
+!macroend
 
 !macro eshopCheckNetworkAddonProcess
   ; Run before any Desktop predecessor handoff or Desktop file removal. A
   ; verified managed resident is asked to drain and exit; every other process
   ; state fails closed before files or registrations can be replaced.
-  Call eshopRequestManagedAddonExit
+  !insertmacro eshopRequestManagedAddonExit
 !macroend
 
 !macro eshopCheckNetworkAddonInstallState
