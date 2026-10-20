@@ -2088,6 +2088,77 @@
         "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production migration/deploy or FIELD execution."
       ],
       "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package is built and evidence retained, or when a required gate fails."
+    },
+    {
+      "authorizationId": "NETWORK-COMMERCIAL-SETUP-UX-RC11-BUILD-30",
+      "sourceTaskId": "ES-PRINT-COMMERCIAL-SETUP-UX-01",
+      "featureBranch": "codex/es-print-commercial-setup-ux-01",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "304a341f43fa633ce70699917c12bade0ff9aa19",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-18T15:05:00Z",
+      "approvedAt": "2026-10-20T15:43:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized one single-use unsigned TEST-only Network Print Add-on candidate build with independent version identity 0.1.0-commercial-rc.11 for the ES-PRINT-COMMERCIAL-SETUP-UX-01 UI V1. The only changes from the Founder-selected 304a341 successor baseline are ui.html, ui.css, ui.ts and the RC11 version constant in build-network-addon.mjs. origin/main has advanced past 304a341; per the Founder baseline decision the other eleven inputs are pinned to their 304a341 bytes (the trusted content at the M2-24 feature merge), so RC11 deliberately excludes the M3/M4 runtime now on origin/main. This record merges nothing into origin/main, does not alter any prior authorization, and does not authorize Single Installer packaging, business-machine installation, business-store FIELD, Production migration/deploy, signing or publication.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/coldModeLifecycle.ts",
+        "e-shop-tray/network-addon/entryCoordinator.ts",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/network-addon/preload.ts",
+        "e-shop-tray/network-addon/profile.ts",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "e-shop-tray/network-addon/ui.css",
+        "e-shop-tray/network-addon/ui.html",
+        "e-shop-tray/network-addon/ui.ts",
+        "e-shop-tray/scripts/build-network-addon.mjs",
+        "e-shop-tray/src/desktopBindingIdentity.ts",
+        "e-shop-tray/src/networkNodeConfig.ts",
+        "lib/i18n/en.ts",
+        "lib/i18n/km.ts",
+        "lib/i18n/zh.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/coldModeLifecycle.ts": "9d1d16981c9f3bca96d53346dac1ca1608cbdafacdd755897b5e1e953fd12287",
+        "e-shop-tray/network-addon/entryCoordinator.ts": "9098e74e20db311aa48e48e606527426b51b0ca676ae8f5bb56ccea82052e249",
+        "e-shop-tray/network-addon/main.ts": "0cfe1f4d6dfc172f84706e32682e12f571ceeb13b096c4be250042aa6f91cc5e",
+        "e-shop-tray/network-addon/preload.ts": "65d555ed7efbd3d01c0f7f4d837b3d6471faacdd6ab16d744d3a2a0966f691b2",
+        "e-shop-tray/network-addon/profile.ts": "f07cb419f45e3cbcd96bbefdf51d7d14dc1254a5d8347d759f19fcdf41ace16c",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "22eae61c2c071d78f4369e413241b34a1205df2f48b22dfb47fccc018ded4ab5",
+        "e-shop-tray/network-addon/ui.css": "0764b555a5449b5b61d784e6db80f2f60be230da7d5aed9c58234e271fb3fbb7",
+        "e-shop-tray/network-addon/ui.html": "7ee578691ecec6803ca433771340b7c4885fec3c16bf7d981a8fa6217705b24f",
+        "e-shop-tray/network-addon/ui.ts": "e15883518dd6d4bef2e86792066653e8c7b04252030ea565921d9268eab0e708",
+        "e-shop-tray/scripts/build-network-addon.mjs": "592e562d912d13f7d0ed860f0dae88420c591a0661711b7338260f4eab809515",
+        "e-shop-tray/src/desktopBindingIdentity.ts": "fd3a952daf63e60e6e6a4a0d6012d1370f3ea048d7be315143a1c7e5eaeb2669",
+        "e-shop-tray/src/networkNodeConfig.ts": "4bee45a291c64393870145c1ebfe0a353cbaa9037896dfa753831df9f6bac1c2",
+        "lib/i18n/en.ts": "951c3705f7e92854fe87129085f9d22347ec2dc0be0694ba9ca5fced87b1f59f",
+        "lib/i18n/km.ts": "f77d034b9acb6f2b720cc9ccdec8c311e24b1b0fc0b9bcbb237d2db8a05f2a43",
+        "lib/i18n/zh.ts": "c09b0e3703e7307d10f87b073922fed38067bfbfeace946434fa5a277862a36e"
+      },
+      "approvedContentMappingSha256": "25ddbc678aa6278f3239f395222569eaa4d2bd52e8b6520efa2bb193c11aaa64",
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.11",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "taskId": "ES-PRINT-COMMERCIAL-SETUP-UX-01",
+        "commit": "6dd5ffdde47dce798e14256991a2f876534411f6",
+        "exactMatchRequired": true,
+        "allowedFollowUpCommit": "Exactly one branch commit that byte-syncs docs/change-gates/exceptions/ES-PRINT-NETWORK-FIRST-01.json to trusted origin/main; no other change."
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.11 Network Print Add-on candidate from the reviewed UI V1 source, retaining embedded source provenance and SHA-256 evidence.",
+        "Install that one candidate only on a Founder-designated non-business test machine that does not carry the M4 Single-Installer-managed Add-on, for Founder FIELD of the setup UI only."
+      ],
+      "prohibitedChanges": [
+        "Any source or product change outside the four changed inputs (ui.html, ui.css, ui.ts, the RC11 version constant); the source inputs of main.cjs, preload.cjs and network-render.cjs/html, and all printing, relay, journal, profile, DPAPI, identity, shortcut, cold-mode, IPC and safety-gate behaviour, stay byte-identical to 304a341.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard or candidate builder; no second candidate build, Single Installer, installation on a business or M4 FIELD machine, Production migration/deploy, signing or publication."
+      ],
+      "expirationCondition": "Close this single-use grant once the one RC11 Add-on candidate is built and its evidence retained, or when a required gate fails. On closure record featureMergeCommitSha as the exact built source commit (RC9-19 precedent), since this grant authorizes no merge."
     }
   ]
 }
