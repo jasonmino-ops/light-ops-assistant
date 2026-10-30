@@ -12,6 +12,7 @@ import { matchesProductSearch } from '@/lib/product-search'
 import ProductBulkImportPanel from './ProductBulkImportPanel'
 import Link from 'next/link'
 import { useManagementReturnHref } from '@/app/components/useManagementReturnHref'
+import InventoryEntry from '@/app/components/InventoryEntry'
 
 type MarketingLang = 'zh' | 'en' | 'km'
 type MarketingTemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
@@ -1888,6 +1889,8 @@ export default function ProductsPage() {
             </div>
           ))}
         </div>
+
+        {canManageProducts ? <InventoryEntry /> : null}
 
         {canManageProducts ? (
           <>
