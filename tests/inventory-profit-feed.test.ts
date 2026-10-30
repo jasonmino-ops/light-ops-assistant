@@ -31,22 +31,22 @@ async function main() {
     else process.env.INVENTORY_PROFIT_PILOT_STORE_ID = oldStoreId
   })
 
-  let lastProductWhere: AnyRecord | null = null
-  let lastSaleWhere: AnyRecord | null = null
-  let lastOrderWhere: AnyRecord | null = null
+  const productWheres: AnyRecord[] = []
+  const saleWheres: AnyRecord[] = []
+  const orderWheres: AnyRecord[] = []
   stub('store', 'findUnique', async ({ where }) => {
     assert.deepEqual(where, { id: 'pilot-store' })
     return { id: 'pilot-store', tenantId: 'pilot-tenant', code: 'PILOT', status: 'ACTIVE' }
   })
   stub('product', 'findMany', async ({ where }) => {
-    lastProductWhere = where
+    productWheres.push(where)
     return [{
       id: 'product-a', sku: 'SKU-A', barcode: 'BAR-A', name: 'A', status: 'ACTIVE',
       updatedAt: new Date('2026-10-30T10:00:00Z'),
     }]
   })
   stub('saleRecord', 'findMany', async ({ where }) => {
-    lastSaleWhere = where
+    saleWheres.push(where)
     if (where.saleType === 'REFUND') {
       return [{
         id: 'refund-a', recordNo: 'R-1', orderNo: 'R-1', originalSaleRecordId: 'sale-a',
@@ -65,7 +65,7 @@ async function main() {
     }]
   })
   stub('customerOrder', 'findMany', async ({ where }) => {
-    lastOrderWhere = where
+    orderWheres.push(where)
     return [{
       id: 'customer-order-a', orderNo: 'CO-1',
       itemsJson: JSON.stringify([{
@@ -87,13 +87,13 @@ async function main() {
 
   const products = await (await GET(request('dataset=products&limit=5000'))).json()
   assert.equal(products.items.length, 1)
-  assert.equal(lastProductWhere?.tenantId, 'pilot-tenant')
+  assert.equal(productWheres.at(-1)?.tenantId, 'pilot-tenant')
   assert.equal(JSON.stringify(products).includes('pilot-store'), false, 'feed does not echo internal store scope')
 
   const sales = await (await GET(request('dataset=sales&from=2026-10-30&to=2026-10-30'))).json()
   assert.equal(sales.items[0].lineAmount, 15)
   assert.deepEqual(
-    { tenantId: lastSaleWhere?.tenantId, storeId: lastSaleWhere?.storeId, saleType: lastSaleWhere?.saleType },
+    { tenantId: saleWheres.at(-1)?.tenantId, storeId: saleWheres.at(-1)?.storeId, saleType: saleWheres.at(-1)?.saleType },
     { tenantId: 'pilot-tenant', storeId: 'pilot-store', saleType: 'SALE' },
   )
 
@@ -102,14 +102,14 @@ async function main() {
   assert.equal(JSON.stringify(customerOrders).includes('must-not-leak'), false)
   assert.equal(JSON.stringify(customerOrders).includes('customerPhone'), false)
   assert.deepEqual(
-    { tenantId: lastOrderWhere?.tenantId, storeId: lastOrderWhere?.storeId, status: lastOrderWhere?.status, paymentStatus: lastOrderWhere?.paymentStatus },
+    { tenantId: orderWheres.at(-1)?.tenantId, storeId: orderWheres.at(-1)?.storeId, status: orderWheres.at(-1)?.status, paymentStatus: orderWheres.at(-1)?.paymentStatus },
     { tenantId: 'pilot-tenant', storeId: 'pilot-store', status: 'COMPLETED', paymentStatus: 'PAID' },
   )
 
   const refunds = await (await GET(request('dataset=refunds&from=2026-10-30&to=2026-10-30'))).json()
   assert.equal(refunds.items[0].quantity, 2, 'refund quantity is exported as an explicit positive quantity')
   assert.equal(refunds.items[0].refundAmount, 10)
-  assert.equal(lastSaleWhere?.saleType, 'REFUND')
+  assert.equal(saleWheres.at(-1)?.saleType, 'REFUND')
 
   assert.equal((await GET(request('dataset=sales&from=2026-01-01&to=2026-10-30'))).status, 400, 'feed range is bounded to the weekly 35-day reload window')
   console.log('inventory profit feed tests passed: secret, fixed store isolation, sales, customer orders, refunds and PII exclusion')
