@@ -17,8 +17,8 @@ assert.match(profitEntry, /href="\/sales-profit"/)
 
 assert.match(inventory, /useState\(false\)/, 'all-inventory view is opt-in')
 assert.match(inventory, /\[item\.name, item\.barcode, item\.sku \?\? ''\]/, 'search covers name, barcode and SKU')
-assert.match(inventory, /minimumStock.*useState\('10'\)/s, 'minimum stock defaults to 10')
-assert.match(inventory, /requestKey,\s*productId,\s*quantity:/s, 'receiving sends its stable request key')
+assert.match(inventory, /minimumStock[\s\S]*useState\('10'\)/, 'minimum stock defaults to 10')
+assert.match(inventory, /requestKey,\s*productId,\s*quantity:/, 'receiving sends its stable request key')
 assert.match(inventory, /\/api\/inventory-profit\/inventory\/export/, 'inventory exports through the protected route')
 assert.match(inventory, /telegramPresenceHeaders\(\)/, 'sensitive inventory actions request Telegram presence')
 
