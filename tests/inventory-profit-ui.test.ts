@@ -8,6 +8,9 @@ const inventory = read('app/inventory/page.tsx')
 const salesProfit = read('app/sales-profit/page.tsx')
 const inventoryEntry = read('app/components/InventoryEntry.tsx')
 const profitEntry = read('app/components/SalesProfitEntry.tsx')
+const salePage = read('app/sale/page.tsx')
+const saleRoute = read('app/api/sales/route.ts')
+const cashierRoute = read('app/api/cashier/sales/route.ts')
 
 assert.match(products, /import InventoryEntry from '@\/app\/components\/InventoryEntry'/)
 assert.match(products, /\{canManageProducts \? <InventoryEntry \/> : null\}/)
@@ -29,4 +32,8 @@ for (const label of ['\u51c0\u9500\u552e\u989d', '\u9500\u552e\u6210\u672c', '\u
 assert.match(salesProfit, /costOfGoodsSold === null \? '\u2014'/, 'missing cost is rendered as unavailable, not zero')
 assert.match(salesProfit, /telegramPresenceHeaders\(\)/, 'profit requests Telegram presence')
 
-console.log('inventory profit UI tests passed: owner entries, periods, NULL cost, search, defaults, receiving and export')
+for (const [name, source] of [['sale page', salePage], ['sale route', saleRoute], ['cashier sale route', cashierRoute]]) {
+  assert.doesNotMatch(source, /inventory-profit|InventoryProfitProvider|ExternalGoogleProvider/, `${name} does not depend on the external pilot`)
+}
+
+console.log('inventory profit UI tests passed: owner entries, periods, NULL cost, search, defaults, receiving, export and sale isolation')
