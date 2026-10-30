@@ -11,6 +11,76 @@ import type { InventoryProfitProvider } from './provider'
 
 type FetchLike = typeof fetch
 
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function finite(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function nullableFinite(value: unknown): value is number | null {
+  return value === null || finite(value)
+}
+
+function salesProfit(value: unknown): SalesProfit | null {
+  const item = record(value)
+  if (
+    !item ||
+    !['TODAY', 'WEEK', 'MONTH'].includes(String(item.period)) ||
+    !finite(item.netSales) ||
+    !nullableFinite(item.costOfGoodsSold) ||
+    !nullableFinite(item.grossProfit) ||
+    !nullableFinite(item.grossMarginRate) ||
+    !finite(item.costCoverageRate) ||
+    item.costCoverageRate < 0 ||
+    item.costCoverageRate > 1 ||
+    item.costMethod !== 'DAILY_PERIODIC_WAC'
+  ) return null
+  return item as SalesProfit
+}
+
+function inventoryItems(value: unknown): InventoryItem[] | null {
+  if (!Array.isArray(value) || value.length > 5_000) return null
+  for (const valueItem of value) {
+    const item = record(valueItem)
+    if (
+      !item ||
+      typeof item.productId !== 'string' || !item.productId ||
+      !(item.sku === null || typeof item.sku === 'string') ||
+      typeof item.barcode !== 'string' ||
+      typeof item.name !== 'string' ||
+      !finite(item.currentStock) ||
+      !finite(item.minimumStock) ||
+      item.minimumStock < 0 ||
+      !nullableFinite(item.averageCost) ||
+      !nullableFinite(item.inventoryValue) ||
+      typeof item.updatedAt !== 'string'
+    ) return null
+  }
+  return value as InventoryItem[]
+}
+
+function minimumStockResult(value: unknown): { minimumStock: number } | null {
+  const item = record(value)
+  return item && Number.isInteger(item.minimumStock) && Number(item.minimumStock) >= 0
+    ? { minimumStock: Number(item.minimumStock) }
+    : null
+}
+
+function receivingResult(value: unknown): ReceivingResult | null {
+  const item = record(value)
+  if (
+    !item ||
+    typeof item.requestKey !== 'string' ||
+    typeof item.duplicate !== 'boolean' ||
+    typeof item.recordedAt !== 'string'
+  ) return null
+  return item as ReceivingResult
+}
+
 export class InventoryProfitExternalError extends Error {
   constructor(public readonly code: 'NOT_CONFIGURED' | 'TIMEOUT' | 'UNAVAILABLE' | 'INVALID_RESPONSE') {
     super(code)
@@ -34,22 +104,26 @@ export class ExternalGoogleProvider implements InventoryProfitProvider {
   }
 
   getSalesProfit(storeId: string, period: ProfitPeriod) {
-    return this.request<SalesProfit>('GET_SALES_PROFIT', { storeId, period })
+    return this.request('GET_SALES_PROFIT', { storeId, period }, salesProfit)
   }
 
   listInventory(storeId: string, input: InventoryListInput) {
-    return this.request<InventoryItem[]>('LIST_INVENTORY', { storeId, ...input })
+    return this.request('LIST_INVENTORY', { storeId, ...input }, inventoryItems)
   }
 
   setMinimumStock(storeId: string, minimumStock: number) {
-    return this.request<{ minimumStock: number }>('SET_MINIMUM_STOCK', { storeId, minimumStock })
+    return this.request('SET_MINIMUM_STOCK', { storeId, minimumStock }, minimumStockResult)
   }
 
   recordReceiving(storeId: string, input: ReceivingInput) {
-    return this.request<ReceivingResult>('RECEIVE', { storeId, ...input })
+    return this.request('RECEIVE', { storeId, ...input }, receivingResult)
   }
 
-  private async request<T>(action: string, payload: Record<string, unknown>): Promise<ExternalSnapshot<T>> {
+  private async request<T>(
+    action: string,
+    payload: Record<string, unknown>,
+    validate: (value: unknown) => T | null,
+  ): Promise<ExternalSnapshot<T>> {
     if (!this.options.endpoint || !this.options.secret) {
       throw new InventoryProfitExternalError('NOT_CONFIGURED')
     }
@@ -70,10 +144,11 @@ export class ExternalGoogleProvider implements InventoryProfitProvider {
         asOf?: unknown
         data?: unknown
       } | null
-      if (!body?.ok || typeof body.asOf !== 'string' || body.data === undefined) {
+      const data = body?.ok && typeof body.asOf === 'string' ? validate(body.data) : null
+      if (!body?.ok || typeof body.asOf !== 'string' || data === null) {
         throw new InventoryProfitExternalError('INVALID_RESPONSE')
       }
-      return { asOf: body.asOf, data: body.data as T }
+      return { asOf: body.asOf, data }
     } catch (error) {
       if (error instanceof InventoryProfitExternalError) throw error
       if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {

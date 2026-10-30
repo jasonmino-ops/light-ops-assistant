@@ -83,6 +83,7 @@ async function main() {
 
   const originalFetch = globalThis.fetch
   let stale = false
+  let malformedProfit = false
   let receivingCalls = 0
   const seenActions: string[] = []
   globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
@@ -99,6 +100,7 @@ async function main() {
       ] })
     }
     if (body.action === 'GET_SALES_PROFIT') {
+      if (malformedProfit) return Response.json({ ok: true, asOf, data: { period: body.period, costCoverageRate: 1 } })
       return Response.json({ ok: true, asOf, data: {
         period: body.period,
         netSales: 100,
@@ -169,6 +171,12 @@ async function main() {
   assert.equal(staleResponse.status, 503)
   assert.deepEqual(await staleResponse.json(), { ok: false, state: 'STALE', message: '数据暂时无法更新' })
   stale = false
+
+  malformedProfit = true
+  const malformedResponse = await salesProfit(req('/api/inventory-profit/sales-profit?period=TODAY', { presence }))
+  assert.equal(malformedResponse.status, 503)
+  assert.deepEqual(await malformedResponse.json(), { ok: false, state: 'INVALID_RESPONSE', message: '数据暂时无法更新' })
+  malformedProfit = false
 
   const abortingFetch = ((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
     init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
