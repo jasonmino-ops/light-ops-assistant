@@ -251,7 +251,8 @@ function withImages(p: Product, imageUrls: string[]): Product {
 
 export default function ProductsPage() {
   const { t } = useLocale()
-  const { effectiveRole, realRole, currencyCode } = useWorkMode()
+  const { effectiveRole, currencyCode } = useWorkMode()
+  const { realRole } = useWorkMode()
   const managementReturnHref = useManagementReturnHref()
   const canManageProducts = effectiveRole === 'OWNER'
   const canViewInventory = realRole === 'OWNER'
