@@ -6,7 +6,8 @@ import { getInventoryProfitProvider } from '@/lib/inventory-profit/provider'
 
 function csvCell(value: string | number | null) {
   if (value === null) return ''
-  const text = String(value)
+  const raw = String(value)
+  const text = typeof value === 'string' && /^[\t ]*[=+\-@]/.test(raw) ? `'${raw}` : raw
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 

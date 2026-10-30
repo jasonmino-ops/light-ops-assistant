@@ -26,7 +26,7 @@ type ProfitResponse = {
 }
 
 export default function SalesProfitPage() {
-  const { effectiveRole, currencyCode } = useWorkMode()
+  const { realRole, currencyCode } = useWorkMode()
   const [period, setPeriod] = useState<ProfitPeriod>('TODAY')
   const [result, setResult] = useState<ProfitResponse | null>(null)
   const [error, setError] = useState('')
@@ -57,10 +57,10 @@ export default function SalesProfitPage() {
   }, [period])
 
   useEffect(() => {
-    if (effectiveRole === 'OWNER') void load()
-  }, [effectiveRole, load])
+    if (realRole === 'OWNER') void load()
+  }, [realRole, load])
 
-  if (effectiveRole !== 'OWNER') {
+  if (realRole !== 'OWNER') {
     return <main className={styles.page}><div className={styles.shell}><p className={styles.error}>仅老板可使用</p></div></main>
   }
 

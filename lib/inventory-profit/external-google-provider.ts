@@ -104,7 +104,10 @@ export class ExternalGoogleProvider implements InventoryProfitProvider {
   }
 
   getSalesProfit(storeId: string, period: ProfitPeriod) {
-    return this.request('GET_SALES_PROFIT', { storeId, period }, salesProfit)
+    return this.request('GET_SALES_PROFIT', { storeId, period }, (value) => {
+      const result = salesProfit(value)
+      return result?.period === period ? result : null
+    })
   }
 
   listInventory(storeId: string, input: InventoryListInput) {
@@ -112,11 +115,17 @@ export class ExternalGoogleProvider implements InventoryProfitProvider {
   }
 
   setMinimumStock(storeId: string, minimumStock: number) {
-    return this.request('SET_MINIMUM_STOCK', { storeId, minimumStock }, minimumStockResult)
+    return this.request('SET_MINIMUM_STOCK', { storeId, minimumStock }, (value) => {
+      const result = minimumStockResult(value)
+      return result?.minimumStock === minimumStock ? result : null
+    })
   }
 
   recordReceiving(storeId: string, input: ReceivingInput) {
-    return this.request('RECEIVE', { storeId, ...input }, receivingResult)
+    return this.request('RECEIVE', { storeId, ...input }, (value) => {
+      const result = receivingResult(value)
+      return result?.requestKey === input.requestKey ? result : null
+    })
   }
 
   private async request<T>(

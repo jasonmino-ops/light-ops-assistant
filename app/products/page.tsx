@@ -251,9 +251,10 @@ function withImages(p: Product, imageUrls: string[]): Product {
 
 export default function ProductsPage() {
   const { t } = useLocale()
-  const { effectiveRole, currencyCode } = useWorkMode()
+  const { effectiveRole, realRole, currencyCode } = useWorkMode()
   const managementReturnHref = useManagementReturnHref()
   const canManageProducts = effectiveRole === 'OWNER'
+  const canViewInventory = realRole === 'OWNER'
   const fmt = useCallback((key: string, vars: Record<string, string | number>) => {
     let text = t(key)
     Object.entries(vars).forEach(([name, value]) => {
@@ -1890,7 +1891,7 @@ export default function ProductsPage() {
           ))}
         </div>
 
-        {canManageProducts ? <InventoryEntry /> : null}
+        {canViewInventory ? <InventoryEntry /> : null}
 
         {canManageProducts ? (
           <>

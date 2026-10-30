@@ -49,7 +49,7 @@ function newRequestKey() {
 }
 
 export default function InventoryPage() {
-  const { effectiveRole } = useWorkMode()
+  const { realRole } = useWorkMode()
   const [snapshot, setSnapshot] = useState<InventoryResponse | null>(null)
   const [query, setQuery] = useState('')
   const [showAll, setShowAll] = useState(false)
@@ -83,8 +83,8 @@ export default function InventoryPage() {
   }, [])
 
   useEffect(() => {
-    if (effectiveRole === 'OWNER') void load()
-  }, [effectiveRole, load])
+    if (realRole === 'OWNER') void load()
+  }, [realRole, load])
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase()
@@ -183,7 +183,7 @@ export default function InventoryPage() {
     }
   }
 
-  if (effectiveRole !== 'OWNER') {
+  if (realRole !== 'OWNER') {
     return <main className={styles.page}><div className={styles.shell}><p className={styles.error}>仅老板可使用</p></div></main>
   }
 

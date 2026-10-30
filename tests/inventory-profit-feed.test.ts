@@ -92,6 +92,8 @@ async function main() {
 
   const sales = await (await GET(request('dataset=sales&from=2026-10-30&to=2026-10-30'))).json()
   assert.equal(sales.items[0].lineAmount, 15)
+  assert.equal(saleWheres.at(-1)?.createdAt.gte.toISOString(), '2026-10-29T17:00:00.000Z')
+  assert.equal(saleWheres.at(-1)?.createdAt.lte.toISOString(), '2026-10-30T16:59:59.999Z', 'feed uses the Asia/Phnom_Penh business-day boundary')
   assert.deepEqual(
     { tenantId: saleWheres.at(-1)?.tenantId, storeId: saleWheres.at(-1)?.storeId, saleType: saleWheres.at(-1)?.saleType },
     { tenantId: 'pilot-tenant', storeId: 'pilot-store', saleType: 'SALE' },
@@ -112,7 +114,8 @@ async function main() {
   assert.equal(saleWheres.at(-1)?.saleType, 'REFUND')
 
   assert.equal((await GET(request('dataset=sales&from=2026-01-01&to=2026-10-30'))).status, 400, 'feed range is bounded to the weekly 35-day reload window')
-  console.log('inventory profit feed tests passed: secret, fixed store isolation, sales, customer orders, refunds and PII exclusion')
+  assert.equal((await GET(request('dataset=sales&from=2026-02-31&to=2026-02-31'))).status, 400, 'invalid calendar dates fail closed')
+  console.log('inventory profit feed tests passed: secret, fixed store isolation, Phnom Penh range, sales, customer orders, refunds and PII exclusion')
 }
 
 main()

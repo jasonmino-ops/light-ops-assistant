@@ -1,5 +1,6 @@
 export const INVENTORY_PROFIT_FEED_SCHEMA_VERSION = 1
 export const INVENTORY_PROFIT_FEED_LIMIT = 5_000
+const FEED_DAY_MS = 86_400_000
 
 export type InventoryProfitFeedDataset = 'products' | 'sales' | 'customer-orders' | 'refunds'
 
@@ -26,14 +27,25 @@ export function parseFeedRange(from: string | null, to: string | null): {
   from: Date
   to: Date
 } | null {
-  if (!from || !to) return null
-  const fromDate = new Date(`${from}T00:00:00.000Z`)
-  const toDate = new Date(`${to}T23:59:59.999Z`)
-  if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime()) || fromDate > toDate) {
+  if (!validFeedDate(from) || !validFeedDate(to) || from > to) return null
+  const fromDay = Date.parse(`${from}T00:00:00.000Z`)
+  const toDay = Date.parse(`${to}T00:00:00.000Z`)
+  const spanDays = Math.floor((toDay - fromDay) / FEED_DAY_MS) + 1
+  if (spanDays > 35) return null
+
+  // The Pilot reporting calendar is fixed to Asia/Phnom_Penh (+07:00).
+  const fromDate = new Date(`${from}T00:00:00.000+07:00`)
+  const toDate = new Date(Date.parse(`${to}T00:00:00.000+07:00`) + FEED_DAY_MS - 1)
+  if (!Number.isFinite(fromDate.getTime()) || !Number.isFinite(toDate.getTime())) {
     return null
   }
-  const spanDays = Math.floor((toDate.getTime() - fromDate.getTime()) / 86_400_000) + 1
-  return spanDays <= 35 ? { from: fromDate, to: toDate } : null
+  return { from: fromDate, to: toDate }
+}
+
+function validFeedDate(value: string | null): value is string {
+  if (!value || !/^20\d{2}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
 }
 
 export function sanitizeCustomerOrderItems(itemsJson: string): Array<{

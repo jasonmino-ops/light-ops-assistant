@@ -115,11 +115,9 @@ const context = vm.createContext({
   UrlFetchApp: { fetch: (url, options) => fetchImpl(url, options) },
   Utilities: {
     sleep: () => { sleepCalls += 1 },
-    formatDate: (date) => {
-      const year = date.getFullYear()
-      const month = String(date.getMonth() + 1).padStart(2, '0')
-      const day = String(date.getDate()).padStart(2, '0')
-      return `${year}-${month}-${day}`
+    formatDate: (date, timezone) => {
+      assert.equal(timezone, 'Asia/Phnom_Penh')
+      return new Date(date.getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
     },
   },
   Session: { getScriptTimeZone: () => 'UTC' },
@@ -140,14 +138,18 @@ assert.deepEqual([...spreadsheet.sheets.keys()].sort(), ['Config', 'DailyProfit'
 context.setConfigValue_('PROVIDER_SECRET', 'provider-secret')
 context.setConfigValue_('PILOT_STORE_ID', 'pilot-store')
 
+spreadsheet.getSheetByName('Inventory').data[0][0] = 'tampered-before-auth'
 assert.deepEqual(post({ action: 'LIST_INVENTORY', secret: 'wrong', storeId: 'pilot-store' }), { ok: false, error: 'UNAUTHORIZED' })
+assert.equal(spreadsheet.getSheetByName('Inventory').data[0][0], 'tampered-before-auth', 'unauthenticated doPost cannot rewrite sheet structure')
 assert.deepEqual(post({ action: 'LIST_INVENTORY', secret: 'provider-secret', storeId: 'other-store' }), { ok: false, error: 'PILOT_STORE_REQUIRED' })
+assert.equal(spreadsheet.getSheetByName('Inventory').data[0][0], 'tampered-before-auth', 'wrong-store doPost cannot rewrite sheet structure')
+context.ensureInventoryProfitSheets_()
 
 context.replaceObjectRows_('Inventory', [{
   productId: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1', currentStock: 0,
   minimumStock: 10, averageCost: '', inventoryValue: '', updatedAt: new Date().toISOString(),
 }])
-context.setConfigValue_('LAST_SYNC_AT', new Date().toISOString())
+context.setConfigValue_('LAST_FEED_SYNC_AT', '2026-10-30T00:00:00.000Z')
 const receiveBody = {
   action: 'RECEIVE', secret: 'provider-secret', storeId: 'pilot-store', requestKey: 'receive:test:0001',
   productId: 'p1', quantity: 10, unitCost: 2, date: '2026-10-30',
@@ -159,6 +161,10 @@ assert.equal(firstReceiving.data.duplicate, false)
 assert.equal(duplicateReceiving.data.duplicate, true)
 assert.equal(context.rowsAsObjects_('Entries').length, 1, 'requestKey prevents duplicate entry rows')
 assert.ok(lockAttempts >= 3 && lockAttempts === lockReleases, 'mutations use and release LockService')
+assert.equal(context.configValue_('LAST_FEED_SYNC_AT'), '2026-10-30T00:00:00.000Z', 'receiving does not disguise stale feed data as fresh')
+assert.equal(post({ action: 'SET_MINIMUM_STOCK', secret: 'provider-secret', storeId: 'pilot-store', minimumStock: 8 }).ok, true)
+assert.equal(context.configValue_('LAST_FEED_SYNC_AT'), '2026-10-30T00:00:00.000Z', 'minimum-stock changes do not disguise stale feed data as fresh')
+assert.deepEqual(post({ ...receiveBody, requestKey: 'receive:test:bad-date', date: '2026-02-30' }), { ok: false, error: 'INVALID_RECEIVING' })
 
 context.replaceObjectRows_('Entries', [
   { requestKey: 'wac-entry-001', productId: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1', quantity: 10, unitCost: 2, date: '2026-10-30', createdAt: '2026-10-30T01:00:00Z' },
@@ -178,6 +184,38 @@ assert.equal(salesDaily.costOfGoodsSold, 15)
 assert.equal(dailyProfit.costOfGoodsSold, 15)
 assert.equal(dailyProfit.grossProfit, 35)
 assert.equal(dailyProfit.costMethod, 'DAILY_PERIODIC_WAC')
+
+context.replaceObjectRows_('Entries', [])
+context.replaceObjectRows_('SalesDaily', [])
+context.applyFeedPayload_({
+  products: [
+    { id: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1' },
+    { id: 'p2', sku: 'SKU-2', barcode: 'BAR-2', name: 'Product 2' },
+  ],
+  sales: [{ createdAt: '2026-10-30T18:00:00.000Z', productId: null, quantity: 1, lineAmount: 0 }],
+  customerOrders: [
+    {
+      paidAt: '2026-10-30T18:05:00.000Z', totalAmount: 50,
+      items: [
+        { productId: 'p1', quantity: 2, lineAmount: 60 },
+        { productId: 'p2', quantity: 1, lineAmount: 40 },
+      ],
+    },
+    {
+      paidAt: '2026-10-30T18:10:00.000Z', totalAmount: 0,
+      items: [{ productId: 'p1', quantity: 1, lineAmount: 20 }],
+    },
+  ],
+  refunds: [],
+}, '2026-10-31', '2026-10-31')
+const localSales = context.rowsAsObjects_('SalesDaily')
+assert.deepEqual([...new Set(localSales.map((row) => row.date))], ['2026-10-31'], 'UTC evening is bucketed into the Phnom Penh business day')
+assert.equal(localSales.reduce((total, row) => total + Number(row.netSales), 0), 50, 'coupon discount is allocated so item net sales equal the paid total')
+assert.equal(localSales.find((row) => row.productId === 'p1').quantity, 3, 'zero-payable coupon orders still consume inventory')
+assert.equal(localSales.some((row) => row.productId === '__UNATTRIBUTED__'), true, 'unattributed sales remain visible to coverage accounting')
+const incompleteProfit = context.rowsAsObjects_('DailyProfit')[0]
+assert.equal(incompleteProfit.costCoverageRate, 0)
+assert.equal(incompleteProfit.costOfGoodsSold, '', 'unattributed or missing cost never becomes zero COGS')
 
 context.setConfigValue_('FEED_URL', 'https://feed.test/api')
 context.setConfigValue_('FEED_SECRET', 'feed-secret')
@@ -218,7 +256,7 @@ assert.equal(sleepCalls, 2)
 assert.equal(sawBearerSecret, true)
 
 const source = fs.readFileSync('apps-script/inventory-profit/Code.gs', 'utf8')
-assert.match(source, /addDays_\(today, -3\)/, 'hourly sync covers today through D-3')
-assert.match(source, /addDays_\(today, -34\)/, 'weekly sync covers 35 days')
+assert.match(source, /shiftLocalDate_\(today, -3\)/, 'hourly sync covers today through D-3')
+assert.match(source, /shiftLocalDate_\(today, -34\)/, 'weekly sync covers 35 days')
 
-console.log('inventory profit Apps Script tests passed: doPost, secret, store, LockService, requestKey, WAC, 5,000 SKU and retry')
+console.log('inventory profit Apps Script tests passed: doPost, secret, store, LockService, requestKey, WAC, timezone, coupon allocation, NULL cost, 5,000 SKU and retry')

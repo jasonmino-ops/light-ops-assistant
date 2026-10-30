@@ -13,7 +13,8 @@ const saleRoute = read('app/api/sales/route.ts')
 const cashierRoute = read('app/api/cashier/sales/route.ts')
 
 assert.match(products, /import InventoryEntry from '@\/app\/components\/InventoryEntry'/)
-assert.match(products, /\{canManageProducts \? <InventoryEntry \/> : null\}/)
+assert.match(products, /const canViewInventory = realRole === 'OWNER'/)
+assert.match(products, /\{canViewInventory \? <InventoryEntry \/> : null\}/)
 assert.equal((products.match(/<InventoryEntry \/>/g) ?? []).length, 1, 'products adds one inventory entry only')
 assert.match(inventoryEntry, /href="\/inventory"/)
 assert.match(profitEntry, /href="\/sales-profit"/)
@@ -24,6 +25,7 @@ assert.match(inventory, /minimumStock[\s\S]*useState\('10'\)/, 'minimum stock de
 assert.match(inventory, /requestKey,\s*productId,\s*quantity:/, 'receiving sends its stable request key')
 assert.match(inventory, /\/api\/inventory-profit\/inventory\/export/, 'inventory exports through the protected route')
 assert.match(inventory, /telegramPresenceHeaders\(\)/, 'sensitive inventory actions request Telegram presence')
+assert.match(inventory, /if \(realRole !== 'OWNER'\)/, 'inventory follows real OWNER identity even in staff work mode')
 
 for (const period of ['TODAY', 'WEEK', 'MONTH']) assert.match(salesProfit, new RegExp(`value: '${period}'`))
 for (const label of ['\u51c0\u9500\u552e\u989d', '\u9500\u552e\u6210\u672c', '\u9500\u552e\u6bdb\u5229', '\u9500\u552e\u6bdb\u5229\u7387', '\u6210\u672c\u8986\u76d6\u7387', '\u6570\u636e\u622a\u81f3']) {
@@ -31,6 +33,7 @@ for (const label of ['\u51c0\u9500\u552e\u989d', '\u9500\u552e\u6210\u672c', '\u
 }
 assert.match(salesProfit, /costOfGoodsSold === null \? '\u2014'/, 'missing cost is rendered as unavailable, not zero')
 assert.match(salesProfit, /telegramPresenceHeaders\(\)/, 'profit requests Telegram presence')
+assert.match(salesProfit, /if \(realRole !== 'OWNER'\)/, 'profit follows the same real OWNER identity as its dashboard entry')
 
 for (const [name, source] of [['sale page', salePage], ['sale route', saleRoute], ['cashier sale route', cashierRoute]]) {
   assert.doesNotMatch(source, /inventory-profit|InventoryProfitProvider|ExternalGoogleProvider/, `${name} does not depend on the external pilot`)

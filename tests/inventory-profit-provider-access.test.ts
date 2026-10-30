@@ -84,6 +84,7 @@ async function main() {
   const originalFetch = globalThis.fetch
   let stale = false
   let malformedProfit = false
+  let wrongEcho = ''
   let receivingCalls = 0
   const seenActions: string[] = []
   globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
@@ -97,12 +98,13 @@ async function main() {
         { productId: 'p-zero', sku: 'ZERO-1', barcode: 'B-ZERO', name: '缺货', currentStock: 0, minimumStock: 10, averageCost: null, inventoryValue: null, updatedAt: asOf },
         { productId: 'p-low', sku: 'LOW-10', barcode: 'B-LOW', name: '低库存', currentStock: 10, minimumStock: 10, averageCost: 3, inventoryValue: 30, updatedAt: asOf },
         { productId: 'p-ok', sku: 'OK-11', barcode: 'B-OK', name: '正常', currentStock: 11, minimumStock: 10, averageCost: 4, inventoryValue: 44, updatedAt: asOf },
+        { productId: 'p-formula', sku: '+FORMULA', barcode: 'B-FORMULA', name: '=HYPERLINK("https://invalid.test")', currentStock: 12, minimumStock: 10, averageCost: 5, inventoryValue: 60, updatedAt: asOf },
       ] })
     }
     if (body.action === 'GET_SALES_PROFIT') {
       if (malformedProfit) return Response.json({ ok: true, asOf, data: { period: body.period, costCoverageRate: 1 } })
       return Response.json({ ok: true, asOf, data: {
-        period: body.period,
+        period: wrongEcho === 'GET_SALES_PROFIT' ? 'MONTH' : body.period,
         netSales: 100,
         costOfGoodsSold: 0,
         grossProfit: 100,
@@ -112,12 +114,12 @@ async function main() {
       } })
     }
     if (body.action === 'SET_MINIMUM_STOCK') {
-      return Response.json({ ok: true, asOf, data: { minimumStock: body.minimumStock } })
+      return Response.json({ ok: true, asOf, data: { minimumStock: wrongEcho === body.action ? body.minimumStock + 1 : body.minimumStock } })
     }
     if (body.action === 'RECEIVE') {
       receivingCalls += 1
       return Response.json({ ok: true, asOf, data: {
-        requestKey: body.requestKey,
+        requestKey: wrongEcho === body.action ? `${body.requestKey}:wrong` : body.requestKey,
         duplicate: receivingCalls > 1,
         recordedAt: asOf,
       } })
@@ -155,6 +157,12 @@ async function main() {
   assert.equal((await updated.json()).data.minimumStock, 10)
 
   const receivingBody = { requestKey: 'receive:pilot:0001', productId: 'p-low', quantity: 4, unitCost: 2.5, date: '2026-10-31' }
+  assert.equal((await receive(req('/api/inventory-profit/receivings', {
+    method: 'POST', body: { ...receivingBody, requestKey: 'receive:invalid-date', date: '2026-02-30' }, presence,
+  }))).status, 400, 'invalid calendar dates are rejected')
+  assert.equal((await receive(req('/api/inventory-profit/receivings', {
+    method: 'POST', body: { ...receivingBody, requestKey: 'receive:missing-cost', unitCost: null }, presence,
+  }))).status, 400, 'missing unit cost is never coerced to zero')
   const first = await receive(req('/api/inventory-profit/receivings', { method: 'POST', body: receivingBody, presence }))
   const repeated = await receive(req('/api/inventory-profit/receivings', { method: 'POST', body: receivingBody, presence }))
   assert.deepEqual([(await first.json()).data.duplicate, (await repeated.json()).data.duplicate], [false, true])
@@ -165,6 +173,8 @@ async function main() {
   assert.deepEqual([...csvBytes.slice(0, 3)], [0xEF, 0xBB, 0xBF], 'CSV starts with UTF-8 BOM')
   const csv = new TextDecoder().decode(csvBytes)
   assert.match(csv, /平均成本,库存价值/)
+  assert.match(csv, /'=HYPERLINK/)
+  assert.match(csv, /'\+FORMULA/, 'CSV formula prefixes are neutralized')
 
   stale = true
   const staleResponse = await inventory(req('/api/inventory-profit/inventory'))
@@ -177,6 +187,18 @@ async function main() {
   assert.equal(malformedResponse.status, 503)
   assert.deepEqual(await malformedResponse.json(), { ok: false, state: 'INVALID_RESPONSE', message: '数据暂时无法更新' })
   malformedProfit = false
+
+  wrongEcho = 'GET_SALES_PROFIT'
+  assert.equal((await salesProfit(req('/api/inventory-profit/sales-profit?period=TODAY', { presence }))).status, 503)
+  wrongEcho = 'SET_MINIMUM_STOCK'
+  assert.equal((await updateMinimum(req('/api/inventory-profit/inventory', {
+    method: 'PATCH', body: { minimumStock: 10 },
+  }))).status, 503)
+  wrongEcho = 'RECEIVE'
+  assert.equal((await receive(req('/api/inventory-profit/receivings', {
+    method: 'POST', body: { ...receivingBody, requestKey: 'receive:wrong-echo' }, presence,
+  }))).status, 503, 'provider responses must echo the requested identity')
+  wrongEcho = ''
 
   const abortingFetch = ((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
     init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))

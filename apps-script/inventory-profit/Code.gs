@@ -3,11 +3,13 @@ var INVENTORY_PROFIT_SHEETS = {
   Entries: ['requestKey', 'productId', 'sku', 'barcode', 'name', 'quantity', 'unitCost', 'date', 'createdAt'],
   SalesDaily: ['date', 'productId', 'quantity', 'netSales', 'costOfGoodsSold', 'costCovered', 'updatedAt'],
   Inventory: ['productId', 'sku', 'barcode', 'name', 'currentStock', 'minimumStock', 'averageCost', 'inventoryValue', 'updatedAt'],
-  DailyProfit: ['date', 'netSales', 'costOfGoodsSold', 'grossProfit', 'grossMarginRate', 'costCoverageRate', 'costMethod', 'updatedAt'],
+  DailyProfit: ['date', 'netSales', 'costOfGoodsSold', 'grossProfit', 'grossMarginRate', 'costCoverageRate', 'costCoverageWeight', 'costMethod', 'updatedAt'],
   _Log: ['timestamp', 'level', 'event', 'detail']
 }
 
 var INVENTORY_PROFIT_COST_METHOD = 'DAILY_PERIODIC_WAC'
+var INVENTORY_PROFIT_TIMEZONE = 'Asia/Phnom_Penh'
+var INVENTORY_PROFIT_UNATTRIBUTED_PRODUCT_ID = '__UNATTRIBUTED__'
 var INVENTORY_PROFIT_DEFAULT_MINIMUM = 10
 var INVENTORY_PROFIT_PAGE_LIMIT = 5000
 var INVENTORY_PROFIT_MAX_RETRIES = 3
@@ -25,14 +27,19 @@ function initializeInventoryProfitPilot() {
 }
 
 function doPost(event) {
+  var body
+  try {
+    body = parsePostBody_(event)
+  } catch (_invalidBody) {
+    return jsonOutput_({ ok: false, error: 'INVALID_BODY' })
+  }
+  var providerSecret = configValue_('PROVIDER_SECRET')
+  if (!providerSecret || body.secret !== providerSecret) return jsonOutput_({ ok: false, error: 'UNAUTHORIZED' })
+
+  var pilotStoreId = configValue_('PILOT_STORE_ID')
+  if (!pilotStoreId || body.storeId !== pilotStoreId) return jsonOutput_({ ok: false, error: 'PILOT_STORE_REQUIRED' })
   try {
     ensureInventoryProfitSheets_()
-    var body = parsePostBody_(event)
-    var providerSecret = configValue_('PROVIDER_SECRET')
-    if (!providerSecret || body.secret !== providerSecret) return jsonOutput_({ ok: false, error: 'UNAUTHORIZED' })
-
-    var pilotStoreId = configValue_('PILOT_STORE_ID')
-    if (!pilotStoreId || body.storeId !== pilotStoreId) return jsonOutput_({ ok: false, error: 'PILOT_STORE_REQUIRED' })
 
     if (body.action === 'GET_SALES_PROFIT') return jsonOutput_(salesProfitResponse_(body.period))
     if (body.action === 'LIST_INVENTORY') return jsonOutput_(inventoryResponse_(body))
@@ -50,13 +57,13 @@ function doPost(event) {
 }
 
 function syncHourly() {
-  var today = startOfLocalDay_(new Date())
-  return syncInventoryProfitRange_(formatLocalDate_(addDays_(today, -3)), formatLocalDate_(today))
+  var today = localDateForInstant_(new Date())
+  return syncInventoryProfitRange_(shiftLocalDate_(today, -3), today)
 }
 
 function syncWeekly() {
-  var today = startOfLocalDay_(new Date())
-  return syncInventoryProfitRange_(formatLocalDate_(addDays_(today, -34)), formatLocalDate_(today))
+  var today = localDateForInstant_(new Date())
+  return syncInventoryProfitRange_(shiftLocalDate_(today, -34), today)
 }
 
 function syncInventoryProfitRange_(fromDate, toDate) {
@@ -83,25 +90,26 @@ function parsePostBody_(event) {
 
 function salesProfitResponse_(period) {
   if (['TODAY', 'WEEK', 'MONTH'].indexOf(period) === -1) return { ok: false, error: 'INVALID_PERIOD' }
-  var asOf = configValue_('LAST_SYNC_AT')
+  var asOf = configValue_('LAST_FEED_SYNC_AT')
   if (!asOf) return { ok: false, error: 'NOT_SYNCED' }
-  var today = startOfLocalDay_(new Date())
+  var today = localDateForInstant_(new Date())
   var start = today
   if (period === 'WEEK') {
-    var mondayOffset = (today.getDay() + 6) % 7
-    start = addDays_(today, -mondayOffset)
+    var weekday = new Date(today + 'T00:00:00.000Z').getUTCDay()
+    var mondayOffset = (weekday + 6) % 7
+    start = shiftLocalDate_(today, -mondayOffset)
   } else if (period === 'MONTH') {
-    start = new Date(today.getFullYear(), today.getMonth(), 1)
+    start = today.slice(0, 7) + '-01'
   }
-  var from = formatLocalDate_(start)
-  var to = formatLocalDate_(today)
+  var from = start
+  var to = today
   var rows = rowsAsObjects_('DailyProfit').filter(function (row) { return row.date >= from && row.date <= to })
   var netSales = sum_(rows, 'netSales')
   var weight = 0
   var coveredWeight = 0
   var cogs = 0
   rows.forEach(function (row) {
-    var rowWeight = Math.abs(number_(row.netSales))
+    var rowWeight = Math.abs(number_(row.costCoverageWeight))
     var coverage = clamp_(number_(row.costCoverageRate), 0, 1)
     weight += rowWeight
     coveredWeight += rowWeight * coverage
@@ -126,7 +134,7 @@ function salesProfitResponse_(period) {
 }
 
 function inventoryResponse_(input) {
-  var asOf = configValue_('LAST_SYNC_AT')
+  var asOf = configValue_('LAST_FEED_SYNC_AT')
   if (!asOf) return { ok: false, error: 'NOT_SYNCED' }
   var query = String(input.query || '').trim().toLowerCase()
   var alertsOnly = input.alertsOnly === true
@@ -161,24 +169,23 @@ function setMinimumStockResponse_(rawMinimum) {
   var inventory = rowsAsObjects_('Inventory')
   inventory.forEach(function (row) { row.minimumStock = minimum; row.updatedAt = now })
   replaceObjectRows_('Inventory', inventory)
-  setConfigValue_('LAST_SYNC_AT', now)
   return { ok: true, asOf: now, data: { minimumStock: minimum } }
 }
 
 function receivingResponse_(input) {
   var requestKey = String(input.requestKey || '').trim()
   var productId = String(input.productId || '').trim()
-  var quantity = Number(input.quantity)
-  var unitCost = Number(input.unitCost)
+  var quantity = typeof input.quantity === 'number' ? input.quantity : NaN
+  var unitCost = typeof input.unitCost === 'number' ? input.unitCost : NaN
   var date = String(input.date || '').trim()
   if (!/^[A-Za-z0-9:_-]{8,128}$/.test(requestKey)) return { ok: false, error: 'INVALID_REQUEST_KEY' }
-  if (!productId || !isFinite(quantity) || quantity <= 0 || !isFinite(unitCost) || unitCost < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (!productId || !isFinite(quantity) || quantity <= 0 || !isFinite(unitCost) || unitCost < 0 || !validLocalDate_(date)) {
     return { ok: false, error: 'INVALID_RECEIVING' }
   }
   var entries = rowsAsObjects_('Entries')
-  var duplicate = entries.some(function (entry) { return String(entry.requestKey) === requestKey })
+  var duplicateEntry = entries.filter(function (entry) { return String(entry.requestKey) === requestKey })[0]
   var now = new Date().toISOString()
-  if (duplicate) return { ok: true, asOf: configValue_('LAST_SYNC_AT') || now, data: { requestKey: requestKey, duplicate: true, recordedAt: now } }
+  if (duplicateEntry) return { ok: true, asOf: now, data: { requestKey: requestKey, duplicate: true, recordedAt: String(duplicateEntry.createdAt || now) } }
 
   var product = rowsAsObjects_('Inventory').filter(function (row) { return String(row.productId) === productId })[0]
   if (!product) return { ok: false, error: 'PRODUCT_NOT_FOUND' }
@@ -193,9 +200,8 @@ function receivingResponse_(input) {
     date: date,
     createdAt: now
   })
-  recalculateInventoryProfit_()
-  now = configValue_('LAST_SYNC_AT') || now
-  return { ok: true, asOf: now, data: { requestKey: requestKey, duplicate: false, recordedAt: now } }
+  var recalculatedAt = recalculateInventoryProfit_()
+  return { ok: true, asOf: recalculatedAt, data: { requestKey: requestKey, duplicate: false, recordedAt: now } }
 }
 
 function applyFeedPayload_(payload, fromDate, toDate) {
@@ -212,24 +218,59 @@ function applyFeedPayload_(payload, fromDate, toDate) {
   var aggregates = {}
 
   function addLine(dateValue, productId, quantity, amount) {
-    var date = String(dateValue || '').slice(0, 10)
-    var id = String(productId || '')
-    if (!date || !id) return
+    var date = businessDate_(dateValue)
+    var id = productId ? String(productId) : INVENTORY_PROFIT_UNATTRIBUTED_PRODUCT_ID
+    var lineQuantity = Number(quantity)
+    var lineAmount = Number(amount)
+    if (!date || !isFinite(lineQuantity) || !isFinite(lineAmount)) throw new Error('INVALID_SALES_LINE')
     var key = date + '|' + id
     if (!aggregates[key]) aggregates[key] = { date: date, productId: id, quantity: 0, netSales: 0, costOfGoodsSold: '', costCovered: '', updatedAt: new Date().toISOString() }
-    aggregates[key].quantity += number_(quantity)
-    aggregates[key].netSales += number_(amount)
+    aggregates[key].quantity += lineQuantity
+    aggregates[key].netSales += lineAmount
   }
 
   payload.sales.forEach(function (row) { addLine(row.createdAt, row.productId, row.quantity, row.lineAmount) })
-  payload.customerOrders.forEach(function (order) {
-    ;(order.items || []).forEach(function (item) { addLine(order.paidAt || order.updatedAt, item.productId, item.quantity, item.lineAmount) })
-  })
+  payload.customerOrders.forEach(function (order) { addCustomerOrderLines_(order, addLine) })
   payload.refunds.forEach(function (row) { addLine(row.createdAt, row.productId, -Math.abs(number_(row.quantity)), -Math.abs(number_(row.refundAmount))) })
 
   Object.keys(aggregates).sort().forEach(function (key) { current.push(aggregates[key]) })
   replaceObjectRows_('SalesDaily', current)
-  recalculateInventoryProfit_(productById)
+  var syncedAt = recalculateInventoryProfit_(productById)
+  setConfigValue_('LAST_FEED_SYNC_AT', syncedAt)
+}
+
+function addCustomerOrderLines_(order, addLine) {
+  var items = Array.isArray(order.items) ? order.items : []
+  var totalAmount = typeof order.totalAmount === 'number' ? order.totalAmount : NaN
+  if (!isFinite(totalAmount) || totalAmount < 0) throw new Error('INVALID_CUSTOMER_ORDER_TOTAL')
+  totalAmount = roundMoney_(totalAmount)
+  var itemTotal = items.reduce(function (total, item) {
+    if (!item || typeof item !== 'object') throw new Error('INVALID_CUSTOMER_ORDER_ITEM')
+    var lineAmount = Number(item.lineAmount)
+    var quantity = Number(item.quantity)
+    if (!isFinite(lineAmount) || lineAmount < 0 || !isFinite(quantity) || quantity <= 0) {
+      throw new Error('INVALID_CUSTOMER_ORDER_ITEM')
+    }
+    return total + lineAmount
+  }, 0)
+  var dateValue = order.paidAt || order.updatedAt
+  if (!items.length) {
+    addLine(dateValue, null, 1, totalAmount)
+    return
+  }
+  if (itemTotal === 0) {
+    if (totalAmount !== 0) throw new Error('INVALID_CUSTOMER_ORDER_TOTAL')
+    items.forEach(function (item) { addLine(dateValue, item.productId, item.quantity, 0) })
+    return
+  }
+  var remaining = totalAmount
+  items.forEach(function (item, index) {
+    var allocated = index === items.length - 1
+      ? remaining
+      : Math.min(remaining, roundMoney_(totalAmount * Number(item.lineAmount) / itemTotal))
+    remaining = roundMoney_(remaining - allocated)
+    addLine(dateValue, item.productId, item.quantity, allocated)
+  })
 }
 
 function recalculateInventoryProfit_(freshProducts) {
@@ -252,7 +293,9 @@ function recalculateInventoryProfit_(freshProducts) {
   entries.forEach(function (entry, index) { events.push({ date: String(entry.date), type: 0, index: index, row: entry }) })
   sales.forEach(function (sale, index) {
     var id = String(sale.productId)
-    if (!products[id]) products[id] = { productId: id, sku: '', barcode: '', name: '' }
+    if (id !== INVENTORY_PROFIT_UNATTRIBUTED_PRODUCT_ID && !products[id]) {
+      products[id] = { productId: id, sku: '', barcode: '', name: '' }
+    }
     events.push({ date: String(sale.date), type: 1, index: index, row: sale })
   })
   events.sort(function (a, b) { return a.date.localeCompare(b.date) || a.type - b.type || a.index - b.index })
@@ -287,6 +330,11 @@ function recalculateInventoryProfit_(freshProducts) {
     }
 
     var soldQuantity = number_(row.quantity)
+    if (id === INVENTORY_PROFIT_UNATTRIBUTED_PRODUCT_ID) {
+      row.costCovered = 'FALSE'
+      row.costOfGoodsSold = ''
+      return
+    }
     var covered = state.averageCost !== null
     row.costCovered = covered ? 'TRUE' : 'FALSE'
     row.costOfGoodsSold = covered ? soldQuantity * state.averageCost : ''
@@ -322,7 +370,7 @@ function recalculateInventoryProfit_(freshProducts) {
     if (!daily[date]) daily[date] = { date: date, netSales: 0, cogs: 0, weight: 0, coveredWeight: 0 }
     var item = daily[date]
     var amount = number_(row.netSales)
-    var weight = Math.abs(amount)
+    var weight = Math.abs(number_(row.quantity))
     item.netSales += amount
     item.weight += weight
     if (String(row.costCovered) === 'TRUE') {
@@ -342,12 +390,13 @@ function recalculateInventoryProfit_(freshProducts) {
       grossProfit: gross,
       grossMarginRate: complete && item.netSales !== 0 ? gross / item.netSales : '',
       costCoverageRate: coverage,
+      costCoverageWeight: item.weight,
       costMethod: INVENTORY_PROFIT_COST_METHOD,
       updatedAt: now
     }
   })
   replaceObjectRows_('DailyProfit', profitRows)
-  setConfigValue_('LAST_SYNC_AT', now)
+  return now
 }
 
 function fetchAllFeedPages_(dataset, fromDate, toDate) {
@@ -477,16 +526,28 @@ function clamp_(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value))
 }
 
-function startOfLocalDay_(date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+function roundMoney_(value) {
+  return Math.round((number_(value) + Number.EPSILON) * 100) / 100
 }
 
-function addDays_(date, days) {
-  var result = new Date(date.getTime())
-  result.setDate(result.getDate() + days)
-  return result
+function localDateForInstant_(date) {
+  return Utilities.formatDate(date, INVENTORY_PROFIT_TIMEZONE, 'yyyy-MM-dd')
 }
 
-function formatLocalDate_(date) {
-  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd')
+function shiftLocalDate_(date, days) {
+  var parsed = new Date(date + 'T00:00:00.000Z')
+  parsed.setUTCDate(parsed.getUTCDate() + days)
+  return parsed.toISOString().slice(0, 10)
+}
+
+function businessDate_(value) {
+  var date = new Date(String(value || ''))
+  if (!isFinite(date.getTime())) return ''
+  return localDateForInstant_(date)
+}
+
+function validLocalDate_(value) {
+  if (!/^20\d{2}-\d{2}-\d{2}$/.test(value)) return false
+  var parsed = new Date(value + 'T00:00:00.000Z')
+  return isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
 }
