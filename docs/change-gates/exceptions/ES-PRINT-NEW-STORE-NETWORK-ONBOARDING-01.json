@@ -63,7 +63,7 @@
         "lib/es-tray-relay/auth.ts": "9659a161f4c1426c066bf6027bc288d1c77d0ce986ce94196f4f18b9d842a24d",
         "app/api/desktop/print-child/route.ts": "6b8ba1789373ae1b098a5baf8dc2e8e459ef7f625796bfe8444ed6819ffae62a",
         "app/api/computer-client/terminals/route.ts": "153f367679fe60c896d33eac3095c47c84715bc81ce82ff696a1da1190172ea9",
-        "desktop/src/main/networkPrintSettingsLauncher.ts": "bc2cbe76049aa04bde3a45091f1fa97ee63147b3731b166636eee645e2532cc5",
+        "desktop/src/main/networkPrintSettingsLauncher.ts": "11afffac6be9d8b90a71e7278b7705034b1a782b8f838a16e9dd571cd2d138a5",
         "desktop/src/main/managedPrintChildHandoff.ts": "f9a1df8c39443a340eb0c5101cf95e79e1bdd5051b974ab070f15a71c8119ac4",
         "e-shop-tray/network-addon/main.ts": "4e3bb8d9a7fe6a2fe220487ea9b7ae1edb6d76edda3a77a0b8bf81d740481b24",
         "e-shop-tray/src/managedPrintChildIdentity.ts": "a95456e4de23a5547fe69694bf9a5f0bc8791c0f9f747acd5d3ef1963098a408",
@@ -79,6 +79,112 @@
         "app/api/computer-client/computers/[computerId]/disable/route.ts": "e2c53f64f98577c9db9adcfb83bf9bd18fc7da29e18e17160b725aeb2ab224ff",
         "app/api/computer-client/computers/[computerId]/reapply/route.ts": "c1408da14645beda7b2b3bb6724946870ed54d7e4458f15a019a0918becae1a3",
         "e-shop-tray/tests/managed-addon-handoff.test.ts": "c8566b38a76978f8cfad6e168d51f1360cb2f73130b86a3baa46fc5b1c0364c9"
+      }
+    },
+    {
+      "authorizationId": "M4-ADDON-RESIDENT-RETRY-26",
+      "featureBranch": "codex/es-print-m4-addon-resident-retry",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "cca61da1e3ab7f604359e827362f1d0d7c305460",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T00:20:00Z",
+      "approvedAt": "2026-10-15T00:20:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized the one-time resident Add-on settings-only retry corrective: after Desktop writes the authenticated managed print-child handoff, an already resident Add-on must retry its existing initialization path and consume that handoff. No identity, relay, schema, migration, provider, legacy fallback or printing semantic change is authorized.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/main.ts": "c5e9ac722c6837edf8ed05105b44b9c3d63b3c8ba4cc3b25cfc03566a0d06659",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "a54559324853522c43f012f498e726c7c75d13bb796cbfe40077338ae9487947"
+      }
+    },
+    {
+      "authorizationId": "M4-ADDON-UPGRADE-LIFECYCLE-26",
+      "featureBranch": "codex/es-print-m4-addon-upgrade-lifecycle",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "8a2441998cfd6be8c40f06ffa528dc953e1bf0af",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T00:40:00Z",
+      "approvedAt": "2026-10-15T00:40:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized one-time Single Installer / Managed Add-on safe upgrade lifecycle corrective: reuse the existing Electron safeExit/stopAndWait lifecycle, request and wait for resident process exit before /S replacement, verify the replacement artifact and fail closed on any incomplete or unsafe transition. No identity, relay, schema, migration, provider, Local First, M4 UI or printing semantic change.",
+      "authorizedPaths": [
+        "desktop/build/installer.nsh",
+        "e-shop-tray/network-addon/main.ts",
+        "desktop/tests/windows-installer-upgrade-lifecycle.test.ts",
+        "desktop/tests/single-installer-packaging.test.ts",
+        "e-shop-tray/tests/network-addon.test.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "desktop/build/installer.nsh": "28aff419653a09d61491bc7dc1d92a1825ee50b2c94cf5ccd0c05d557c9b5f8e",
+        "e-shop-tray/network-addon/main.ts": "93a361fc2ea14b12a03da2eb2e9a6bcefdbf35276f09b01e2f3c5c0a4acab6fb",
+        "desktop/tests/windows-installer-upgrade-lifecycle.test.ts": "bac92afb04600a715c41d267133c06db2a597d22a8bfa323f16896a698a07add",
+        "desktop/tests/single-installer-packaging.test.ts": "a2fdae0c391e6ded6e2df4e708bd0dec07d6a9c44b8600baa986890530bcd4bf",
+        "e-shop-tray/tests/network-addon.test.ts": "701b2fea77dcdd72cab1e291aa5ef076ca1da2133b0d817c9f072d746dd76eaf",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "08e3ee591ca567c4676746597b0d58bb22199ff763b434187e58c0bab884b12f"
+      }
+    },
+    {
+      "authorizationId": "M4-DPAPI-HANDOFF-26",
+      "featureBranch": "codex/es-print-m4-dpapi-handoff",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "6cbd2587abee05e0c6a0da35a6e8fe39ff2a7aa8",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T12:20:00Z",
+      "approvedAt": "2026-10-15T12:20:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized the one-time M4 client DPAPI handoff corrective: replace the cross-application Electron safeStorage transport for the managed print-child handoff with Windows CurrentUser DPAPI, preserve atomic file handoff, add expiry, bounded recovery and final consumption only after profile initialization. No Desktop activation safeStorage, legacy identity fallback, relay, schema, migration, RC10, Provider, Local First, M4 UI, Production or FIELD changes are authorized.",
+      "authorizedPaths": [
+        "desktop/src/main/managedPrintChildHandoff.ts",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/src/managedPrintChildIdentity.ts",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts",
+        "e-shop-tray/tests/managed-print-child-identity.test.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "desktop/src/main/managedPrintChildHandoff.ts": "474eca171d4bf6b6f94674549f6e1382dda970b16c0d60e7641cd776654ca3bf",
+        "e-shop-tray/network-addon/main.ts": "d1d1c3ed03eb9a58be9fb5394fc3f07f49741e4546e1575178eb1ba12188fddf",
+        "e-shop-tray/src/managedPrintChildIdentity.ts": "843b6e37928deac6450251b07a353dbc5188d7ac218784ecd0d4945be6d0a4af",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts": "4d30437b653c9f73f7f751531b375232b69d8570d0ee95428d52190a0933aa1b",
+        "e-shop-tray/tests/managed-print-child-identity.test.ts": "59bb06c06712d86cd8b32ddd586b5df4cfd221609d9e647660383041fae2696d",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "31fb730dc5022ec7a7195e688f0efad6a399f53466e359827f3e03720171b9d9"
+      }
+    },
+    {
+      "authorizationId": "M4-SHORTCUT-LIFECYCLE-CORRECTIVE-26",
+      "featureBranch": "codex/es-print-m4-shortcut-lifecycle",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "40ade15491b7d671a6af61eb8519a5fdaa2d859e",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T13:00:00Z",
+      "approvedAt": "2026-10-15T13:00:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized a one-time M4 shortcut lifecycle corrective: same-version managed Add-on repair must semantically validate and repair the official Settings ShellLink before ownership is marked; Desktop verification must enforce the same contract. Desktop binding remains a required managed contract. No DPAPI, identity, relay, schema, migration, Production, Provider, Local First, M4 UI or FIELD changes are authorized.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "desktop/build/installer.nsh",
+        "desktop/src/main/networkPrintSettingsLauncher.ts",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts",
+        "desktop/tests/single-installer-packaging.test.ts",
+        "desktop/tests/network-print-settings-launcher.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "697c2e81ceb885c0c781bf28c98e9d0b7d2565c59776c7c485c8aca4ced37b9c",
+        "desktop/build/installer.nsh": "297e3300727abc0ba564e2fd9632470859c5b070a2f33ab648eb56c09c25e46e",
+        "desktop/src/main/networkPrintSettingsLauncher.ts": "11afffac6be9d8b90a71e7278b7705034b1a782b8f838a16e9dd571cd2d138a5",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts": "936cb27e98bea1af16d80b066eb706e041a148115bcdd8b83e5dead1101e91b4",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
+        "desktop/tests/single-installer-packaging.test.ts": "6b1116aeeee04fc679d912b4f120e30de1fced531ab5332fd5c737664d74c0db",
+        "desktop/tests/network-print-settings-launcher.test.ts": "93bf24eb2a30045c9fabdbf7dbeb4cbdb5860bf8545025ec50e05cf817e64982"
       }
     }
   ]

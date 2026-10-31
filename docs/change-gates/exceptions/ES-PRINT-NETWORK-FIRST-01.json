@@ -1884,6 +1884,281 @@
         "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production migration/deploy or FIELD execution."
       ],
       "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package has been built, independently reviewed and evidence retained, or when a required gate fails."
+    },
+    {
+      "authorizationId": "NETWORK-M4-ADDON-RESIDENT-RETRY-PACKAGING-26",
+      "featureBranch": "codex/es-print-m4-addon-resident-retry",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "5c0b037e69c9b137d5238143accbe8cfbe511331",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T00:25:00Z",
+      "approvedAt": "2026-10-15T00:25:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized the one-time Add-on and Single Installer rebuild for the approved resident settings-only handoff retry corrective. This packaging grant binds the current branch and exact runtime/test inputs to the existing unsigned TEST-only rc.10 candidate contract; it does not authorize installation, FIELD, Production migration/deploy, signing or publication.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/main.ts": "c5e9ac722c6837edf8ed05105b44b9c3d63b3c8ba4cc3b25cfc03566a0d06659",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "a54559324853522c43f012f498e726c7c75d13bb796cbfe40077338ae9487947"
+      },
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "commit": "9cd89ebefc6272e6e1a11d63641945c7b70722d1",
+        "exactMatchRequired": true
+      },
+      "governanceState": {
+        "commit": "e4563bbf0dd0e61606dcd6bcb37cc83862abdb30",
+        "exactMatchRequired": true,
+        "zeroNonGovernanceDiff": true
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Add-on candidate and one Single Installer candidate from the reviewed resident handoff retry implementation.",
+        "Retain exact source, candidate, installer and SHA-256 evidence; no installation, FIELD, Production migration, Production deploy, signing or formal publication."
+      ],
+      "prohibitedChanges": [
+        "Any source or product change outside the two exact authorized inputs; no identity, relay, schema, migration, provider, RC10, Local First, M4 UI or printing semantic change.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build or FIELD execution."
+      ],
+      "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package is built and review evidence is retained, or when a required gate fails."
+    },
+    {
+      "authorizationId": "NETWORK-M4-ADDON-UPGRADE-LIFECYCLE-PACKAGING-26",
+      "featureBranch": "codex/es-print-m4-addon-upgrade-lifecycle",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "cd5757ae6905093c6eaf441ed4700d4455717af6",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T00:55:00Z",
+      "approvedAt": "2026-10-15T00:55:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized the one-time Add-on and Single Installer candidate build for the approved safe resident replacement lifecycle corrective. This packaging successor binds only the changed Add-on runtime/test inputs to the unsigned TEST-only rc.10 candidate contract; it does not authorize installation, FIELD, Production migration/deploy, signing or publication.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/main.ts": "93a361fc2ea14b12a03da2eb2e9a6bcefdbf35276f09b01e2f3c5c0a4acab6fb",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "08e3ee591ca567c4676746597b0d58bb22199ff763b434187e58c0bab884b12f"
+      },
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "commit": "0739165abdb9e1f626bf91dfe88f8ed94bda1606",
+        "exactMatchRequired": true
+      },
+      "governanceState": {
+        "commit": "e4563bbf0dd0e61606dcd6bcb37cc83862abdb30",
+        "exactMatchRequired": true,
+        "zeroNonGovernanceDiff": true
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Add-on candidate and one Single Installer candidate from the reviewed safe resident replacement lifecycle implementation.",
+        "Retain exact source, candidate, installer and SHA-256 evidence; no installation, FIELD, Production migration, Production deploy, signing or formal publication."
+      ],
+      "prohibitedChanges": [
+        "Any source or product change outside the two exact packaging inputs above; no identity, relay, schema, migration, provider, RC10, Local First, M4 UI or printing semantic change.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production migration/deploy or FIELD execution."
+      ],
+      "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package is built, independently reviewed and evidence retained, or when a required gate fails."
+    },
+    {
+      "authorizationId": "NETWORK-M4-DPAPI-HANDOFF-PACKAGING-26",
+      "featureBranch": "codex/es-print-m4-dpapi-handoff",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "6cbd2587abee05e0c6a0da35a6e8fe39ff2a7aa8",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T12:55:00Z",
+      "approvedAt": "2026-10-15T12:55:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized the one-time M4 DPAPI handoff candidate build after implementation and independent review. This packaging successor binds the existing authorized Desktop/Add-on handoff paths to the unsigned TEST-only rc.10 candidate contract; it does not authorize installation, FIELD, Production migration/deploy, signing or publication.",
+      "authorizedPaths": [
+        "desktop/src/main/managedPrintChildHandoff.ts",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/src/managedPrintChildIdentity.ts",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts",
+        "e-shop-tray/tests/managed-print-child-identity.test.ts",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "desktop/src/main/managedPrintChildHandoff.ts": "474eca171d4bf6b6f94674549f6e1382dda970b16c0d60e7641cd776654ca3bf",
+        "e-shop-tray/network-addon/main.ts": "d1d1c3ed03eb9a58be9fb5394fc3f07f49741e4546e1575178eb1ba12188fddf",
+        "e-shop-tray/src/managedPrintChildIdentity.ts": "843b6e37928deac6450251b07a353dbc5188d7ac218784ecd0d4945be6d0a4af",
+        "e-shop-tray/tests/managed-addon-handoff.test.ts": "4d30437b653c9f73f7f751531b375232b69d8570d0ee95428d52190a0933aa1b",
+        "e-shop-tray/tests/managed-print-child-identity.test.ts": "59bb06c06712d86cd8b32ddd586b5df4cfd221609d9e647660383041fae2696d",
+        "e-shop-tray/tests/network-addon-settings-only.test.ts": "31fb730dc5022ec7a7195e688f0efad6a399f53466e359827f3e03720171b9d9"
+      },
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "commit": "6d59d87c1dc0572691b078979256b04d5ba7c514",
+        "exactMatchRequired": true
+      },
+      "governanceState": {
+        "commit": "805602493373ec8893d87470aa8a5ef293cf149f",
+        "exactMatchRequired": true,
+        "zeroNonGovernanceDiff": true
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Add-on candidate and one Single Installer candidate from the reviewed DPAPI handoff implementation.",
+        "Retain exact source, candidate, installer and SHA-256 evidence; no installation, FIELD, Production migration, Production deploy, signing or formal publication."
+      ],
+      "prohibitedChanges": [
+        "Any source or product change outside the six exact authorized inputs above; no identity, relay, schema, migration, provider, RC10, Local First, M4 UI or printing semantic change.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production migration/deploy or FIELD execution."
+      ],
+      "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package is built, independently reviewed and evidence retained, or when a required gate fails."
+    },
+    {
+      "authorizationId": "NETWORK-M4-SHORTCUT-LIFECYCLE-PACKAGING-29",
+      "sourceTaskId": "ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01",
+      "featureBranch": "codex/es-print-m4-shortcut-lifecycle",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "5e26382373282b93a2d13712c08344eabaa845a4",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-15T13:20:00Z",
+      "approvedAt": "2026-10-15T13:20:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized one single-use Add-on and Single Installer packaging for the M4 shortcut lifecycle corrective. This record is bound to the current M4 task, shortcut-corrective implementation and exact packaging surface; it does not alter any prior authorization or authorize installation, FIELD, Production migration/deploy, signing or publication.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "desktop/build/installer.nsh",
+        "desktop/src/main/networkPrintSettingsLauncher.ts",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts",
+        "desktop/tests/single-installer-packaging.test.ts",
+        "desktop/tests/network-print-settings-launcher.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "697c2e81ceb885c0c781bf28c98e9d0b7d2565c59776c7c485c8aca4ced37b9c",
+        "desktop/build/installer.nsh": "297e3300727abc0ba564e2fd9632470859c5b070a2f33ab648eb56c09c25e46e",
+        "desktop/src/main/networkPrintSettingsLauncher.ts": "11afffac6be9d8b90a71e7278b7705034b1a782b8f838a16e9dd571cd2d138a5",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts": "936cb27e98bea1af16d80b066eb706e041a148115bcdd8b83e5dead1101e91b4",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
+        "desktop/tests/single-installer-packaging.test.ts": "6b1116aeeee04fc679d912b4f120e30de1fced531ab5332fd5c737664d74c0db",
+        "desktop/tests/network-print-settings-launcher.test.ts": "93bf24eb2a30045c9fabdbf7dbeb4cbdb5860bf8545025ec50e05cf817e64982"
+      },
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "taskId": "ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01",
+        "commit": "1a6fe160aa245b7b29c547f692d5f115a6768ba2",
+        "exactMatchRequired": true
+      },
+      "governanceState": {
+        "commit": "07d2d629b5c52fb8173efe17ebd42ef1b39c8a3b",
+        "exactMatchRequired": true,
+        "zeroNonGovernanceDiff": true
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Add-on candidate and one Single Installer candidate from the reviewed M4 shortcut lifecycle implementation.",
+        "Retain embedded Add-on correspondence, source provenance and SHA-256 evidence; no installation, FIELD, Production migration/deploy, signing or formal publication."
+      ],
+      "prohibitedChanges": [
+        "Any source or product change outside the seven exact authorized inputs above; no DPAPI, identity, relay, schema, migration, provider, RC10, Local First, M4 UI or printing semantic change.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; no second candidate build, installation, Production migration/deploy or FIELD execution."
+      ],
+      "expirationCondition": "Close this single-use grant after the one Add-on and Single Installer candidate package is built and evidence retained, or when a required gate fails."
+    },
+    {
+      "authorizationId": "NETWORK-COMMERCIAL-SETUP-UX-RC11-BUILD-30",
+      "sourceTaskId": "ES-PRINT-COMMERCIAL-SETUP-UX-01",
+      "featureBranch": "codex/es-print-commercial-setup-ux-01",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "304a341f43fa633ce70699917c12bade0ff9aa19",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-10-18T15:05:00Z",
+      "approvedAt": "2026-10-20T15:43:00Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder authorized one single-use unsigned TEST-only Network Print Add-on candidate build with independent version identity 0.1.0-commercial-rc.11 for the ES-PRINT-COMMERCIAL-SETUP-UX-01 UI V1. The only changes from the Founder-selected 304a341 successor baseline are ui.html, ui.css, ui.ts and the RC11 version constant in build-network-addon.mjs. origin/main has advanced past 304a341; per the Founder baseline decision the other eleven inputs are pinned to their 304a341 bytes (the trusted content at the M2-24 feature merge), so RC11 deliberately excludes the M3/M4 runtime now on origin/main. This record merges nothing into origin/main, does not alter any prior authorization, and does not authorize Single Installer packaging, business-machine installation, business-store FIELD, Production migration/deploy, signing or publication.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/coldModeLifecycle.ts",
+        "e-shop-tray/network-addon/entryCoordinator.ts",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/network-addon/preload.ts",
+        "e-shop-tray/network-addon/profile.ts",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "e-shop-tray/network-addon/ui.css",
+        "e-shop-tray/network-addon/ui.html",
+        "e-shop-tray/network-addon/ui.ts",
+        "e-shop-tray/scripts/build-network-addon.mjs",
+        "e-shop-tray/src/desktopBindingIdentity.ts",
+        "e-shop-tray/src/networkNodeConfig.ts",
+        "lib/i18n/en.ts",
+        "lib/i18n/km.ts",
+        "lib/i18n/zh.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/coldModeLifecycle.ts": "9d1d16981c9f3bca96d53346dac1ca1608cbdafacdd755897b5e1e953fd12287",
+        "e-shop-tray/network-addon/entryCoordinator.ts": "9098e74e20db311aa48e48e606527426b51b0ca676ae8f5bb56ccea82052e249",
+        "e-shop-tray/network-addon/main.ts": "0cfe1f4d6dfc172f84706e32682e12f571ceeb13b096c4be250042aa6f91cc5e",
+        "e-shop-tray/network-addon/preload.ts": "65d555ed7efbd3d01c0f7f4d837b3d6471faacdd6ab16d744d3a2a0966f691b2",
+        "e-shop-tray/network-addon/profile.ts": "f07cb419f45e3cbcd96bbefdf51d7d14dc1254a5d8347d759f19fcdf41ace16c",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "22eae61c2c071d78f4369e413241b34a1205df2f48b22dfb47fccc018ded4ab5",
+        "e-shop-tray/network-addon/ui.css": "0764b555a5449b5b61d784e6db80f2f60be230da7d5aed9c58234e271fb3fbb7",
+        "e-shop-tray/network-addon/ui.html": "7ee578691ecec6803ca433771340b7c4885fec3c16bf7d981a8fa6217705b24f",
+        "e-shop-tray/network-addon/ui.ts": "e15883518dd6d4bef2e86792066653e8c7b04252030ea565921d9268eab0e708",
+        "e-shop-tray/scripts/build-network-addon.mjs": "592e562d912d13f7d0ed860f0dae88420c591a0661711b7338260f4eab809515",
+        "e-shop-tray/src/desktopBindingIdentity.ts": "fd3a952daf63e60e6e6a4a0d6012d1370f3ea048d7be315143a1c7e5eaeb2669",
+        "e-shop-tray/src/networkNodeConfig.ts": "4bee45a291c64393870145c1ebfe0a353cbaa9037896dfa753831df9f6bac1c2",
+        "lib/i18n/en.ts": "951c3705f7e92854fe87129085f9d22347ec2dc0be0694ba9ca5fced87b1f59f",
+        "lib/i18n/km.ts": "f77d034b9acb6f2b720cc9ccdec8c311e24b1b0fc0b9bcbb237d2db8a05f2a43",
+        "lib/i18n/zh.ts": "c09b0e3703e7307d10f87b073922fed38067bfbfeace946434fa5a277862a36e"
+      },
+      "approvedContentMappingSha256": "25ddbc678aa6278f3239f395222569eaa4d2bd52e8b6520efa2bb193c11aaa64",
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.11",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "taskId": "ES-PRINT-COMMERCIAL-SETUP-UX-01",
+        "commit": "6dd5ffdde47dce798e14256991a2f876534411f6",
+        "exactMatchRequired": true,
+        "allowedFollowUpCommit": "Exactly one branch commit that byte-syncs docs/change-gates/exceptions/ES-PRINT-NETWORK-FIRST-01.json to trusted origin/main; no other change."
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.11 Network Print Add-on candidate from the reviewed UI V1 source, retaining embedded source provenance and SHA-256 evidence.",
+        "Install that one candidate only on a Founder-designated non-business test machine that does not carry the M4 Single-Installer-managed Add-on, for Founder FIELD of the setup UI only."
+      ],
+      "prohibitedChanges": [
+        "Any source or product change outside the four changed inputs (ui.html, ui.css, ui.ts, the RC11 version constant); the source inputs of main.cjs, preload.cjs and network-render.cjs/html, and all printing, relay, journal, profile, DPAPI, identity, shortcut, cold-mode, IPC and safety-gate behaviour, stay byte-identical to 304a341.",
+        "Any bypass of trusted origin/main, exact source hashes, Scope Guard or candidate builder; no second candidate build, Single Installer, installation on a business or M4 FIELD machine, Production migration/deploy, signing or publication."
+      ],
+      "expirationCondition": "Close this single-use grant once the one RC11 Add-on candidate is built and its evidence retained, or when a required gate fails. On closure record featureMergeCommitSha as the exact built source commit (RC9-19 precedent), since this grant authorizes no merge."
     }
   ]
 }

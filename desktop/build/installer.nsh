@@ -2,6 +2,11 @@
 ; files while the exact Desktop executable is running, and must never force
 ; terminate the application. The operator exits through the normal tray path.
 
+; electron-builder expands this custom include before its standard NSIS
+; includes. Load LogicLib here because the managed Add-on safe-exit function
+; uses the fail-closed ${If}/${ElseIf} predicates during parsing.
+!include LogicLib.nsh
+
 ; electron-builder 25 writes the embedded uninstaller and then patches its
 ; icon. Keep both icons byte-compatible so that patching cannot invalidate the
 ; embedded uninstaller's NSIS CRC.
@@ -113,23 +118,71 @@ FunctionEnd
 !macroend
 !endif
 
-!macro eshopCheckNetworkAddonProcess
-  ; Run before any Desktop predecessor handoff or Desktop file removal. The
-  ; Add-on installer itself refuses a running process; this preflight keeps a
-  ; failed Add-on lifecycle from becoming a partial Desktop lifecycle.
+!macro eshopRequestManagedAddonExit id
+  !define ESHOP_MANAGED_ADDON_EXIT_ID ${id}
+  ; The only permitted process replacement path is the Add-on's existing
+  ; Electron safeExit/stopAndWait lifecycle. Unknown or unverifiable installs
+  ; remain fail-closed and are never sent a maintenance command.
   nsProcess::_FindProcess /NOUNLOAD "E-Shop-Network-Print-Addon.exe"
   Pop $R0
-  ${If} $R0 == 0
-    DetailPrint "Exit E-Shop Network Print Add-on safely before continuing."
-    IfSilent +2 0
-      MessageBox MB_OK|MB_ICONSTOP "Exit E-Shop Network Print Add-on safely, then retry the installer."
-    SetErrorLevel 26
-    Quit
-  ${ElseIf} $R0 != 603
+  ${If} $R0 == 603
+    Return
+  ${ElseIf} $R0 != 0
     DetailPrint "Unable to verify whether E-Shop Network Print Add-on is running. Stopping."
     SetErrorLevel 27
     Quit
   ${EndIf}
+  ReadRegStr $R1 HKCU "${ESHOP_NETWORK_ADDON_MARKER_KEY}" Managed
+  ${If} $R1 != "true"
+    DetailPrint "A running unmanaged Network Print Add-on cannot be safely replaced. Stopping."
+    IfSilent +2 0
+      MessageBox MB_OK|MB_ICONSTOP "The Network Print Add-on is running but is not verified as Desktop-managed. Nothing was replaced."
+    SetErrorLevel 26
+    Quit
+  ${EndIf}
+  IfFileExists "${ESHOP_NETWORK_ADDON_ROOT}\E-Shop-Network-Print-Addon.exe" 0 eshopNetworkAddonExitMissing_${ESHOP_MANAGED_ADDON_EXIT_ID}
+  ClearErrors
+  ExecWait '"${ESHOP_NETWORK_ADDON_ROOT}\E-Shop-Network-Print-Addon.exe" --installer-upgrade' $R2
+  ${If} ${Errors}
+  ${OrIf} $R2 != 0
+    DetailPrint "The managed Network Print Add-on did not accept the safe-exit request. Stopping."
+    SetErrorLevel 27
+    Quit
+  ${EndIf}
+  StrCpy $R3 0
+  eshopNetworkAddonExitWait_${ESHOP_MANAGED_ADDON_EXIT_ID}:
+    nsProcess::_FindProcess /NOUNLOAD "E-Shop-Network-Print-Addon.exe"
+    Pop $R0
+    ${If} $R0 == 603
+      Return
+    ${ElseIf} $R0 != 0
+      DetailPrint "Unable to verify Network Print Add-on exit. Stopping."
+      SetErrorLevel 27
+      Quit
+    ${EndIf}
+    IntCmp $R3 120 eshopNetworkAddonExitTimeout_${ESHOP_MANAGED_ADDON_EXIT_ID} eshopNetworkAddonExitTimeout_${ESHOP_MANAGED_ADDON_EXIT_ID} eshopNetworkAddonExitSleep_${ESHOP_MANAGED_ADDON_EXIT_ID}
+  eshopNetworkAddonExitSleep_${ESHOP_MANAGED_ADDON_EXIT_ID}:
+    Sleep 250
+    IntOp $R3 $R3 + 1
+    Goto eshopNetworkAddonExitWait_${ESHOP_MANAGED_ADDON_EXIT_ID}
+  eshopNetworkAddonExitTimeout_${ESHOP_MANAGED_ADDON_EXIT_ID}:
+    DetailPrint "The managed Network Print Add-on did not exit safely before timeout. Stopping."
+    IfSilent +2 0
+      MessageBox MB_OK|MB_ICONSTOP "The Network Print Add-on could not finish safely. Nothing was replaced."
+    SetErrorLevel 27
+    Quit
+  eshopNetworkAddonExitMissing_${ESHOP_MANAGED_ADDON_EXIT_ID}:
+    DetailPrint "The managed Network Print Add-on executable is missing. Stopping."
+    SetErrorLevel 31
+    Quit
+  !undef ESHOP_MANAGED_ADDON_EXIT_ID
+!macroend
+
+!macro eshopCheckNetworkAddonProcess
+  ; Run before any Desktop predecessor handoff or Desktop file removal. A
+  ; verified managed resident is asked to drain and exit; every other process
+  ; state fails closed before files or registrations can be replaced.
+  !insertmacro eshopRequestManagedAddonExit ${__LINE__}
 !macroend
 
 !macro eshopCheckNetworkAddonInstallState
@@ -322,6 +375,21 @@ FunctionEnd
     SetErrorLevel 20
     Quit
   ${EndIf}
+  ; Re-run the Add-on's authoritative shortcut lifecycle even when the
+  ; version is unchanged. Its helper performs native ShellLink semantic
+  ; validation/repair and returns non-zero when the four managed entries are
+  ; not safely established. File existence alone is not an ownership proof.
+  ClearErrors
+  ExecWait '"${ESHOP_NETWORK_ADDON_ROOT}\E-Shop-Network-Print-Addon.exe" --install-shortcuts --silent-shortcuts' $R6
+  ${If} ${Errors}
+  ${OrIf} $R6 != 0
+    DetailPrint "The managed Network Print Add-on shortcut contract could not be verified or repaired. Stopping."
+    SetErrorLevel 35
+    Quit
+  ${EndIf}
+  ; /S must leave no resident process behind. Re-check the same managed
+  ; lifecycle boundary before accepting registration and runtime artifacts.
+  !insertmacro eshopCheckNetworkAddonProcess
   !insertmacro eshopVerifyManagedAddonLifecycle
   WriteRegStr HKCU "${ESHOP_NETWORK_ADDON_MARKER_KEY}" "Managed" "true"
   WriteRegStr HKCU "${ESHOP_NETWORK_ADDON_MARKER_KEY}" "Version" "${ESHOP_NETWORK_ADDON_VERSION}"

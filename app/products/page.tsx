@@ -12,6 +12,7 @@ import { matchesProductSearch } from '@/lib/product-search'
 import ProductBulkImportPanel from './ProductBulkImportPanel'
 import Link from 'next/link'
 import { useManagementReturnHref } from '@/app/components/useManagementReturnHref'
+import InventoryEntry from '@/app/components/InventoryEntry'
 
 type MarketingLang = 'zh' | 'en' | 'km'
 type MarketingTemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
@@ -251,8 +252,10 @@ function withImages(p: Product, imageUrls: string[]): Product {
 export default function ProductsPage() {
   const { t } = useLocale()
   const { effectiveRole, currencyCode } = useWorkMode()
+  const { realRole } = useWorkMode()
   const managementReturnHref = useManagementReturnHref()
   const canManageProducts = effectiveRole === 'OWNER'
+  const canViewInventory = realRole === 'OWNER'
   const fmt = useCallback((key: string, vars: Record<string, string | number>) => {
     let text = t(key)
     Object.entries(vars).forEach(([name, value]) => {
@@ -1888,6 +1891,8 @@ export default function ProductsPage() {
             </div>
           ))}
         </div>
+
+        {canViewInventory ? <InventoryEntry /> : null}
 
         {canManageProducts ? (
           <>

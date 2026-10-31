@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "taskId": "ES-INVENTORY-PROFIT-PILOT-01",
+  "featureBranch": "codex/es-inventory-profit-pilot-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "db88c10ca8ee33e63b22b3f92f231b67c1c14bb5",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "CLOSED",
+  "closedAt": "2026-10-31T08:15:30Z",
+  "featureMergeCommitSha": "1fdc2cc6212c98dabc81fba3f80f43a89db7d7e2",
+  "closureReason": "Closed after the exact Inventory Profit Pilot release candidate entered the authorized main integration merge. The historical exact path and SHA-256 remain audit evidence; this CLOSED exception cannot authorize future Dashboard changes.",
+  "authorizedPaths": [
+    "app/dashboard/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/dashboard/page.tsx": "084df25056a4081e1efa3f9a08703ecdf2ec299e82a3d886ed621d02d1f52e63"
+  },
+  "createdAt": "2026-10-30T23:16:45Z",
+  "approvedAt": "2026-10-30T23:16:45Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Founder Implementation Authorization for ES-INVENTORY-PROFIT-PILOT-01",
+    "statement": "Founder approved a task-scoped ACTIVE Scope Exception for app/dashboard/page.tsx, limited to importing SalesProfitEntry and OWNER-conditional rendering of SalesProfitEntry, with an exact +2/-0 diff bound to the sealed candidate hash.",
+    "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the sealed two-line dashboard entry: import SalesProfitEntry and render it for realRole OWNER. No Dashboard Summary, permission logic, card, main layout or other behavior change is authorized. ACTIVE grants nothing until this byte-identical record exists in trusted origin/main. Feature merge, Preview/Production deployment, release and closure require separate authorization.",
+  "sourceDraft": {
+    "baseFileSha256": "e929b9a7bb2903d3cf1a7cc456ddbb8d22fe82831d77894057950f52818a6968",
+    "candidateSha256": "084df25056a4081e1efa3f9a08703ecdf2ec299e82a3d886ed621d02d1f52e63",
+    "patchSha256": "fdd35288c0e107c4a1f2b5417cf467757b32bba339b9329f67d7cff826aa01ea",
+    "patchPath": ".task-state/ES-INVENTORY-PROFIT-PILOT-01-sealed/dashboard.patch",
+    "candidatePath": ".task-state/ES-INVENTORY-PROFIT-PILOT-01-sealed/dashboard-page.tsx",
+    "fileCount": 1,
+    "insertions": 2,
+    "deletions": 0
+  }
+}

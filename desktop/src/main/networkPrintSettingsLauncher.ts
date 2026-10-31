@@ -26,10 +26,17 @@ function managedAddonHandoffPath(appDataPath: string): string {
 export const NETWORK_PRINT_SETTINGS_SHORTCUT_NAME = 'Network 打印设置.lnk'
 export const NETWORK_PRINT_SETTINGS_EXECUTABLE = 'E-Shop-Network-Print-Addon.exe'
 export const NETWORK_PRINT_SETTINGS_APP_ID = 'com.elife.eshop.networkprint.addon'
+export const NETWORK_PRINT_SETTINGS_INSTALL_SUFFIX = path.win32.join(
+  'Programs',
+  'E-Shop-Network-Print-Addon',
+  NETWORK_PRINT_SETTINGS_EXECUTABLE,
+)
 
 export type NetworkPrintSettingsShortcut = {
   target?: string
   args?: string
+  icon?: string
+  iconIndex?: number
   appUserModelId?: string
 }
 
@@ -62,11 +69,15 @@ export function isSafeNetworkPrintSettingsShortcut(
 ): boolean {
   if (platform !== 'win32') return false
   if (typeof shortcut.target !== 'string' || typeof shortcut.args !== 'string'
+    || typeof shortcut.icon !== 'string' || typeof shortcut.iconIndex !== 'number'
     || typeof shortcut.appUserModelId !== 'string') return false
   const windowsPath = path.win32
   if (!windowsPath.isAbsolute(shortcut.target) || windowsPath.normalize(shortcut.target) !== shortcut.target) return false
   if (windowsPath.basename(shortcut.target).toLowerCase() !== NETWORK_PRINT_SETTINGS_EXECUTABLE.toLowerCase()) return false
-  return shortcut.args.trim() === '--settings-only' && shortcut.appUserModelId === NETWORK_PRINT_SETTINGS_APP_ID
+  const normalizedTarget = shortcut.target.toLowerCase()
+  if (!normalizedTarget.endsWith(`\\${NETWORK_PRINT_SETTINGS_INSTALL_SUFFIX.toLowerCase()}`)) return false
+  if (shortcut.icon !== shortcut.target || shortcut.iconIndex !== 0) return false
+  return shortcut.args === '--settings-only' && shortcut.appUserModelId === NETWORK_PRINT_SETTINGS_APP_ID
 }
 
 export type NetworkPrintSettingsLauncherDeps = {

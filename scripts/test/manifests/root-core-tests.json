@@ -1,8 +1,12 @@
 {
   "schemaVersion": 1,
   "lane": "CORE",
-  "expectedCount": 97,
+  "expectedCount": 101,
   "tests": [
+    { "file": "tests/inventory-profit-feed.test.ts", "lane": "CORE", "reason": "The read-only external feed route runs with in-process Prisma delegates and validates secret, fixed-store isolation, sale, CustomerOrder, refund quantity and PII exclusion.", "dependencyType": "NONE", "evidence": "tests/inventory-profit-feed.test.ts:1" },
+    { "file": "tests/inventory-profit-provider-access.test.ts", "lane": "CORE", "reason": "Provider, access wrapper and inventory/profit routes run with in-process fetch and Prisma delegates, including Telegram presence, NULL cost, idempotency, stale/error behavior and CSV BOM.", "dependencyType": "NONE", "evidence": "tests/inventory-profit-provider-access.test.ts:1" },
+    { "file": "tests/inventory-profit-ui.test.ts", "lane": "CORE", "reason": "Read-only source assertions cover the OWNER entries, period presentation, missing-cost display, inventory search/defaults, receiving and export wiring.", "dependencyType": "NONE", "evidence": "tests/inventory-profit-ui.test.ts:1" },
+    { "file": "tests/inventory-profit-apps-script.test.cjs", "lane": "CORE", "reason": "Apps Script executes in a VM with deterministic in-process Spreadsheet, LockService and URLFetch fakes for doPost, secret/store isolation, requestKey, WAC, 5,000 SKU and retry behavior.", "dependencyType": "NONE", "evidence": "tests/inventory-profit-apps-script.test.cjs:1" },
     { "file": "tests/dine-in-m1-contract.test.ts", "lane": "CORE", "reason": "Pure kitchen-notice state, wording, ticket and request-key functions plus read-only source boundaries of the dine-in module; no database, browser or external service.", "dependencyType": "NONE", "evidence": "tests/dine-in-m1-contract.test.ts:1-40" },
     {"file":"tests/ops-release-status-auth.test.ts","lane":"CORE","reason":"Actual Ops route and signed synthetic sessions execute in process; no database or external identity provider.","dependencyType":"NONE","evidence":"tests/ops-release-status-auth.test.ts:1-51"},
     {"file":"tests/ops-release-status-static.test.cjs","lane":"CORE","reason":"Read-only repository source assertions; no external services.","dependencyType":"NONE","evidence":"tests/ops-release-status-static.test.cjs:1-77"},
