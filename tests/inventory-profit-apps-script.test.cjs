@@ -199,6 +199,51 @@ assert.equal(dailyProfit.costOfGoodsSold, 15)
 assert.equal(dailyProfit.grossProfit, 35)
 assert.equal(dailyProfit.costMethod, 'DAILY_PERIODIC_WAC')
 
+const nativeFieldDate = new Date('2026-10-31T07:00:00.000Z')
+assert.equal(context.normalizeBusinessDate_(nativeFieldDate), '2026-10-31', 'native Google Sheet DATE normalizes in Asia/Phnom_Penh')
+assert.equal(
+  context.normalizeBusinessDate_('Sat Oct 31 2026 14:00:00 GMT+0700 (中南半岛时间)'),
+  '2026-10-31',
+  'existing FIELD Google date-derived string normalizes deterministically',
+)
+const fieldToday = context.localDateForInstant_(new Date())
+const nativeFieldToday = new Date(`${fieldToday}T07:00:00.000Z`)
+context.replaceObjectRows_('Entries', [{
+  requestKey: 'def10-field-entry', productId: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1',
+  quantity: 10, unitCost: 1, date: nativeFieldToday, createdAt: `${fieldToday}T01:00:00Z`,
+}])
+context.replaceObjectRows_('SalesDaily', [{
+  date: nativeFieldToday, productId: 'p1', quantity: 1, netSales: 2, costOfGoodsSold: '', costCovered: '', updatedAt: '',
+}])
+context.recalculateInventoryProfit_({ p1: { productId: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1' } })
+const fieldDailyProfit = context.rowsAsObjects_('DailyProfit')[0]
+assert.deepEqual(
+  [fieldDailyProfit.date, fieldDailyProfit.netSales, fieldDailyProfit.costOfGoodsSold, fieldDailyProfit.grossProfit, fieldDailyProfit.grossMarginRate, fieldDailyProfit.costCoverageRate],
+  [fieldToday, 2, 1, 1, 0.5, 1],
+  'native Sheet DATE preserves existing FIELD profit values during DailyProfit grouping',
+)
+spreadsheet.getSheetByName('DailyProfit').data[1][0] = nativeFieldToday
+const fieldProfitResponse = post({ action: 'GET_SALES_PROFIT', secret: 'provider-secret', storeId: 'pilot-store', period: 'TODAY' })
+assert.deepEqual(
+  [fieldProfitResponse.data.netSales, fieldProfitResponse.data.costOfGoodsSold, fieldProfitResponse.data.grossProfit, fieldProfitResponse.data.grossMarginRate, fieldProfitResponse.data.costCoverageRate],
+  [2, 1, 1, 0.5, 1],
+  'GET_SALES_PROFIT includes native Sheet DATE rows instead of returning fake zero profit',
+)
+spreadsheet.getSheetByName('DailyProfit').data[1][0] = 'not-a-date'
+assert.deepEqual(
+  post({ action: 'GET_SALES_PROFIT', secret: 'provider-secret', storeId: 'pilot-store', period: 'TODAY' }),
+  { ok: false, error: 'UNAVAILABLE' },
+  'invalid DailyProfit dates fail closed instead of returning zero totals and 100% coverage',
+)
+spreadsheet.getSheetByName('SalesDaily').data[1][0] = 'not-a-date'
+assert.throws(
+  () => context.recalculateInventoryProfit_({ p1: { productId: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1' } }),
+  /INVALID_BUSINESS_DATE/,
+  'invalid Sheet dates fail closed during recalculation',
+)
+spreadsheet.getSheetByName('SalesDaily').data[1][0] = nativeFieldToday
+spreadsheet.getSheetByName('DailyProfit').data[1][0] = fieldToday
+
 const readLockAttempts = lockAttempts
 const readLockReleases = lockReleases
 assert.equal(post({ action: 'GET_SALES_PROFIT', secret: 'provider-secret', storeId: 'pilot-store', period: 'TODAY' }).ok, true)
@@ -366,4 +411,4 @@ const source = fs.readFileSync('apps-script/inventory-profit/Code.gs', 'utf8')
 assert.match(source, /shiftLocalDate_\(today, -3\)/, 'hourly sync covers today through D-3')
 assert.match(source, /shiftLocalDate_\(today, -34\)/, 'weekly sync covers 35 days')
 
-console.log('inventory profit Apps Script tests passed: DEF-01 tracking start, DEF-09 untracked sales coverage, locked reads, receiving date guard, requestKey, WAC, timezone, coupon allocation, NULL cost, 5,000 SKU and retry')
+console.log('inventory profit Apps Script tests passed: DEF-01 tracking start, DEF-02 locked reads, DEF-09 untracked sales coverage, DEF-10 Sheet DATE normalization/fail-closed, receiving date guard, requestKey, WAC, timezone, coupon allocation, NULL cost, 5,000 SKU and retry')
