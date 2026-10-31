@@ -55,6 +55,16 @@ type Product = {
   // imageUrl 由 /api/products 返回（route.ts 已 select）；仅 AI 拍照识别 mock 候选卡片读取
   imageUrl?: string | null
   imageUrls?: string[] | null
+  primaryBarcode?: string
+  mainUnitName?: string | null
+  auxUnitName?: string | null
+  auxBarcode?: string | null
+  auxConversionFactor?: number | null
+  auxSellPrice?: number | null
+  auxEnabled?: boolean
+  sellingUnitType?: 'MAIN' | 'AUX'
+  sellingUnitName?: string
+  sellingConversionFactor?: number
 }
 
 type PhotoCandidate = {
@@ -135,6 +145,26 @@ function productImageUrl(product: Product): string | null {
   return product.imageUrl ?? product.imageUrls?.find((url) => typeof url === 'string' && url.trim()) ?? null
 }
 
+function productForSellingBarcode(product: Product, barcode?: string | null): Product {
+  if (barcode && product.auxEnabled && product.auxBarcode === barcode && product.auxSellPrice != null && product.auxUnitName && product.auxConversionFactor != null) {
+    return {
+      ...product,
+      barcode,
+      sellPrice: product.auxSellPrice,
+      sellingUnitType: 'AUX',
+      sellingUnitName: product.auxUnitName,
+      sellingConversionFactor: product.auxConversionFactor,
+    }
+  }
+  return {
+    ...product,
+    barcode: product.primaryBarcode ?? product.barcode,
+    sellingUnitType: 'MAIN',
+    sellingUnitName: product.mainUnitName ?? undefined,
+    sellingConversionFactor: 1,
+  }
+}
+
 type SaleSuccess = {
   orderNo: string
   totalAmount: number
@@ -170,6 +200,10 @@ type RestorablePosItem = {
   qty: number
   lineAmount: number
   imageUrl?: string | null
+  barcode?: string
+  sellingUnitType?: 'MAIN' | 'AUX'
+  sellingUnitName?: string
+  sellingConversionFactor?: number
 }
 
 type RestorePrompt = {
@@ -308,7 +342,8 @@ export default function SalePage() {
         if (rawItems.length === 0) return
         const nextItems: CartItem[] = []
         for (const item of rawItems) {
-          const p = allProducts.find((product) => product.id === item.productId)
+          const base = allProducts.find((product) => product.id === item.productId)
+          const p = base ? productForSellingBarcode(base, item.barcode) : null
           if (!p) continue
           nextItems.push({
             key: `${p.id}-restore-${nextItems.length}`,
@@ -435,9 +470,9 @@ export default function SalePage() {
     if (!query) return
     const ql = query.toLowerCase()
     const localProduct = allProducts.find((p) => p.sku?.toLowerCase() === ql) ??
-      allProducts.find((p) => p.barcode.toLowerCase() === ql)
+      allProducts.find((p) => p.barcode === query || (p.auxEnabled && p.auxBarcode === query))
     if (localProduct) {
-      queryProductByBarcode(localProduct.barcode)
+      queryProductByBarcode(query)
       return
     }
     queryProductByBarcode(query)
@@ -452,10 +487,9 @@ export default function SalePage() {
     setScannerMsg(null)
     const clean = code.trim()
     if (!clean) return
-    const hit = allProducts.find((p) => p.barcode === clean) ||
-      allProducts.find((p) => p.barcode.toLowerCase() === clean.toLowerCase())
+    const hit = allProducts.find((p) => p.barcode === clean || (p.auxEnabled && p.auxBarcode === clean))
     if (hit) {
-      selectProduct(hit)
+      selectProduct(productForSellingBarcode(hit, clean))
       setScannerMsg({ type: 'ok', text: t('sale.scanSelected').replace('{name}', hit.name) })
       setTimeout(() => setScannerMsg(null), 2500)
     } else {
@@ -507,13 +541,13 @@ export default function SalePage() {
     const addQty = Math.max(1, quantity)
     rememberProduct(p)
     setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === p.id)
+      const existing = prev.find((i) => i.product.id === p.id && i.product.barcode === p.barcode)
       if (existing) {
         return prev.map((i) =>
-          i.product.id === p.id ? { ...i, qty: i.qty + addQty } : i
+          i.product.id === p.id && i.product.barcode === p.barcode ? { ...i, qty: i.qty + addQty } : i
         )
       }
-      return [...prev, { key: `${p.id}-${Date.now()}`, product: p, qty: addQty }]
+      return [...prev, { key: `${p.id}-${p.barcode}-${Date.now()}`, product: p, qty: addQty }]
     })
   }
 
@@ -617,18 +651,22 @@ export default function SalePage() {
 
     const items = activeItems.map((ci) => ({
       productId: ci.product.id,
+      barcode: ci.product.barcode,
       name: ci.product.name,
       spec: ci.product.spec,
       imageUrl: productImageUrl(ci.product),
       price: ci.product.sellPrice,
       qty: ci.qty,
       lineAmount: +(ci.product.sellPrice * ci.qty).toFixed(2),
+      sellingUnitType: ci.product.sellingUnitType ?? 'MAIN',
+      sellingUnitName: ci.product.sellingUnitName ?? ci.product.mainUnitName ?? '',
+      sellingConversionFactor: ci.product.sellingConversionFactor ?? 1,
     }))
 
     const sig = JSON.stringify({
       s: mirrorStatus, pm: mPM, ps: mPS,
       kq: !!mKQ, ki: !!mKI,
-      items: items.map((i) => `${i.productId}:${i.qty}`).join('|'),
+      items: items.map((i) => `${i.productId}:${i.barcode}:${i.qty}`).join('|'),
     })
     if (sig === posMirrorSigRef.current) return
     posMirrorSigRef.current = sig
@@ -2088,7 +2126,7 @@ function CartItemRow({
         <button style={ci.del} onClick={onDelete}>✕</button>
       </div>
       <div style={ci.bottom}>
-        <span style={ci.meta}>{item.qty} {itemUnit} × {unitPrice}</span>
+        <span style={ci.meta}>{item.qty} {item.product.sellingUnitName ?? itemUnit} × {unitPrice}</span>
         <span style={ci.subtotal}>{subtotal}</span>
       </div>
     </div>

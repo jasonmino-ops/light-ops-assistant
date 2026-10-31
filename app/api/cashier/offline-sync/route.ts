@@ -10,8 +10,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
 import { createHash } from 'crypto'
-import type { Product } from '@prisma/client'
 import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
+import {
+  productUnitSnapshot,
+  ProductUnitError,
+  resolveProductSellingUnit,
+  type ResolvedProductUnit,
+} from '@/lib/product-unit'
 
 const MAX_ORDERS = 20
 const MAX_ITEMS_PER_ORDER = 100
@@ -28,6 +33,9 @@ type OfflineSyncItem = {
   snapshotName?: unknown
   spec?: unknown
   sugar?: unknown
+  sellingUnitType?: unknown
+  sellingUnitName?: unknown
+  sellingConversionFactor?: unknown
 }
 
 type OfflineSyncOrder = {
@@ -183,7 +191,7 @@ async function syncOne(
 
   const store = await prisma.store.findFirst({
     where: { id: storeId, code: storeCode, tenantId, status: 'ACTIVE' },
-    select: { id: true, tenantId: true, code: true },
+    select: { id: true, tenantId: true, code: true, businessType: true },
   })
   if (!store) {
     return fail(offlineOrderId, 'STORE_NOT_FOUND', 'Store was not found or inactive')
@@ -232,48 +240,55 @@ async function syncOne(
     }
   }
 
-  const productIds = [...new Set(items.map((it) => asNonEmptyString(it.productId)).filter(Boolean) as string[])]
   const barcodes = [...new Set(items.map((it) => asNonEmptyString(it.barcode)).filter(Boolean) as string[])]
-  if (productIds.length === 0 && barcodes.length === 0) {
+  if (barcodes.length === 0) {
     await markFailedIfPossible({ tenantId, storeId, deviceId, offlineOrderId, errorCode: 'PRODUCT_NOT_FOUND', errorMessage: 'No productId or barcode in items' })
-    return fail(offlineOrderId, 'PRODUCT_NOT_FOUND', 'No productId or barcode in items')
+    return fail(offlineOrderId, 'PRODUCT_NOT_FOUND', 'No barcode in items')
   }
 
-  const products = await prisma.product.findMany({
-    where: {
-      tenantId,
-      status: 'ACTIVE',
-      OR: [
-        ...(productIds.length ? [{ id: { in: productIds } }] : []),
-        ...(barcodes.length ? [{ barcode: { in: barcodes } }] : []),
-      ],
-    },
-  })
-  const byId = new Map(products.map((p) => [p.id, p]))
-  const byBarcode = new Map(products.map((p) => [p.barcode, p]))
-
   let recomputedSubtotal = 0
-  const normalizedItems: Array<{ product: Product; qty: number; lineAmount: { toNumber(): number } }> = []
+  const normalizedItems: Array<{ unit: ResolvedProductUnit; source: OfflineSyncItem }> = []
   for (const item of items) {
     const productId = asNonEmptyString(item.productId)
     const barcode = asNonEmptyString(item.barcode)
-    const product = productId ? byId.get(productId) : barcode ? byBarcode.get(barcode) : null
-    if (!product) {
-      await markFailedIfPossible({ tenantId, storeId, deviceId, offlineOrderId, errorCode: 'PRODUCT_NOT_FOUND', errorMessage: `Product not found: ${productId ?? barcode ?? 'unknown'}` })
-      return fail(offlineOrderId, 'PRODUCT_NOT_FOUND', `Product not found: ${productId ?? barcode ?? 'unknown'}`)
-    }
-    if (product.tenantId !== tenantId) {
-      await markFailedIfPossible({ tenantId, storeId, deviceId, offlineOrderId, errorCode: 'PRODUCT_STORE_MISMATCH', errorMessage: `Product tenant mismatch: ${product.id}` })
-      return fail(offlineOrderId, 'PRODUCT_STORE_MISMATCH', `Product tenant mismatch: ${product.id}`)
-    }
     const qty = asFiniteNumber(item.quantity)
     if (qty === null || qty <= 0) {
-      await markFailedIfPossible({ tenantId, storeId, deviceId, offlineOrderId, errorCode: 'INVALID_PAYLOAD', errorMessage: `Invalid quantity for ${product.barcode}` })
-      return fail(offlineOrderId, 'INVALID_PAYLOAD', `Invalid quantity for ${product.barcode}`)
+      return fail(offlineOrderId, 'INVALID_PAYLOAD', `Invalid quantity for ${barcode ?? 'unknown'}`)
     }
-    const lineAmount = product.sellPrice.mul(qty)
-    recomputedSubtotal += lineAmount.toNumber()
-    normalizedItems.push({ product, qty, lineAmount })
+    if (!barcode) return fail(offlineOrderId, 'OFFLINE_PRODUCT_CONFIG_CHANGED', 'Offline item is missing its exact selling barcode')
+    let unit: ResolvedProductUnit
+    try {
+      unit = await resolveProductSellingUnit(prisma, {
+        tenantId,
+        businessType: store.businessType,
+        barcode,
+        quantity: qty,
+      })
+    } catch (error) {
+      const reason = error instanceof ProductUnitError ? error.code : 'UNKNOWN'
+      await markFailedIfPossible({ tenantId, storeId, deviceId, offlineOrderId, errorCode: 'OFFLINE_PRODUCT_CONFIG_CHANGED', errorMessage: `Current product configuration no longer matches (${reason})` })
+      return fail(offlineOrderId, 'OFFLINE_PRODUCT_CONFIG_CHANGED', 'Current product configuration no longer matches the offline snapshot')
+    }
+
+    const snapshotPrice = asFiniteNumber(item.snapshotPrice) ?? asFiniteNumber(item.unitPrice)
+    const snapshotName = asNonEmptyString(item.snapshotName) ?? asNonEmptyString(item.productName)
+    const submittedType = asNonEmptyString(item.sellingUnitType) ?? 'MAIN'
+    const submittedFactor = asFiniteNumber(item.sellingConversionFactor) ?? 1
+    const submittedUnitName = asNonEmptyString(item.sellingUnitName)
+    const configChanged =
+      (productId !== null && productId !== unit.product.id) ||
+      snapshotPrice === null || Math.abs(snapshotPrice - unit.unitPrice.toNumber()) > 0.000001 ||
+      (snapshotName !== null && snapshotName !== unit.product.name) ||
+      submittedType !== unit.sellingUnitType ||
+      submittedFactor !== unit.conversionFactor ||
+      (unit.sellingUnitType === 'AUX' && submittedUnitName !== unit.sellingUnitName) ||
+      (submittedUnitName !== null && submittedUnitName !== unit.sellingUnitName)
+    if (configChanged) {
+      await markFailedIfPossible({ tenantId, storeId, deviceId, offlineOrderId, errorCode: 'OFFLINE_PRODUCT_CONFIG_CHANGED', errorMessage: `Offline snapshot changed for ${barcode}` })
+      return fail(offlineOrderId, 'OFFLINE_PRODUCT_CONFIG_CHANGED', `Offline snapshot changed for ${barcode}`)
+    }
+    recomputedSubtotal += unit.lineAmount.toNumber()
+    normalizedItems.push({ unit, source: item })
   }
 
   const recomputedTotal = roundMoney(recomputedSubtotal - discountAmount)
@@ -340,13 +355,10 @@ async function syncOne(
             offlineSyncedAt: syncedAt,
             offlineSyncStatus: 'SYNCED',
             inventoryException: null,
-            productId: item.product.id,
-            barcode: item.product.barcode,
-            productNameSnapshot: item.product.name,
-            specSnapshot: item.product.spec ?? null,
-            unitPrice: item.product.sellPrice,
-            quantity: item.qty,
-            lineAmount: item.lineAmount.toNumber(),
+            productId: item.unit.product.id,
+            productNameSnapshot: item.unit.product.name,
+            specSnapshot: item.unit.product.spec ?? null,
+            ...productUnitSnapshot(item.unit),
             remark: '电脑收银台-离线补同步',
           },
         })

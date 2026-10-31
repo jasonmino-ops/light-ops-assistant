@@ -113,6 +113,15 @@ type Product = {
   imageUrl: string | null
   imageUrls?: string[]
   createdAt?: string
+  multiUnitEligible?: boolean
+  primaryBarcode?: string
+  primarySellPrice?: number
+  mainUnitName?: string | null
+  auxUnitName?: string | null
+  auxBarcode?: string | null
+  auxConversionFactor?: number | null
+  auxSellPrice?: number | null
+  auxEnabled?: boolean
 }
 
 type MarketingProductPage = {
@@ -333,6 +342,12 @@ export default function ProductsPage() {
   const [editPrintKitchenTicket, setEditPrintKitchenTicket] = useState(true)
   const [editStatus, setEditStatus] = useState<'ACTIVE' | 'DISABLED'>('ACTIVE')
   const [editCategoryId, setEditCategoryId] = useState<string>('')
+  const [editMainUnitName, setEditMainUnitName] = useState('')
+  const [editAuxUnitName, setEditAuxUnitName] = useState('')
+  const [editAuxBarcode, setEditAuxBarcode] = useState('')
+  const [editAuxFactor, setEditAuxFactor] = useState('')
+  const [editAuxPrice, setEditAuxPrice] = useState('')
+  const [editAuxEnabled, setEditAuxEnabled] = useState(false)
 
   // Create form
   const [newBarcode, setNewBarcode] = useState('')
@@ -344,6 +359,13 @@ export default function ProductsPage() {
   const [newIsRecommended, setNewIsRecommended] = useState(false)
   const [newPrintKitchenTicket, setNewPrintKitchenTicket] = useState(true)
   const [newCategoryId, setNewCategoryId] = useState<string>('')
+  const [newMainUnitName, setNewMainUnitName] = useState('')
+  const [newAuxUnitName, setNewAuxUnitName] = useState('')
+  const [newAuxBarcode, setNewAuxBarcode] = useState('')
+  const [newAuxFactor, setNewAuxFactor] = useState('')
+  const [newAuxPrice, setNewAuxPrice] = useState('')
+  const [newAuxEnabled, setNewAuxEnabled] = useState(false)
+  const [multiUnitEligible, setMultiUnitEligible] = useState(false)
   const [newImageFile, setNewImageFile] = useState<File | null>(null)
   const [newImagePreview, setNewImagePreview] = useState<string | null>(null)
   const [newImageFiles, setNewImageFiles] = useState<File[]>([])
@@ -428,6 +450,13 @@ export default function ProductsPage() {
     }
     document.addEventListener('keydown', handleKeyDown, true)
     return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [])
+
+  useEffect(() => {
+    apiFetch('/api/products?capabilities=true', undefined, OWNER_CTX)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((value) => setMultiUnitEligible(value?.multiUnitEligible === true))
+      .catch(() => setMultiUnitEligible(false))
   }, [])
 
   // ── Load categories on mount ──────────────────────────────────────────────
@@ -1364,7 +1393,7 @@ export default function ProductsPage() {
     }
     setProduct(next)
     setEditName(next.name)
-    setEditBarcode(next.barcode)
+    setEditBarcode(next.primaryBarcode ?? next.barcode)
     setEditSpec(next.spec ?? '')
     setEditPrice(String(next.sellPrice))
     setEditDiscountPrice(next.discountPrice == null ? '' : String(next.discountPrice))
@@ -1373,6 +1402,7 @@ export default function ProductsPage() {
     setEditPrintKitchenTicket(next.printKitchenTicket)
     setEditStatus(next.status)
     setEditCategoryId(next.categoryId ?? '')
+    loadMultiUnitEdit(next)
     setMode('found')
     window.setTimeout(() => editNameRef.current?.focus(), 100)
   }
@@ -1636,15 +1666,17 @@ export default function ProductsPage() {
         const p: Product = await res.json()
         setProduct(p)
         setEditName(p.name)
-        setEditBarcode(p.barcode)
+        setEditBarcode(p.primaryBarcode ?? p.barcode)
         setEditSpec(p.spec ?? '')
-        setEditPrice(String(p.sellPrice))
+        setEditPrice(String(p.primarySellPrice ?? p.sellPrice))
         setEditDiscountPrice(p.discountPrice == null ? '' : String(p.discountPrice))
         setEditDiscountEnabled(p.discountEnabled)
         setEditIsRecommended(p.isRecommended)
         setEditPrintKitchenTicket(p.printKitchenTicket)
         setEditStatus(p.status)
         setEditCategoryId(p.categoryId ?? '')
+        loadMultiUnitEdit(p)
+        if (p.multiUnitEligible) setMultiUnitEligible(true)
         setMode('found')
         setTimeout(() => editNameRef.current?.focus(), 100)
         blockHidBriefly()
@@ -1661,6 +1693,12 @@ export default function ProductsPage() {
           setNewDiscountEnabled(false)
           setNewIsRecommended(false)
           setNewPrintKitchenTicket(true)
+          setNewMainUnitName('')
+          setNewAuxUnitName('')
+          setNewAuxBarcode('')
+          setNewAuxFactor('')
+          setNewAuxPrice('')
+          setNewAuxEnabled(false)
           setMode('not-found')
           blockHidBriefly()
           setHidMsg({ type: 'fail', text: fmt('products.hidNotFound', { barcode: b }) })
@@ -1728,6 +1766,15 @@ export default function ProductsPage() {
     clearNewImage()
   }
 
+  function loadMultiUnitEdit(value: Product) {
+    setEditMainUnitName(value.mainUnitName ?? '')
+    setEditAuxUnitName(value.auxUnitName ?? '')
+    setEditAuxBarcode(value.auxBarcode ?? '')
+    setEditAuxFactor(value.auxConversionFactor == null ? '' : String(value.auxConversionFactor))
+    setEditAuxPrice(value.auxSellPrice == null ? '' : String(value.auxSellPrice))
+    setEditAuxEnabled(value.auxEnabled === true)
+  }
+
   // ── Save (edit) ───────────────────────────────────────────────────────────
 
   async function handleSave() {
@@ -1758,6 +1805,14 @@ export default function ProductsPage() {
             printKitchenTicket: editPrintKitchenTicket,
             status: editStatus,
             categoryId: editCategoryId || null,
+            ...(multiUnitEligible ? {
+              mainUnitName: editMainUnitName.trim() || null,
+              auxUnitName: editAuxUnitName.trim() || null,
+              auxBarcode: editAuxBarcode.trim() || null,
+              auxConversionFactor: editAuxFactor.trim() ? Number(editAuxFactor) : null,
+              auxSellPrice: editAuxPrice.trim() ? Number(editAuxPrice) : null,
+              auxEnabled: editAuxEnabled,
+            } : {}),
           }),
         },
         OWNER_CTX,
@@ -1766,6 +1821,7 @@ export default function ProductsPage() {
       if (res.ok) {
         setProduct(body)
         setEditBarcode(body.barcode)
+        loadMultiUnitEdit(body)
         setMode('saved')
       } else {
         setError(body.message ?? t('products.saveFailed'))
@@ -1804,6 +1860,14 @@ export default function ProductsPage() {
             isRecommended: newIsRecommended,
             printKitchenTicket: newPrintKitchenTicket,
             categoryId: newCategoryId || null,
+            ...(multiUnitEligible ? {
+              mainUnitName: newMainUnitName.trim() || null,
+              auxUnitName: newAuxUnitName.trim() || null,
+              auxBarcode: newAuxBarcode.trim() || null,
+              auxConversionFactor: newAuxFactor.trim() ? Number(newAuxFactor) : null,
+              auxSellPrice: newAuxPrice.trim() ? Number(newAuxPrice) : null,
+              auxEnabled: newAuxEnabled,
+            } : {}),
           }),
         },
         OWNER_CTX,
@@ -1835,6 +1899,7 @@ export default function ProductsPage() {
         setEditPrintKitchenTicket(created.printKitchenTicket)
         setEditStatus(created.status)
         setEditCategoryId(created.categoryId ?? '')
+        loadMultiUnitEdit(created)
         clearNewImage()
         if (photoCreateOpen) {
           photoCreateReset()
@@ -3093,6 +3158,22 @@ export default function ProductsPage() {
                     ))}
                   </div>
                 </Field>
+                {multiUnitEligible && (
+                  <MultiUnitFields
+                    labels={{
+                      title: t('products.multiUnitTitle'), mainUnit: t('products.mainUnitName'),
+                      auxUnit: t('products.auxUnitName'), auxBarcode: t('products.auxBarcode'),
+                      factor: t('products.auxFactor'), auxPrice: t('products.auxPrice'),
+                      enabled: t('products.auxEnabled'), hint: t('products.multiUnitHint'),
+                    }}
+                    mainUnitName={editMainUnitName} onMainUnitName={setEditMainUnitName}
+                    auxUnitName={editAuxUnitName} onAuxUnitName={setEditAuxUnitName}
+                    auxBarcode={editAuxBarcode} onAuxBarcode={setEditAuxBarcode}
+                    auxFactor={editAuxFactor} onAuxFactor={setEditAuxFactor}
+                    auxPrice={editAuxPrice} onAuxPrice={setEditAuxPrice}
+                    auxEnabled={editAuxEnabled} onAuxEnabled={setEditAuxEnabled}
+                  />
+                )}
                 <DiscountFields
                   priceLabel={t('products.fieldDiscountPrice')}
                   enabledLabel={t('products.fieldDiscountEnabled')}
@@ -3269,6 +3350,22 @@ export default function ProductsPage() {
                     placeholder="0.00"
                   />
                 </Field>
+                {multiUnitEligible && (
+                  <MultiUnitFields
+                    labels={{
+                      title: t('products.multiUnitTitle'), mainUnit: t('products.mainUnitName'),
+                      auxUnit: t('products.auxUnitName'), auxBarcode: t('products.auxBarcode'),
+                      factor: t('products.auxFactor'), auxPrice: t('products.auxPrice'),
+                      enabled: t('products.auxEnabled'), hint: t('products.multiUnitHint'),
+                    }}
+                    mainUnitName={newMainUnitName} onMainUnitName={setNewMainUnitName}
+                    auxUnitName={newAuxUnitName} onAuxUnitName={setNewAuxUnitName}
+                    auxBarcode={newAuxBarcode} onAuxBarcode={setNewAuxBarcode}
+                    auxFactor={newAuxFactor} onAuxFactor={setNewAuxFactor}
+                    auxPrice={newAuxPrice} onAuxPrice={setNewAuxPrice}
+                    auxEnabled={newAuxEnabled} onAuxEnabled={setNewAuxEnabled}
+                  />
+                )}
                 <DiscountFields
                   priceLabel={t('products.fieldDiscountPrice')}
                   enabledLabel={t('products.fieldDiscountEnabled')}
@@ -3329,6 +3426,43 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div style={f.wrap}>
       <div style={f.label}>{label}</div>
       {children}
+    </div>
+  )
+}
+
+function MultiUnitFields({
+  labels, mainUnitName, onMainUnitName, auxUnitName, onAuxUnitName,
+  auxBarcode, onAuxBarcode, auxFactor, onAuxFactor, auxPrice, onAuxPrice,
+  auxEnabled, onAuxEnabled,
+}: {
+  labels: { title: string; mainUnit: string; auxUnit: string; auxBarcode: string; factor: string; auxPrice: string; enabled: string; hint: string }
+  mainUnitName: string; onMainUnitName: (value: string) => void
+  auxUnitName: string; onAuxUnitName: (value: string) => void
+  auxBarcode: string; onAuxBarcode: (value: string) => void
+  auxFactor: string; onAuxFactor: (value: string) => void
+  auxPrice: string; onAuxPrice: (value: string) => void
+  auxEnabled: boolean; onAuxEnabled: (value: boolean) => void
+}) {
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>{labels.title}</div>
+      <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 12 }}>{labels.hint}</div>
+      <Field label={labels.mainUnit}>
+        <input style={s.field} value={mainUnitName} onChange={(e) => onMainUnitName(e.target.value)} />
+      </Field>
+      <Field label={labels.auxUnit}>
+        <input style={s.field} value={auxUnitName} onChange={(e) => onAuxUnitName(e.target.value)} />
+      </Field>
+      <Field label={labels.auxBarcode}>
+        <input style={s.field} value={auxBarcode} onChange={(e) => onAuxBarcode(e.target.value)} />
+      </Field>
+      <Field label={labels.factor}>
+        <input style={s.field} inputMode="numeric" value={auxFactor} onChange={(e) => onAuxFactor(e.target.value.replace(/[^0-9]/g, ''))} />
+      </Field>
+      <Field label={labels.auxPrice}>
+        <input style={s.field} inputMode="decimal" value={auxPrice} onChange={(e) => onAuxPrice(e.target.value.replace(/[^0-9.]/g, ''))} />
+      </Field>
+      <BooleanAttributeField label={labels.enabled} checked={auxEnabled} onChange={onAuxEnabled} />
     </div>
   )
 }

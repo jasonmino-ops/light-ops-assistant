@@ -23,6 +23,13 @@ import { AnthropicProductImportAiProvider } from '../lib/product-bulk-import/ai/
 import { pdfBlocksToRows } from '../lib/product-bulk-import/pdf'
 import { inspectSpreadsheetBuffer, parseSpreadsheetBuffer } from '../lib/product-bulk-import/xlsx'
 import {
+  isMultiUnitBusinessType,
+  normalizeMultiUnitMutation,
+  productUnitSnapshot,
+  ProductUnitError,
+  resolveProductSellingUnit,
+} from '../lib/product-unit'
+import {
   ProductImportAnalyzeRecoveryError,
   runProductImportAnalysis,
   type JobView,
@@ -239,6 +246,26 @@ function workbookBuffer(sheets: Array<{ name: string; rows: unknown[][] }>): Buf
   return Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer)
 }
 
+function diamondLikeWorkbookBuffer(): Buffer {
+  const workbook = XLSX.utils.book_new()
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ['序号', '基本信息', '', '商品分类', '单位', '', '条形码', '', '价格', ''],
+    ['序号', '商品名称（必填）', '规格', '一级分类', '单位', '换算率', '主单位', '辅单位', '零售价', '零售价'],
+    ['序号', '商品名称（必填）', '规格', '一级分类', '单位', '换算率', '主单位', '辅单位', '主单位', '辅单位'],
+    [1, '三位小数水', '1.5L', '饮用水', '瓶ដប/件កេស', '1/12', '8846002481704', '8846002482701', 0.625, 4.25],
+    [2, '待辅条码水', '1.55L', '饮用水', '瓶ដប/件កេស', '1/24', '6921168520015', '', 1, 8],
+    [3, '整件主单位水', '500ml', '饮用水', '件កេស', '', '18846029021232', '', 4, 0],
+  ])
+  sheet['!merges'] = [
+    { s: { r: 0, c: 1 }, e: { r: 0, c: 2 } },
+    { s: { r: 0, c: 4 }, e: { r: 0, c: 5 } },
+    { s: { r: 0, c: 6 }, e: { r: 0, c: 7 } },
+    { s: { r: 0, c: 8 }, e: { r: 0, c: 9 } },
+  ]
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Sheet1')
+  return Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer)
+}
+
 async function drawingWorkbook(options: { wps?: boolean; unsupported?: boolean; officeEmbedded?: boolean } = {}): Promise<Buffer> {
   const source = workbookBuffer([{ name: '商品', rows: [
     ['barcode', 'name_zh', 'sell_price'],
@@ -282,6 +309,67 @@ async function main() {
   assert.equal(internalEan13Candidate('tenant:file:row'), internalEan13Candidate('tenant:file:row'))
   assert.notEqual(internalEan13Candidate('tenant:file-a:row'), internalEan13Candidate('tenant:file-b:row'))
 
+  assert.equal(isMultiUnitBusinessType('RETAIL'), true)
+  assert.equal(isMultiUnitBusinessType('GENERAL'), false)
+  const unitProduct = {
+    id: 'product-1', tenantId: 'tenant-1', status: 'ACTIVE', barcode: 'MAIN-1', sellPrice: '0.63',
+    mainUnitName: '瓶', auxUnitName: '件', auxBarcode: 'AUX-1', auxConversionFactor: 12,
+    auxSellPrice: '4.25', auxEnabled: true,
+  }
+  const fakeDb = { product: { findFirst: async ({ where }: any) => (
+    where.tenantId === 'tenant-1'
+    && (where.OR as any[]).some((condition) => condition.barcode === unitProduct.barcode || condition.auxBarcode === unitProduct.auxBarcode)
+      ? unitProduct
+      : null
+  ) } }
+  const aux = await resolveProductSellingUnit(fakeDb, { tenantId: 'tenant-1', businessType: 'RETAIL', barcode: 'AUX-1', quantity: 2 })
+  assert.deepEqual(
+    [aux.sellingUnitType, aux.sellingUnitName, aux.conversionFactor, aux.sellingQuantity.toString(), aux.baseQuantity.toString(), aux.unitPrice.toString(), aux.lineAmount.toString()],
+    ['AUX', '件', 12, '2', '24', '4.25', '8.5'],
+  )
+  await assert.rejects(
+    () => resolveProductSellingUnit(fakeDb, { tenantId: 'tenant-1', businessType: 'RETAIL', barcode: 'AUX-1', quantity: 1.5 }),
+    (error: unknown) => error instanceof ProductUnitError && error.code === 'AUX_QUANTITY_MUST_BE_INTEGER',
+  )
+  await assert.rejects(
+    () => resolveProductSellingUnit(fakeDb, { tenantId: 'tenant-1', businessType: 'GENERAL', barcode: 'AUX-1', quantity: 1 }),
+    (error: unknown) => error instanceof ProductUnitError && error.code === 'PRODUCT_NOT_FOUND',
+  )
+  const generalMain = await resolveProductSellingUnit(fakeDb, { tenantId: 'tenant-1', businessType: 'GENERAL', barcode: 'MAIN-1', quantity: 1 })
+  assert.deepEqual([generalMain.sellingUnitType, generalMain.sellingUnitName, generalMain.conversionFactor], ['MAIN', '件', 1])
+  assert.deepEqual(
+    Object.keys(productUnitSnapshot(generalMain)).sort(),
+    ['barcode', 'lineAmount', 'quantity', 'unitPrice'],
+    'non-retail sales must retain the legacy SaleRecord shape without selling-unit snapshot fields',
+  )
+  assert.equal(productUnitSnapshot(aux).sellingUnitNameSnapshot, '件')
+  assert.equal(normalizeMultiUnitMutation({ auxUnitName: '件', auxConversionFactor: 12, auxSellPrice: 8, auxEnabled: false }).auxEnabled, false)
+  for (const factor of [4, 8, 12, 20, 24]) {
+    const product = { ...unitProduct, auxConversionFactor: factor, auxSellPrice: factor === 4 ? '11.25' : '4.25' }
+    const db = { product: { findFirst: async () => product } }
+    const resolved = await resolveProductSellingUnit(db, { tenantId: 'tenant-1', businessType: 'RETAIL', barcode: 'AUX-1', quantity: 2 })
+    assert.equal(resolved.baseQuantity.toString(), String(factor * 2))
+    assert.equal(resolved.lineAmount.toString(), factor === 4 ? '22.5' : '8.5')
+  }
+  for (const route of [
+    'app/api/sales/route.ts',
+    'app/api/cashier/sales/route.ts',
+    'app/api/cashier/member-balance-pay/route.ts',
+    'app/api/cashier/offline-sync/route.ts',
+  ]) {
+    const source = fs.readFileSync(route, 'utf8')
+    assert.match(source, /resolveProductSellingUnit/, `${route} must use the shared server-side exact resolver`)
+    assert.match(source, /productUnitSnapshot/, `${route} must persist the shared selling-unit snapshot contract`)
+  }
+  const offlineSource = fs.readFileSync('app/api/cashier/offline-sync/route.ts', 'utf8')
+  assert.match(offlineSource, /OFFLINE_PRODUCT_CONFIG_CHANGED/)
+  for (const path of ['app/api/ops/tenants/[tenantId]/export/route.ts', 'lib/mino-bos/business-assets/read-only-adapter.ts']) {
+    const source = fs.readFileSync(path, 'utf8')
+    for (const field of ['auxBarcode', 'auxConversionFactor', 'auxSellPrice', 'sellingUnitNameSnapshot', 'sellingQuantity', 'sellingConversionFactor']) {
+      assert.match(source, new RegExp(field), `${path} must preserve ${field}`)
+    }
+  }
+
   const categoryList = [
     { id: 'l1', name: '卫浴', parentId: null },
     { id: 'l2', name: ' 水龙头 ', parentId: 'l1' },
@@ -298,6 +386,29 @@ async function main() {
   assert.equal(csvResult.rows[0].product.barcode, '0001234567890')
   assert.equal(csvResult.rows[0].product.sellPrice, 1.25)
   assert.ok(csvResult.rows.every((row) => row.issues.some((issue) => issue.code === 'DUPLICATE_BARCODE_IN_FILE')))
+
+  const diamond = parseSpreadsheetBuffer(diamondLikeWorkbookBuffer(), 'XLSX')
+  assert.equal(diamond.sheets[0].headerRowNumber, 3)
+  assert.deepEqual(diamond.sheets[0].deterministicMapping, {
+    barcode: 6, nameZh: 1, spec: 2, sellPrice: 8, category1: 3,
+    unitNames: 4, auxConversionFactor: 5, auxBarcode: 7, auxSellPrice: 9,
+  })
+  assert.equal(diamond.rows.length, 3)
+  assert.deepEqual(
+    [diamond.rows[0].product.sellPrice, diamond.rows[0].product.mainUnitName, diamond.rows[0].product.auxUnitName, diamond.rows[0].product.auxConversionFactor, diamond.rows[0].product.auxEnabled],
+    [0.63, '瓶ដប', '件កេស', 12, true],
+  )
+  assert.ok(diamond.rows[0].issues.some((issue) => (
+    issue.code === 'PRICE_NORMALIZED'
+    && issue.sourceValue === '0.625'
+    && issue.normalizedValue === '0.63'
+    && issue.normalizationReason === 'STANDARD_HALF_UP_TO_2_DECIMALS'
+    && !issue.blocking
+  )))
+  assert.equal(diamond.rows[1].product.auxEnabled, false, 'missing auxiliary barcode remains pending and unsellable')
+  assert.ok(diamond.rows[1].issues.some((issue) => issue.code === 'AUX_UNIT_CONFIG_INCOMPLETE' && !issue.blocking))
+  assert.equal(diamond.rows[2].product.barcode, '18846029021232', 'raw 14-digit barcode is preserved exactly')
+  assert.equal(diamond.rows[2].issues.some((issue) => issue.blocking), false, 'zero in an unused auxiliary-price column does not block a main-only product')
 
   const codeTable = Buffer.from('\uFEFF商品图片,商品名称,编码,条码,售价\nimage-1.png,洛威诗 N05,ERA1001,0891234567890,1.49\n')
   const codeTableResult = parseSpreadsheetBuffer(codeTable, 'CSV')

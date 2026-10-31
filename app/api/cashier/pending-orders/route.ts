@@ -56,6 +56,8 @@ export async function GET(req: NextRequest) {
       orderNo: true, productId: true, barcode: true,
       productNameSnapshot: true, specSnapshot: true,
       unitPrice: true, quantity: true, lineAmount: true, createdAt: true,
+      sellingUnitType: true, sellingUnitNameSnapshot: true,
+      sellingQuantity: true, sellingConversionFactor: true,
     },
   })
 
@@ -68,6 +70,7 @@ export async function GET(req: NextRequest) {
     items: Array<{
       productId: string | null; barcode: string; name: string; spec: string | null
       unitPrice: number; quantity: number; lineAmount: number
+      baseQuantity: number; sellingUnitType: string; sellingUnitName: string | null; sellingConversionFactor: number
     }>
   }>()
 
@@ -86,7 +89,11 @@ export async function GET(req: NextRequest) {
       name: r.productNameSnapshot,
       spec: r.specSnapshot,
       unitPrice: r.unitPrice.toNumber(),
-      quantity: r.quantity.toNumber(),
+      quantity: r.sellingQuantity?.toNumber() ?? r.quantity.toNumber(),
+      baseQuantity: r.quantity.toNumber(),
+      sellingUnitType: r.sellingUnitType ?? 'MAIN',
+      sellingUnitName: r.sellingUnitNameSnapshot,
+      sellingConversionFactor: r.sellingConversionFactor ?? 1,
       lineAmount: r.lineAmount.toNumber(),
     })
     grouped.set(orderNo, entry)

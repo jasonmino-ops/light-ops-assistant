@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import {
+  assertProductUnitBarcodesAvailable,
+  isMultiUnitBusinessType,
+  normalizeMultiUnitMutation,
+  ProductUnitError,
+  type MultiUnitMutation,
+} from '@/lib/product-unit'
 
 const PRODUCT_PATCH_SELECT = {
   id: true,
@@ -9,6 +16,12 @@ const PRODUCT_PATCH_SELECT = {
   name: true,
   spec: true,
   sellPrice: true,
+  mainUnitName: true,
+  auxUnitName: true,
+  auxBarcode: true,
+  auxConversionFactor: true,
+  auxSellPrice: true,
+  auxEnabled: true,
   discountPrice: true,
   discountEnabled: true,
   isRecommended: true,
@@ -46,6 +59,10 @@ function isMissingImageGalleryColumn(e: unknown): boolean {
   if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2022') return false
   const text = String(e.message)
   return text.includes('imageUrls') || text.includes('imageStorageKeys') || text.includes('column') || text.includes('does not exist')
+}
+
+function isProductBarcodeConflict(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002'
 }
 
 /**
@@ -117,7 +134,7 @@ export async function PATCH(
 
   const { id } = await params
 
-  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; discountPrice?: number | null; discountEnabled?: boolean; isRecommended?: boolean; printKitchenTicket?: boolean; status?: string; categoryId?: string | null }
+  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; discountPrice?: number | null; discountEnabled?: boolean; isRecommended?: boolean; printKitchenTicket?: boolean; status?: string; categoryId?: string | null } & MultiUnitMutation
   try {
     body = await req.json()
   } catch {
@@ -143,7 +160,18 @@ export async function PATCH(
   }
   const current = await prisma.product.findFirst({
     where: { id, tenantId: ctx.tenantId },
-    select: { sellPrice: true, discountPrice: true, discountEnabled: true },
+    select: {
+      barcode: true,
+      sellPrice: true,
+      discountPrice: true,
+      discountEnabled: true,
+      mainUnitName: true,
+      auxUnitName: true,
+      auxBarcode: true,
+      auxConversionFactor: true,
+      auxSellPrice: true,
+      auxEnabled: true,
+    },
   })
   if (!current) return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })
   const effectiveSellPrice = sellPrice === undefined ? current.sellPrice.toNumber() : Number(sellPrice)
@@ -157,14 +185,39 @@ export async function PATCH(
   }
 
   const cleanBarcode = barcode !== undefined ? String(barcode).trim() : undefined
+  const store = await prisma.store.findFirst({ where: { id: ctx.storeId, tenantId: ctx.tenantId }, select: { businessType: true } })
+  const multiUnitEligible = isMultiUnitBusinessType(store?.businessType)
+  const hasMultiUnitInput = ['mainUnitName', 'auxUnitName', 'auxBarcode', 'auxConversionFactor', 'auxSellPrice', 'auxEnabled']
+    .some((key) => Object.prototype.hasOwnProperty.call(body, key))
+  if (hasMultiUnitInput && !multiUnitEligible) {
+    return NextResponse.json({ error: 'MULTI_UNIT_NOT_AVAILABLE' }, { status: 403 })
+  }
   if (cleanBarcode !== undefined) {
-    const existing = await prisma.product.findFirst({
+    const existingMainBarcode = await prisma.product.findFirst({
       where: { tenantId: ctx.tenantId, barcode: cleanBarcode, id: { not: id } },
       select: { id: true },
     })
-    if (existing) {
+    if (existingMainBarcode) {
       return NextResponse.json({ error: 'DUPLICATE_BARCODE', message: '该条码已存在' }, { status: 409 })
     }
+  }
+  let multiUnit
+  try {
+    multiUnit = normalizeMultiUnitMutation(multiUnitEligible ? body : {}, {
+      ...current,
+      auxSellPrice: current.auxSellPrice?.toString() ?? null,
+    })
+    await assertProductUnitBarcodesAvailable(prisma, {
+      tenantId: ctx.tenantId,
+      barcode: cleanBarcode ?? current.barcode,
+      auxBarcode: multiUnit.auxBarcode,
+      excludeProductId: id,
+    })
+  } catch (error) {
+    if (error instanceof ProductUnitError) {
+      return NextResponse.json({ error: error.code, message: error.message }, { status: error.status })
+    }
+    throw error
   }
 
   const data = {
@@ -178,6 +231,14 @@ export async function PATCH(
     ...(printKitchenTicket !== undefined ? { printKitchenTicket } : {}),
     ...(status !== undefined ? { status: status as 'ACTIVE' | 'DISABLED' } : {}),
     ...(categoryId !== undefined ? { categoryId: categoryId ?? null } : {}),
+    ...(multiUnitEligible && hasMultiUnitInput ? {
+      mainUnitName: multiUnit.mainUnitName,
+      auxUnitName: multiUnit.auxUnitName,
+      auxBarcode: multiUnit.auxBarcode,
+      auxConversionFactor: multiUnit.auxConversionFactor == null ? null : Number(multiUnit.auxConversionFactor),
+      auxSellPrice: multiUnit.auxSellPrice == null ? null : String(multiUnit.auxSellPrice),
+      auxEnabled: multiUnit.auxEnabled,
+    } : {}),
   }
 
   let updated: Prisma.ProductGetPayload<{ select: typeof PRODUCT_PATCH_SELECT }>
@@ -191,13 +252,32 @@ export async function PATCH(
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
       return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })
     }
+    if (isProductBarcodeConflict(e)) {
+      const mainConflict = cleanBarcode === undefined ? null : await prisma.product.findFirst({
+        where: { tenantId: ctx.tenantId, barcode: cleanBarcode, id: { not: id } },
+        select: { id: true },
+      })
+      if (mainConflict) {
+        return NextResponse.json({ error: 'DUPLICATE_BARCODE', message: '该条码已存在' }, { status: 409 })
+      }
+      return NextResponse.json({ error: 'BARCODE_COLLISION', message: '条码已被其他商品主单位或辅单位使用' }, { status: 409 })
+    }
     if (!isMissingImageGalleryColumn(e)) throw e
     const legacyUpdated = await prisma.product.update({
       where: { id, tenantId: ctx.tenantId },
       data,
       select: PRODUCT_PATCH_LEGACY_SELECT,
     })
-    updated = { ...legacyUpdated, imageUrls: null }
+    updated = {
+      ...legacyUpdated,
+      imageUrls: null,
+      mainUnitName: null,
+      auxUnitName: null,
+      auxBarcode: null,
+      auxConversionFactor: null,
+      auxSellPrice: null,
+      auxEnabled: false,
+    }
   }
 
   return NextResponse.json({
@@ -214,5 +294,14 @@ export async function PATCH(
     categoryId: updated.categoryId,
     imageUrl: updated.imageUrl,
     imageUrls: parseImageUrls(updated.imageUrls, updated.imageUrl),
+    ...(multiUnitEligible ? {
+      multiUnitEligible: true,
+      mainUnitName: updated.mainUnitName,
+      auxUnitName: updated.auxUnitName,
+      auxBarcode: updated.auxBarcode,
+      auxConversionFactor: updated.auxConversionFactor,
+      auxSellPrice: updated.auxSellPrice?.toNumber() ?? null,
+      auxEnabled: updated.auxEnabled,
+    } : {}),
   })
 }

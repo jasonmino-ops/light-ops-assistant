@@ -10,6 +10,11 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
 import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
+import {
+  productUnitSnapshot,
+  ProductUnitError,
+  resolveProductSellingUnit,
+} from '@/lib/product-unit'
 
 type CartItem = { barcode: string; quantity: number; sugar?: string }
 
@@ -52,7 +57,7 @@ export async function POST(req: NextRequest) {
 
   const store = await prisma.store.findUnique({
     where: { code: storeCode.trim() },
-    select: { id: true, code: true, tenantId: true, status: true },
+    select: { id: true, code: true, tenantId: true, status: true, businessType: true },
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
@@ -77,22 +82,22 @@ export async function POST(req: NextRequest) {
   })
   if (!member) return NextResponse.json({ error: 'MEMBER_NOT_FOUND' }, { status: 404 })
 
-  const barcodes = [...new Set(items.map((i) => i.barcode))]
-  const products = await prisma.product.findMany({
-    where: { tenantId: store.tenantId, barcode: { in: barcodes }, status: 'ACTIVE' },
-  })
-  const productMap = new Map(products.map((p) => [p.barcode, p]))
-  for (const it of items) {
-    if (!productMap.has(it.barcode)) {
-      return NextResponse.json({ error: 'PRODUCT_NOT_FOUND', barcode: it.barcode }, { status: 404 })
+  let saleLines
+  try {
+    saleLines = await Promise.all(items.map((item) => resolveProductSellingUnit(prisma, {
+      tenantId: store.tenantId,
+      businessType: store.businessType,
+      barcode: item.barcode,
+      quantity: item.quantity,
+    })))
+  } catch (error) {
+    if (error instanceof ProductUnitError) {
+      return NextResponse.json({ error: error.code, message: error.message }, { status: error.status })
     }
+    throw error
   }
 
-  const totalAmount = items.reduce((sum, it) => {
-    const product = productMap.get(it.barcode)!
-    const qty = new Prisma.Decimal(String(Number(it.quantity)))
-    return sum.plus(product.sellPrice.mul(qty))
-  }, new Prisma.Decimal(0))
+  const totalAmount = saleLines.reduce((sum, line) => sum.plus(line.lineAmount), new Prisma.Decimal(0))
 
   if (totalAmount.lte(0)) {
     return NextResponse.json({ error: 'INVALID_AMOUNT' }, { status: 400 })
@@ -132,16 +137,15 @@ export async function POST(req: NextRequest) {
       let firstSaleRecordId: string | null = null
       let isFirst = true
 
-      for (const it of items) {
-        const product = productMap.get(it.barcode)!
-        const qty = new Prisma.Decimal(String(Number(it.quantity)))
-        const lineAmount = product.sellPrice.mul(qty)
+      for (const [index, line] of saleLines.entries()) {
+        const item = items[index]
+        const product = line.product
         const recordNo = isFirst
           ? orderNo
           : await generateRecordNo(tx, 'S', store.tenantId, store.id, store.code)
         isFirst = false
 
-        const sugarLabel = it.sugar ? sugarZh(it.sugar) : null
+        const sugarLabel = item.sugar ? sugarZh(item.sugar) : null
         const specSnapshot = [product.spec ?? null, sugarLabel].filter(Boolean).join(' / ') || null
 
         const record = await tx.saleRecord.create({
@@ -154,15 +158,12 @@ export async function POST(req: NextRequest) {
             saleType: 'SALE',
             status: 'COMPLETED',
             productId: product.id,
-            barcode: product.barcode,
             productNameSnapshot: product.name,
             specSnapshot,
-            unitPrice: product.sellPrice,
-            quantity: qty,
-            lineAmount,
+            ...productUnitSnapshot(line),
             remark: '电脑收银台-会员余额',
             memberId: debitedMember.id,
-            memberBalanceUsed: lineAmount,
+            memberBalanceUsed: line.lineAmount,
           },
         })
         if (!firstCreatedAt) firstCreatedAt = record.createdAt

@@ -32,6 +32,12 @@ type ProductRow = {
   categoryId: string | null
   createdAt: string
   updatedAt: string
+  mainUnitName: string | null
+  auxUnitName: string | null
+  auxBarcode: string | null
+  auxConversionFactor: number | null
+  auxSellPrice: number | null
+  auxEnabled: boolean
 }
 
 type SaleRecordRow = {
@@ -55,6 +61,10 @@ type SaleRecordRow = {
   offlineSyncStatus: string | null
   createdAt: string
   updatedAt: string
+  sellingUnitType: string | null
+  sellingUnitNameSnapshot: string | null
+  sellingQuantity: number | null
+  sellingConversionFactor: number | null
 }
 
 type CustomerOrderRow = {
@@ -187,6 +197,12 @@ export async function getReadOnlyBusinessAssets(params: {
         categoryId: true,
         createdAt: true,
         updatedAt: true,
+        mainUnitName: true,
+        auxUnitName: true,
+        auxBarcode: true,
+        auxConversionFactor: true,
+        auxSellPrice: true,
+        auxEnabled: true,
       },
       orderBy: { createdAt: 'desc' },
       take: 500,
@@ -213,6 +229,10 @@ export async function getReadOnlyBusinessAssets(params: {
         offlineSyncStatus: true,
         createdAt: true,
         updatedAt: true,
+        sellingUnitType: true,
+        sellingUnitNameSnapshot: true,
+        sellingQuantity: true,
+        sellingConversionFactor: true,
         store: { select: { code: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -278,6 +298,12 @@ export async function getReadOnlyBusinessAssets(params: {
     categoryId: product.categoryId,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
+    mainUnitName: product.mainUnitName,
+    auxUnitName: product.auxUnitName,
+    auxBarcode: product.auxBarcode,
+    auxConversionFactor: product.auxConversionFactor,
+    auxSellPrice: product.auxSellPrice?.toNumber() ?? null,
+    auxEnabled: product.auxEnabled,
   }))
 
   const mappedSales: SaleRecordRow[] = sales.map((sale) => ({
@@ -301,6 +327,10 @@ export async function getReadOnlyBusinessAssets(params: {
     offlineSyncStatus: sale.offlineSyncStatus,
     createdAt: sale.createdAt.toISOString(),
     updatedAt: sale.updatedAt.toISOString(),
+    sellingUnitType: sale.sellingUnitType,
+    sellingUnitNameSnapshot: sale.sellingUnitNameSnapshot,
+    sellingQuantity: sale.sellingQuantity?.toNumber() ?? null,
+    sellingConversionFactor: sale.sellingConversionFactor,
   }))
 
   const mappedCustomerOrders: CustomerOrderRow[] = customerOrders.map((order) => {

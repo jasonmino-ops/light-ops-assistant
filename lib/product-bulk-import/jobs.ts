@@ -688,7 +688,10 @@ async function allocateGeneratedBarcode(
   }
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const assignedBarcode = internalEan13Candidate(`${tenantId}:${sourceFileHash}:${stableSourceRowIdentity}`, attempt)
-    const productCollision = await tx.product.findUnique({ where: { tenantId_barcode: { tenantId, barcode: assignedBarcode } }, select: { id: true } })
+    const productCollision = await tx.product.findFirst({
+      where: { tenantId, OR: [{ barcode: assignedBarcode }, { auxBarcode: assignedBarcode }] },
+      select: { id: true },
+    })
     if (productCollision) continue
     await tx.productGeneratedBarcode.createMany({
       data: [{ tenantId, sourceFileHash, stableSourceRowIdentity, assignedBarcode }],
@@ -962,12 +965,31 @@ export async function analyzeProductImportJob(tenantId: string, jobId: string) {
         const assignedBarcode = row.product.barcode?.trim()
           || await allocateGeneratedBarcode(tx, tenantId, sourceFileHash, row.stableSourceRowIdentity)
         const barcodeOrigin = row.product.barcode?.trim() ? 'SOURCE' : 'GENERATED'
-        const existingProduct = await tx.product.findUnique({
-          where: { tenantId_barcode: { tenantId, barcode: assignedBarcode } },
+        const existingProduct = await tx.product.findFirst({
+          where: { tenantId, barcode: assignedBarcode },
           select: { id: true },
         })
         const category = resolveExistingCategory(categories, row.product.category1, row.product.category2)
         const issues = categoryIssues(row, category)
+        const mainInAuxCollision = await tx.product.findFirst({
+          where: { tenantId, auxBarcode: assignedBarcode }, select: { id: true },
+        })
+        const auxCollision = row.product.auxBarcode
+          ? await tx.product.findFirst({
+              where: {
+                tenantId,
+                ...(existingProduct ? { id: { not: existingProduct.id } } : {}),
+                OR: [{ barcode: row.product.auxBarcode }, { auxBarcode: row.product.auxBarcode }],
+              },
+              select: { id: true },
+            })
+          : null
+        if (mainInAuxCollision || auxCollision || row.product.auxBarcode === assignedBarcode) {
+          issues.push({
+            code: 'BARCODE_COLLISION', field: mainInAuxCollision ? 'barcode' : 'auxBarcode',
+            message: '主/辅条码与现有商品冲突，不能安全导入', blocking: true,
+          })
+        }
         const previousDuplicate = await tx.productBulkImportRow.findFirst({
           where: { jobId: job.id, tenantId, assignedBarcode },
           orderBy: { sourceOrdinal: 'asc' },

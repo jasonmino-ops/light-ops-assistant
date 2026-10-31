@@ -28,6 +28,10 @@ type RecordItem = {
   quantity: number
   unitPrice: number
   lineAmount: number
+  sellingUnitName?: string
+  sellingUnitType?: 'MAIN' | 'AUX'
+  sellingConversionFactor?: number
+  baseQuantity?: number
   saleType: SaleType
   refundReason: string | null
   remark?: string | null
@@ -747,7 +751,7 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, s
       <div style={s.cardFooter}>
         {isSingle ? (
           <span style={s.cardQtyPrice}>
-            {Math.abs(item.quantity)}{sourceLabels.itemUnit} × {fmtCurrencyAmount(item.unitPrice, currencyCode)}
+            {Math.abs(item.quantity)}{item.sellingUnitName ?? sourceLabels.itemUnit} × {fmtCurrencyAmount(item.unitPrice, currencyCode)}
           </span>
         ) : (
           <span style={s.cardQtyPrice}>{group.items.length} {kindItems}</span>
@@ -800,7 +804,7 @@ function RefundCard({ item, tagRefund, refundReasonLabel, itemUnit, currencyCode
       </div>
       <div style={s.cardFooter}>
         <span style={s.cardQtyPrice}>
-          {Math.abs(item.quantity)}{itemUnit} × {fmtCurrencyAmount(item.unitPrice, currencyCode)}
+          {Math.abs(item.quantity)}{item.sellingUnitName ?? itemUnit} × {fmtCurrencyAmount(item.unitPrice, currencyCode)}
         </span>
         <span style={{ ...s.cardAmount, color: 'var(--red)' }}>
           {fmtCurrencyAmount(item.lineAmount, currencyCode)}

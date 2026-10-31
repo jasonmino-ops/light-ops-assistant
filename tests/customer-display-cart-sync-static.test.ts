@@ -16,6 +16,10 @@ assert.match(cashier, /itemCount: cartCount\(cart\)/, 'cart event item count sho
 assert.match(cashier, /reason: cart\.length > 0 \? 'cart' : 'clear'/, 'empty cart should publish clear reason')
 assert.match(cashier, /reason: 'final'/, 'checkout confirmation should publish final reason')
 assert.match(cashier, /items,\s*[\r\n\s]*totalAmount,\s*[\r\n\s]*itemCount: cartCount\(input\.cartSnapshot\),\s*[\r\n\s]*currencyCode/, 'realtime channel should send a full cart snapshot')
+assert.match(cashier, /spec:\s*\[line\.spec, line\.sellingUnitName,/, 'customer display snapshot must include the actual selling-unit name')
+assert.match(cashier, /qty:\s*line\.qty/, 'customer display quantity remains actual cart selling quantity')
+assert.match(cashier, /const sellingUnitName = p\.sellingUnitName \?\? p\.mainUnitName \?\? ''/, 'legacy products must not gain a synthetic customer-display unit')
+assert.doesNotMatch(cashier, /const sellingUnitName = p\.sellingUnitName \?\? p\.mainUnitName \?\? '件'/, 'non-retail cart lines must not gain a Chinese unit fallback')
 assert.match(cashier, /customerDisplayRealtimeChannelRef\.current = null[\s\S]*channel\?\.close\(\)/, 'cashier realtime channel should close on unmount')
 assert.doesNotMatch(cashier, /customer-display-adapter/, 'CashierPage must not import serial adapter')
 
