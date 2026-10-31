@@ -2,7 +2,7 @@ var INVENTORY_PROFIT_SHEETS = {
   Config: ['key', 'value'],
   Entries: ['requestKey', 'productId', 'sku', 'barcode', 'name', 'quantity', 'unitCost', 'date', 'createdAt'],
   SalesDaily: ['date', 'productId', 'quantity', 'netSales', 'costOfGoodsSold', 'costCovered', 'updatedAt'],
-  Inventory: ['productId', 'sku', 'barcode', 'name', 'currentStock', 'minimumStock', 'averageCost', 'inventoryValue', 'updatedAt'],
+  Inventory: ['productId', 'sku', 'barcode', 'name', 'currentStock', 'minimumStock', 'averageCost', 'inventoryValue', 'updatedAt', 'trackingStartDate'],
   DailyProfit: ['date', 'netSales', 'costOfGoodsSold', 'grossProfit', 'grossMarginRate', 'costCoverageRate', 'costCoverageWeight', 'costMethod', 'updatedAt'],
   _Log: ['timestamp', 'level', 'event', 'detail']
 }
@@ -41,8 +41,12 @@ function doPost(event) {
   try {
     ensureInventoryProfitSheets_()
 
-    if (body.action === 'GET_SALES_PROFIT') return jsonOutput_(salesProfitResponse_(body.period))
-    if (body.action === 'LIST_INVENTORY') return jsonOutput_(inventoryResponse_(body))
+    if (body.action === 'GET_SALES_PROFIT') {
+      return jsonOutput_(withInventoryProfitLock_(function () { return salesProfitResponse_(body.period) }))
+    }
+    if (body.action === 'LIST_INVENTORY') {
+      return jsonOutput_(withInventoryProfitLock_(function () { return inventoryResponse_(body) }))
+    }
     if (body.action === 'SET_MINIMUM_STOCK') {
       return jsonOutput_(withInventoryProfitLock_(function () { return setMinimumStockResponse_(body.minimumStock) }))
     }
@@ -108,15 +112,17 @@ function salesProfitResponse_(period) {
   var weight = 0
   var coveredWeight = 0
   var cogs = 0
+  var costComplete = true
   rows.forEach(function (row) {
     var rowWeight = Math.abs(number_(row.costCoverageWeight))
     var coverage = clamp_(number_(row.costCoverageRate), 0, 1)
     weight += rowWeight
     coveredWeight += rowWeight * coverage
-    if (row.costOfGoodsSold !== '') cogs += number_(row.costOfGoodsSold)
+    if (row.costOfGoodsSold === '') costComplete = false
+    else cogs += number_(row.costOfGoodsSold)
   })
   var coverageRate = weight === 0 ? 1 : coveredWeight / weight
-  var complete = coverageRate >= 0.999999
+  var complete = coverageRate >= 0.999999 && costComplete
   var grossProfit = complete ? netSales - cogs : null
   return {
     ok: true,
@@ -143,7 +149,8 @@ function inventoryResponse_(input) {
       var haystack = [row.name, row.barcode, row.sku].join('\n').toLowerCase()
       if (haystack.indexOf(query) === -1) return false
     }
-    if (alertsOnly && number_(row.currentStock) > number_(row.minimumStock)) return false
+    if (!query && alertsOnly && !row.trackingStartDate) return false
+    if (!query && alertsOnly && number_(row.currentStock) > number_(row.minimumStock)) return false
     return true
   }).slice(0, INVENTORY_PROFIT_PAGE_LIMIT).map(function (row) {
     return {
@@ -179,7 +186,7 @@ function receivingResponse_(input) {
   var unitCost = typeof input.unitCost === 'number' ? input.unitCost : NaN
   var date = String(input.date || '').trim()
   if (!/^[A-Za-z0-9:_-]{8,128}$/.test(requestKey)) return { ok: false, error: 'INVALID_REQUEST_KEY' }
-  if (!productId || !isFinite(quantity) || quantity <= 0 || !isFinite(unitCost) || unitCost < 0 || !validLocalDate_(date)) {
+  if (!productId || !isFinite(quantity) || quantity <= 0 || !isFinite(unitCost) || unitCost < 0 || !validReceivingDate_(date)) {
     return { ok: false, error: 'INVALID_RECEIVING' }
   }
   var entries = rowsAsObjects_('Entries')
@@ -284,9 +291,12 @@ function recalculateInventoryProfit_(freshProducts) {
     })
   }
   var entries = rowsAsObjects_('Entries')
+  var trackingStartByProduct = {}
   entries.forEach(function (entry) {
     var id = String(entry.productId)
     if (!products[id]) products[id] = { productId: id, sku: entry.sku, barcode: entry.barcode, name: entry.name }
+    var entryDate = String(entry.date)
+    if (!trackingStartByProduct[id] || entryDate < trackingStartByProduct[id]) trackingStartByProduct[id] = entryDate
   })
   var sales = rowsAsObjects_('SalesDaily')
   var events = []
@@ -335,6 +345,12 @@ function recalculateInventoryProfit_(freshProducts) {
       row.costOfGoodsSold = ''
       return
     }
+    var trackingStartDate = trackingStartByProduct[id]
+    if (!trackingStartDate || String(row.date) < trackingStartDate) {
+      row.costCovered = ''
+      row.costOfGoodsSold = ''
+      return
+    }
     var covered = state.averageCost !== null
     row.costCovered = covered ? 'TRUE' : 'FALSE'
     row.costOfGoodsSold = covered ? soldQuantity * state.averageCost : ''
@@ -359,6 +375,7 @@ function recalculateInventoryProfit_(freshProducts) {
       minimumStock: minimum,
       averageCost: state.averageCost === null ? '' : state.averageCost,
       inventoryValue: state.inventoryValue === null ? '' : state.inventoryValue,
+      trackingStartDate: trackingStartByProduct[id] || '',
       updatedAt: now
     }
   })
@@ -367,11 +384,21 @@ function recalculateInventoryProfit_(freshProducts) {
   var daily = {}
   sales.forEach(function (row) {
     var date = String(row.date)
-    if (!daily[date]) daily[date] = { date: date, netSales: 0, cogs: 0, weight: 0, coveredWeight: 0 }
+    var productId = String(row.productId)
+    var tracked = true
+    if (productId !== INVENTORY_PROFIT_UNATTRIBUTED_PRODUCT_ID) {
+      var trackingStartDate = trackingStartByProduct[productId]
+      tracked = Boolean(trackingStartDate) && date >= trackingStartDate
+    }
+    if (!daily[date]) daily[date] = { date: date, netSales: 0, cogs: 0, weight: 0, coveredWeight: 0, costComplete: true }
     var item = daily[date]
     var amount = number_(row.netSales)
-    var weight = Math.abs(number_(row.quantity))
     item.netSales += amount
+    if (!tracked) {
+      item.costComplete = false
+      return
+    }
+    var weight = Math.abs(number_(row.quantity))
     item.weight += weight
     if (String(row.costCovered) === 'TRUE') {
       item.coveredWeight += weight
@@ -381,7 +408,7 @@ function recalculateInventoryProfit_(freshProducts) {
   var profitRows = Object.keys(daily).sort().map(function (date) {
     var item = daily[date]
     var coverage = item.weight === 0 ? 1 : item.coveredWeight / item.weight
-    var complete = coverage >= 0.999999
+    var complete = coverage >= 0.999999 && item.costComplete
     var gross = complete ? item.netSales - item.cogs : ''
     return {
       date: date,
@@ -550,4 +577,11 @@ function validLocalDate_(value) {
   if (!/^20\d{2}-\d{2}-\d{2}$/.test(value)) return false
   var parsed = new Date(value + 'T00:00:00.000Z')
   return isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+function validReceivingDate_(value, today) {
+  if (!validLocalDate_(value)) return false
+  var referenceDate = today || localDateForInstant_(new Date())
+  if (!validLocalDate_(referenceDate)) return false
+  return value >= shiftLocalDate_(referenceDate, -3) && value <= referenceDate
 }

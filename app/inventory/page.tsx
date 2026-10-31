@@ -51,6 +51,7 @@ function newRequestKey() {
 export default function InventoryPage() {
   const { realRole } = useWorkMode()
   const [snapshot, setSnapshot] = useState<InventoryResponse | null>(null)
+  const [defaultAlertProductIds, setDefaultAlertProductIds] = useState<Set<string>>(() => new Set())
   const [query, setQuery] = useState('')
   const [showAll, setShowAll] = useState(false)
   const [minimumStock, setMinimumStock] = useState('10')
@@ -68,14 +69,23 @@ export default function InventoryPage() {
     setLoading(true)
     setError('')
     try {
-      const response = await apiFetch('/api/inventory-profit/inventory?all=1', { cache: 'no-store' }, DEV_CTX)
-      if (!response.ok) throw new Error(await inventoryProfitError(response))
-      const body = await response.json() as InventoryResponse
+      const [allResponse, alertResponse] = await Promise.all([
+        apiFetch('/api/inventory-profit/inventory?all=1', { cache: 'no-store' }, DEV_CTX),
+        apiFetch('/api/inventory-profit/inventory', { cache: 'no-store' }, DEV_CTX),
+      ])
+      if (!allResponse.ok) throw new Error(await inventoryProfitError(allResponse))
+      if (!alertResponse.ok) throw new Error(await inventoryProfitError(alertResponse))
+      const [body, alertBody] = await Promise.all([
+        allResponse.json() as Promise<InventoryResponse>,
+        alertResponse.json() as Promise<InventoryResponse>,
+      ])
       setSnapshot(body)
+      setDefaultAlertProductIds(new Set(alertBody.items.map((item) => item.productId)))
       setMinimumStock(String(body.items[0]?.minimumStock ?? 10))
       setProductId((current) => current || body.items[0]?.productId || '')
     } catch (failure) {
       setSnapshot(null)
+      setDefaultAlertProductIds(new Set())
       setError(failure instanceof Error ? failure.message : '数据暂时无法更新')
     } finally {
       setLoading(false)
@@ -89,12 +99,12 @@ export default function InventoryPage() {
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase()
     return (snapshot?.items ?? []).filter((item) => {
-      if (!showAll && item.alert === null) return false
+      if (!normalized && !showAll && !defaultAlertProductIds.has(item.productId)) return false
       if (!normalized) return true
       return [item.name, item.barcode, item.sku ?? '']
         .some((value) => value.toLocaleLowerCase().includes(normalized))
     })
-  }, [query, showAll, snapshot])
+  }, [defaultAlertProductIds, query, showAll, snapshot])
 
   async function saveMinimumStock() {
     const value = Number(minimumStock)
@@ -230,7 +240,9 @@ export default function InventoryPage() {
                 </div>
                 <div className={styles.stock}>
                   <div className={styles.stockValue}>{item.currentStock}</div>
-                  {item.alert ? <span className={styles.badge}>{ALERT_LABELS[item.alert]}</span> : null}
+                  {item.alert && defaultAlertProductIds.has(item.productId)
+                    ? <span className={styles.badge}>{ALERT_LABELS[item.alert]}</span>
+                    : null}
                 </div>
               </article>
             ))}

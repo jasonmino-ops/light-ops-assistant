@@ -55,6 +55,23 @@ function req(path: string, options: {
   })
 }
 
+function phnomPenhDate(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Phnom_Penh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now)
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${value.year}-${value.month}-${value.day}`
+}
+
+function shiftDate(value: string, days: number) {
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  parsed.setUTCDate(parsed.getUTCDate() + days)
+  return parsed.toISOString().slice(0, 10)
+}
+
 async function main() {
   const envKeys = [
     'INVENTORY_PROFIT_PILOT_STORE_ID',
@@ -156,13 +173,24 @@ async function main() {
   assert.equal(updated.status, 200)
   assert.equal((await updated.json()).data.minimumStock, 10)
 
-  const receivingBody = { requestKey: 'receive:pilot:0001', productId: 'p-low', quantity: 4, unitCost: 2.5, date: '2026-10-31' }
+  const today = phnomPenhDate()
+  const receivingBody = { requestKey: 'receive:pilot:0001', productId: 'p-low', quantity: 4, unitCost: 2.5, date: today }
   assert.equal((await receive(req('/api/inventory-profit/receivings', {
     method: 'POST', body: { ...receivingBody, requestKey: 'receive:invalid-date', date: '2026-02-30' }, presence,
   }))).status, 400, 'invalid calendar dates are rejected')
   assert.equal((await receive(req('/api/inventory-profit/receivings', {
     method: 'POST', body: { ...receivingBody, requestKey: 'receive:missing-cost', unitCost: null }, presence,
   }))).status, 400, 'missing unit cost is never coerced to zero')
+  assert.equal((await receive(req('/api/inventory-profit/receivings', {
+    method: 'POST', body: { ...receivingBody, requestKey: 'receive:d4:reject', date: shiftDate(today, -4) }, presence,
+  }))).status, 400, 'D-4 receiving dates are rejected')
+  assert.equal((await receive(req('/api/inventory-profit/receivings', {
+    method: 'POST', body: { ...receivingBody, requestKey: 'receive:future:reject', date: shiftDate(today, 1) }, presence,
+  }))).status, 400, 'future receiving dates are rejected')
+  assert.equal((await receive(req('/api/inventory-profit/receivings', {
+    method: 'POST', body: { ...receivingBody, requestKey: 'receive:d3:accept', date: shiftDate(today, -3) }, presence,
+  }))).status, 200, 'D-3 receiving dates are accepted')
+  receivingCalls = 0
   const first = await receive(req('/api/inventory-profit/receivings', { method: 'POST', body: receivingBody, presence }))
   const repeated = await receive(req('/api/inventory-profit/receivings', { method: 'POST', body: receivingBody, presence }))
   assert.deepEqual([(await first.json()).data.duplicate, (await repeated.json()).data.duplicate], [false, true])

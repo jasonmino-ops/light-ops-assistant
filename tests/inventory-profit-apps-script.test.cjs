@@ -94,6 +94,7 @@ function response(body, code = 200) {
 const spreadsheet = new SpreadsheetMock()
 let lockAttempts = 0
 let lockReleases = 0
+let lockAvailable = true
 let sleepCalls = 0
 let fetchImpl = () => { throw new Error('fetch not configured') }
 const context = vm.createContext({
@@ -101,7 +102,7 @@ const context = vm.createContext({
   SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet },
   LockService: {
     getScriptLock: () => ({
-      tryLock: () => { lockAttempts += 1; return true },
+      tryLock: () => { lockAttempts += 1; return lockAvailable },
       releaseLock: () => { lockReleases += 1 },
     }),
   },
@@ -135,6 +136,7 @@ function post(body) {
 
 context.initializeInventoryProfitPilot()
 assert.deepEqual([...spreadsheet.sheets.keys()].sort(), ['Config', 'DailyProfit', 'Entries', 'Inventory', 'SalesDaily', '_Log'].sort())
+assert.deepEqual(spreadsheet.getSheetByName('Inventory').data[0].slice(-2), ['updatedAt', 'trackingStartDate'], 'tracking metadata appends without shifting existing inventory columns')
 context.setConfigValue_('PROVIDER_SECRET', 'provider-secret')
 context.setConfigValue_('PILOT_STORE_ID', 'pilot-store')
 
@@ -147,12 +149,13 @@ context.ensureInventoryProfitSheets_()
 
 context.replaceObjectRows_('Inventory', [{
   productId: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1', currentStock: 0,
-  minimumStock: 10, averageCost: '', inventoryValue: '', updatedAt: new Date().toISOString(),
+  minimumStock: 10, averageCost: '', inventoryValue: '', trackingStartDate: '', updatedAt: new Date().toISOString(),
 }])
 context.setConfigValue_('LAST_FEED_SYNC_AT', '2026-10-30T00:00:00.000Z')
+const receivingToday = context.localDateForInstant_(new Date())
 const receiveBody = {
   action: 'RECEIVE', secret: 'provider-secret', storeId: 'pilot-store', requestKey: 'receive:test:0001',
-  productId: 'p1', quantity: 10, unitCost: 2, date: '2026-10-30',
+  productId: 'p1', quantity: 10, unitCost: 2, date: receivingToday,
 }
 const firstReceiving = post(receiveBody)
 const duplicateReceiving = post(receiveBody)
@@ -165,6 +168,13 @@ assert.equal(context.configValue_('LAST_FEED_SYNC_AT'), '2026-10-30T00:00:00.000
 assert.equal(post({ action: 'SET_MINIMUM_STOCK', secret: 'provider-secret', storeId: 'pilot-store', minimumStock: 8 }).ok, true)
 assert.equal(context.configValue_('LAST_FEED_SYNC_AT'), '2026-10-30T00:00:00.000Z', 'minimum-stock changes do not disguise stale feed data as fresh')
 assert.deepEqual(post({ ...receiveBody, requestKey: 'receive:test:bad-date', date: '2026-02-30' }), { ok: false, error: 'INVALID_RECEIVING' })
+assert.equal(context.validReceivingDate_('2026-10-31', '2026-10-31'), true, 'today is accepted')
+assert.equal(context.validReceivingDate_('2026-10-28', '2026-10-31'), true, 'D-3 is accepted')
+assert.equal(context.validReceivingDate_('2026-10-27', '2026-10-31'), false, 'D-4 is rejected')
+assert.equal(context.validReceivingDate_('2026-11-01', '2026-10-31'), false, 'future dates are rejected')
+assert.equal(post({ ...receiveBody, requestKey: 'receive:test:d3-pass', date: context.shiftLocalDate_(receivingToday, -3) }).ok, true)
+assert.deepEqual(post({ ...receiveBody, requestKey: 'receive:test:d4-fail', date: context.shiftLocalDate_(receivingToday, -4) }), { ok: false, error: 'INVALID_RECEIVING' })
+assert.deepEqual(post({ ...receiveBody, requestKey: 'receive:test:future', date: context.shiftLocalDate_(receivingToday, 1) }), { ok: false, error: 'INVALID_RECEIVING' })
 
 context.replaceObjectRows_('Entries', [
   { requestKey: 'wac-entry-001', productId: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1', quantity: 10, unitCost: 2, date: '2026-10-30', createdAt: '2026-10-30T01:00:00Z' },
@@ -184,6 +194,17 @@ assert.equal(salesDaily.costOfGoodsSold, 15)
 assert.equal(dailyProfit.costOfGoodsSold, 15)
 assert.equal(dailyProfit.grossProfit, 35)
 assert.equal(dailyProfit.costMethod, 'DAILY_PERIODIC_WAC')
+
+const readLockAttempts = lockAttempts
+const readLockReleases = lockReleases
+assert.equal(post({ action: 'GET_SALES_PROFIT', secret: 'provider-secret', storeId: 'pilot-store', period: 'TODAY' }).ok, true)
+assert.equal(post({ action: 'LIST_INVENTORY', secret: 'provider-secret', storeId: 'pilot-store', alertsOnly: false }).ok, true)
+assert.equal(lockAttempts - readLockAttempts, 2, 'profit and inventory reads acquire the script lock')
+assert.equal(lockReleases - readLockReleases, 2, 'profit and inventory reads release the script lock')
+lockAvailable = false
+assert.deepEqual(post({ action: 'GET_SALES_PROFIT', secret: 'provider-secret', storeId: 'pilot-store', period: 'TODAY' }), { ok: false, error: 'UNAVAILABLE' })
+assert.deepEqual(post({ action: 'LIST_INVENTORY', secret: 'provider-secret', storeId: 'pilot-store', alertsOnly: false }), { ok: false, error: 'UNAVAILABLE' })
+lockAvailable = true
 
 context.replaceObjectRows_('Entries', [])
 context.replaceObjectRows_('SalesDaily', [])
@@ -219,6 +240,44 @@ assert.equal(incompleteProfit.costOfGoodsSold, '', 'unattributed or missing cost
 
 context.setConfigValue_('FEED_URL', 'https://feed.test/api')
 context.setConfigValue_('FEED_SECRET', 'feed-secret')
+const trackingToday = context.localDateForInstant_(new Date())
+const trackingStart = context.shiftLocalDate_(trackingToday, -1)
+const historicalDate = context.shiftLocalDate_(trackingStart, -1)
+context.replaceObjectRows_('Entries', [{
+  requestKey: 'tracking-entry-001', productId: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1',
+  quantity: 100, unitCost: 2, date: trackingStart, createdAt: `${trackingStart}T01:00:00Z`,
+}])
+fetchImpl = (url) => {
+  const dataset = new URL(url).searchParams.get('dataset')
+  if (dataset === 'products') return response({ ok: true, schemaVersion: 1, items: [
+    { id: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1' },
+    { id: 'p2', sku: 'SKU-2', barcode: 'BAR-2', name: 'Product 2' },
+  ], nextCursor: null })
+  if (dataset === 'sales') return response({ ok: true, schemaVersion: 1, items: [
+    { createdAt: `${historicalDate}T12:00:00+07:00`, productId: 'p1', quantity: 40, lineAmount: 400 },
+  ], nextCursor: null })
+  return response({ ok: true, schemaVersion: 1, items: [], nextCursor: null })
+}
+context.syncWeekly()
+const trackingInventory = context.rowsAsObjects_('Inventory')
+assert.equal(trackingInventory.find((row) => row.productId === 'p1').currentStock, 100, 'pre-pilot sales do not reduce first-entry inventory')
+assert.equal(trackingInventory.find((row) => row.productId === 'p1').trackingStartDate, trackingStart)
+assert.equal(trackingInventory.find((row) => row.productId === 'p2').trackingStartDate, '', 'products without entries remain NOT_TRACKED')
+assert.deepEqual(post({ action: 'LIST_INVENTORY', secret: 'provider-secret', storeId: 'pilot-store', alertsOnly: true }).data, [], 'NOT_TRACKED products are absent from the default low-stock list')
+assert.deepEqual(
+  post({ action: 'LIST_INVENTORY', secret: 'provider-secret', storeId: 'pilot-store', alertsOnly: true, query: 'SKU-2' }).data.map((row) => row.productId),
+  ['p2'],
+  'search includes NOT_TRACKED products and bypasses the default low-stock filter',
+)
+const historicalSale = context.rowsAsObjects_('SalesDaily').find((row) => row.productId === 'p1')
+assert.equal(historicalSale.costCovered, '', 'pre-pilot sales do not enter cost coverage')
+assert.equal(historicalSale.costOfGoodsSold, '', 'pre-pilot sales do not produce COGS')
+const historicalProfit = context.rowsAsObjects_('DailyProfit').find((row) => row.date === historicalDate)
+assert.equal(historicalProfit.netSales, 400, 'pre-pilot net sales remain visible')
+assert.equal(historicalProfit.costCoverageWeight, 0, 'pre-pilot sales do not enter cost coverage weight')
+assert.equal(historicalProfit.costOfGoodsSold, '', 'pre-pilot sales do not become zero COGS')
+assert.equal(historicalProfit.grossProfit, '', 'pre-pilot sales do not produce fake gross profit')
+
 context.replaceObjectRows_('Entries', [])
 context.replaceObjectRows_('SalesDaily', [])
 const products = Array.from({ length: 5000 }, (_, index) => ({
@@ -259,4 +318,4 @@ const source = fs.readFileSync('apps-script/inventory-profit/Code.gs', 'utf8')
 assert.match(source, /shiftLocalDate_\(today, -3\)/, 'hourly sync covers today through D-3')
 assert.match(source, /shiftLocalDate_\(today, -34\)/, 'weekly sync covers 35 days')
 
-console.log('inventory profit Apps Script tests passed: doPost, secret, store, LockService, requestKey, WAC, timezone, coupon allocation, NULL cost, 5,000 SKU and retry')
+console.log('inventory profit Apps Script tests passed: tracking start, locked reads, receiving date guard, requestKey, WAC, timezone, coupon allocation, NULL cost, 5,000 SKU and retry')

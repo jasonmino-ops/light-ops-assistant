@@ -5,11 +5,39 @@ import { getInventoryProfitProvider } from '@/lib/inventory-profit/provider'
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const REQUEST_KEY_PATTERN = /^[A-Za-z0-9:_-]{8,128}$/
+const RECEIVING_TIME_ZONE = 'Asia/Phnom_Penh'
 
 function validDate(value: string) {
   if (!DATE_PATTERN.test(value)) return false
   const parsed = new Date(`${value}T00:00:00.000Z`)
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+function shiftDate(value: string, days: number) {
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  parsed.setUTCDate(parsed.getUTCDate() + days)
+  return parsed.toISOString().slice(0, 10)
+}
+
+function localDateAt(now: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: RECEIVING_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now)
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${value.year}-${value.month}-${value.day}`
+}
+
+function validReceivingDate(value: string) {
+  if (!validDate(value)) return false
+  try {
+    const today = localDateAt(new Date())
+    return validDate(today) && value >= shiftDate(today, -3) && value <= today
+  } catch {
+    return false
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -39,7 +67,7 @@ export async function POST(req: NextRequest) {
   if (!Number.isFinite(unitCost) || unitCost < 0 || unitCost > 1_000_000_000) {
     return NextResponse.json({ ok: false, error: 'INVALID_UNIT_COST' }, { status: 400 })
   }
-  if (!validDate(date)) {
+  if (!validReceivingDate(date)) {
     return NextResponse.json({ ok: false, error: 'INVALID_DATE' }, { status: 400 })
   }
 
