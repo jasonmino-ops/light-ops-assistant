@@ -10,6 +10,7 @@ import { getAiSupportModuleStatus } from '@/lib/tier'
 import { formatMoney } from '@/lib/currency'
 import ElectronicMenuEntry from '@/app/components/ElectronicMenuEntry'
 import ProductSalesEntry from '@/app/components/ProductSalesEntry'
+import SalesProfitEntry from '@/app/components/SalesProfitEntry'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -349,6 +350,7 @@ export default function DashboardPage() {
       <div style={s.body}>
         {realRole === 'OWNER' && <ElectronicMenuEntry />}
         {realRole === 'OWNER' && <ProductSalesEntry />}
+        {realRole === 'OWNER' && <SalesProfitEntry />}
         {/* Loading skeleton */}
         {loading && (
           <div style={s.loadingWrap}>
