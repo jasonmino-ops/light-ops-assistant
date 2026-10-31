@@ -2,7 +2,7 @@ var INVENTORY_PROFIT_SHEETS = {
   Config: ['key', 'value'],
   Entries: ['requestKey', 'productId', 'sku', 'barcode', 'name', 'quantity', 'unitCost', 'date', 'createdAt'],
   SalesDaily: ['date', 'productId', 'quantity', 'netSales', 'costOfGoodsSold', 'costCovered', 'updatedAt'],
-  Inventory: ['productId', 'sku', 'barcode', 'name', 'currentStock', 'minimumStock', 'averageCost', 'inventoryValue', 'updatedAt', 'trackingStartDate'],
+  Inventory: ['productId', 'sku', 'barcode', 'name', 'currentStock', 'minimumStock', 'averageCost', 'inventoryValue', 'updatedAt'],
   DailyProfit: ['date', 'netSales', 'costOfGoodsSold', 'grossProfit', 'grossMarginRate', 'costCoverageRate', 'costCoverageWeight', 'costMethod', 'updatedAt'],
   _Log: ['timestamp', 'level', 'event', 'detail']
 }
@@ -112,17 +112,15 @@ function salesProfitResponse_(period) {
   var weight = 0
   var coveredWeight = 0
   var cogs = 0
-  var costComplete = true
   rows.forEach(function (row) {
     var rowWeight = Math.abs(number_(row.costCoverageWeight))
     var coverage = clamp_(number_(row.costCoverageRate), 0, 1)
     weight += rowWeight
     coveredWeight += rowWeight * coverage
-    if (row.costOfGoodsSold === '') costComplete = false
-    else cogs += number_(row.costOfGoodsSold)
+    if (row.costOfGoodsSold !== '') cogs += number_(row.costOfGoodsSold)
   })
   var coverageRate = weight === 0 ? 1 : coveredWeight / weight
-  var complete = coverageRate >= 0.999999 && costComplete
+  var complete = coverageRate >= 0.999999
   var grossProfit = complete ? netSales - cogs : null
   return {
     ok: true,
@@ -144,12 +142,13 @@ function inventoryResponse_(input) {
   if (!asOf) return { ok: false, error: 'NOT_SYNCED' }
   var query = String(input.query || '').trim().toLowerCase()
   var alertsOnly = input.alertsOnly === true
+  var trackingStartByProduct = !query && alertsOnly ? trackingStartDates_() : {}
   var data = rowsAsObjects_('Inventory').filter(function (row) {
     if (query) {
       var haystack = [row.name, row.barcode, row.sku].join('\n').toLowerCase()
       if (haystack.indexOf(query) === -1) return false
     }
-    if (!query && alertsOnly && !row.trackingStartDate) return false
+    if (!query && alertsOnly && !trackingStartByProduct[String(row.productId)]) return false
     if (!query && alertsOnly && number_(row.currentStock) > number_(row.minimumStock)) return false
     return true
   }).slice(0, INVENTORY_PROFIT_PAGE_LIMIT).map(function (row) {
@@ -291,12 +290,10 @@ function recalculateInventoryProfit_(freshProducts) {
     })
   }
   var entries = rowsAsObjects_('Entries')
-  var trackingStartByProduct = {}
+  var trackingStartByProduct = trackingStartDates_(entries)
   entries.forEach(function (entry) {
     var id = String(entry.productId)
     if (!products[id]) products[id] = { productId: id, sku: entry.sku, barcode: entry.barcode, name: entry.name }
-    var entryDate = String(entry.date)
-    if (!trackingStartByProduct[id] || entryDate < trackingStartByProduct[id]) trackingStartByProduct[id] = entryDate
   })
   var sales = rowsAsObjects_('SalesDaily')
   var events = []
@@ -375,7 +372,6 @@ function recalculateInventoryProfit_(freshProducts) {
       minimumStock: minimum,
       averageCost: state.averageCost === null ? '' : state.averageCost,
       inventoryValue: state.inventoryValue === null ? '' : state.inventoryValue,
-      trackingStartDate: trackingStartByProduct[id] || '',
       updatedAt: now
     }
   })
@@ -385,19 +381,14 @@ function recalculateInventoryProfit_(freshProducts) {
   sales.forEach(function (row) {
     var date = String(row.date)
     var productId = String(row.productId)
-    var tracked = true
     if (productId !== INVENTORY_PROFIT_UNATTRIBUTED_PRODUCT_ID) {
       var trackingStartDate = trackingStartByProduct[productId]
-      tracked = Boolean(trackingStartDate) && date >= trackingStartDate
+      if (!trackingStartDate || date < trackingStartDate) return
     }
-    if (!daily[date]) daily[date] = { date: date, netSales: 0, cogs: 0, weight: 0, coveredWeight: 0, costComplete: true }
+    if (!daily[date]) daily[date] = { date: date, netSales: 0, cogs: 0, weight: 0, coveredWeight: 0 }
     var item = daily[date]
     var amount = number_(row.netSales)
     item.netSales += amount
-    if (!tracked) {
-      item.costComplete = false
-      return
-    }
     var weight = Math.abs(number_(row.quantity))
     item.weight += weight
     if (String(row.costCovered) === 'TRUE') {
@@ -408,7 +399,7 @@ function recalculateInventoryProfit_(freshProducts) {
   var profitRows = Object.keys(daily).sort().map(function (date) {
     var item = daily[date]
     var coverage = item.weight === 0 ? 1 : item.coveredWeight / item.weight
-    var complete = coverage >= 0.999999 && item.costComplete
+    var complete = coverage >= 0.999999
     var gross = complete ? item.netSales - item.cogs : ''
     return {
       date: date,
@@ -424,6 +415,17 @@ function recalculateInventoryProfit_(freshProducts) {
   })
   replaceObjectRows_('DailyProfit', profitRows)
   return now
+}
+
+function trackingStartDates_(entries) {
+  var starts = {}
+  var sourceEntries = entries || rowsAsObjects_('Entries')
+  sourceEntries.forEach(function (entry) {
+    var id = String(entry.productId)
+    var date = String(entry.date)
+    if (!starts[id] || date < starts[id]) starts[id] = date
+  })
+  return starts
 }
 
 function fetchAllFeedPages_(dataset, fromDate, toDate) {

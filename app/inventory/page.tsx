@@ -69,16 +69,12 @@ export default function InventoryPage() {
     setLoading(true)
     setError('')
     try {
-      const [allResponse, alertResponse] = await Promise.all([
-        apiFetch('/api/inventory-profit/inventory?all=1', { cache: 'no-store' }, DEV_CTX),
-        apiFetch('/api/inventory-profit/inventory', { cache: 'no-store' }, DEV_CTX),
-      ])
+      const allResponse = await apiFetch('/api/inventory-profit/inventory?all=1', { cache: 'no-store' }, DEV_CTX)
       if (!allResponse.ok) throw new Error(await inventoryProfitError(allResponse))
+      const alertResponse = await apiFetch('/api/inventory-profit/inventory', { cache: 'no-store' }, DEV_CTX)
       if (!alertResponse.ok) throw new Error(await inventoryProfitError(alertResponse))
-      const [body, alertBody] = await Promise.all([
-        allResponse.json() as Promise<InventoryResponse>,
-        alertResponse.json() as Promise<InventoryResponse>,
-      ])
+      const body = await allResponse.json() as InventoryResponse
+      const alertBody = await alertResponse.json() as InventoryResponse
       setSnapshot(body)
       setDefaultAlertProductIds(new Set(alertBody.items.map((item) => item.productId)))
       setMinimumStock(String(body.items[0]?.minimumStock ?? 10))

@@ -136,7 +136,11 @@ function post(body) {
 
 context.initializeInventoryProfitPilot()
 assert.deepEqual([...spreadsheet.sheets.keys()].sort(), ['Config', 'DailyProfit', 'Entries', 'Inventory', 'SalesDaily', '_Log'].sort())
-assert.deepEqual(spreadsheet.getSheetByName('Inventory').data[0].slice(-2), ['updatedAt', 'trackingStartDate'], 'tracking metadata appends without shifting existing inventory columns')
+assert.equal(
+  spreadsheet.getSheetByName('Inventory').data[0].join('|'),
+  'productId|sku|barcode|name|currentStock|minimumStock|averageCost|inventoryValue|updatedAt',
+  'tracking start does not change the existing Inventory sheet contract',
+)
 context.setConfigValue_('PROVIDER_SECRET', 'provider-secret')
 context.setConfigValue_('PILOT_STORE_ID', 'pilot-store')
 
@@ -149,7 +153,7 @@ context.ensureInventoryProfitSheets_()
 
 context.replaceObjectRows_('Inventory', [{
   productId: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1', currentStock: 0,
-  minimumStock: 10, averageCost: '', inventoryValue: '', trackingStartDate: '', updatedAt: new Date().toISOString(),
+  minimumStock: 10, averageCost: '', inventoryValue: '', updatedAt: new Date().toISOString(),
 }])
 context.setConfigValue_('LAST_FEED_SYNC_AT', '2026-10-30T00:00:00.000Z')
 const receivingToday = context.localDateForInstant_(new Date())
@@ -261,8 +265,8 @@ fetchImpl = (url) => {
 context.syncWeekly()
 const trackingInventory = context.rowsAsObjects_('Inventory')
 assert.equal(trackingInventory.find((row) => row.productId === 'p1').currentStock, 100, 'pre-pilot sales do not reduce first-entry inventory')
-assert.equal(trackingInventory.find((row) => row.productId === 'p1').trackingStartDate, trackingStart)
-assert.equal(trackingInventory.find((row) => row.productId === 'p2').trackingStartDate, '', 'products without entries remain NOT_TRACKED')
+assert.equal(context.trackingStartDates_().p1, trackingStart, 'tracking starts at the first entry date')
+assert.equal(context.trackingStartDates_().p2, undefined, 'products without entries remain NOT_TRACKED')
 assert.deepEqual(post({ action: 'LIST_INVENTORY', secret: 'provider-secret', storeId: 'pilot-store', alertsOnly: true }).data, [], 'NOT_TRACKED products are absent from the default low-stock list')
 assert.deepEqual(
   post({ action: 'LIST_INVENTORY', secret: 'provider-secret', storeId: 'pilot-store', alertsOnly: true, query: 'SKU-2' }).data.map((row) => row.productId),
@@ -272,11 +276,22 @@ assert.deepEqual(
 const historicalSale = context.rowsAsObjects_('SalesDaily').find((row) => row.productId === 'p1')
 assert.equal(historicalSale.costCovered, '', 'pre-pilot sales do not enter cost coverage')
 assert.equal(historicalSale.costOfGoodsSold, '', 'pre-pilot sales do not produce COGS')
-const historicalProfit = context.rowsAsObjects_('DailyProfit').find((row) => row.date === historicalDate)
-assert.equal(historicalProfit.netSales, 400, 'pre-pilot net sales remain visible')
-assert.equal(historicalProfit.costCoverageWeight, 0, 'pre-pilot sales do not enter cost coverage weight')
-assert.equal(historicalProfit.costOfGoodsSold, '', 'pre-pilot sales do not become zero COGS')
-assert.equal(historicalProfit.grossProfit, '', 'pre-pilot sales do not produce fake gross profit')
+assert.equal(context.rowsAsObjects_('DailyProfit').some((row) => row.date === historicalDate), false, 'pre-pilot sales stay outside Pilot profit rows')
+context.replaceObjectRows_('SalesDaily', [
+  historicalSale,
+  { date: trackingStart, productId: 'p1', quantity: 5, netSales: 100, costOfGoodsSold: '', costCovered: '', updatedAt: '' },
+])
+context.recalculateInventoryProfit_({
+  p1: { productId: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1' },
+  p2: { productId: 'p2', sku: 'SKU-2', barcode: 'BAR-2', name: 'Product 2' },
+})
+const pilotProfit = context.rowsAsObjects_('DailyProfit')
+assert.equal(pilotProfit.some((row) => row.date === historicalDate), false)
+assert.deepEqual(
+  pilotProfit.map((row) => [row.date, row.netSales, row.costOfGoodsSold, row.grossProfit, row.costCoverageRate]),
+  [[trackingStart, 100, 10, 90, 1]],
+  'only on-or-after tracking-start sales enter Pilot profit and coverage',
+)
 
 context.replaceObjectRows_('Entries', [])
 context.replaceObjectRows_('SalesDaily', [])
