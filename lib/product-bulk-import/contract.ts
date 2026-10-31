@@ -24,12 +24,21 @@ export type ProductImportIssueCode =
   | 'SKU_MAPPING_REQUIRED'
   | 'UNSUPPORTED_GROUPED_VARIANT_SOURCE'
   | 'SHEET_SKIPPED'
+  | 'PRICE_NORMALIZED'
+  | 'INVALID_AUX_FACTOR'
+  | 'INVALID_AUX_PRICE'
+  | 'BARCODE_COLLISION_IN_FILE'
+  | 'BARCODE_COLLISION'
+  | 'AUX_UNIT_CONFIG_INCOMPLETE'
 
 export type ProductImportIssue = {
   code: ProductImportIssueCode
   field?: string
   message: string
   blocking: boolean
+  sourceValue?: string
+  normalizedValue?: string
+  normalizationReason?: string
 }
 
 export type ProductImportImageCandidate = {
@@ -65,6 +74,16 @@ export type ProductImportNormalizedProduct = {
   category1: string | null
   category2: string | null
   categoryId: string | null
+  mainUnitName: string | null
+  auxUnitName: string | null
+  auxBarcode: string | null
+  auxConversionFactor: number | null
+  auxSellPrice: number | null
+  auxEnabled: boolean
+  sellPriceSourceValue: string | null
+  sellPriceNormalizationReason: string | null
+  auxSellPriceSourceValue: string | null
+  auxSellPriceNormalizationReason: string | null
 }
 
 export type ParsedProductImportRow = {
@@ -108,6 +127,10 @@ export type ProductImportField =
   | 'imageUrl'
   | 'category1'
   | 'category2'
+  | 'unitNames'
+  | 'auxConversionFactor'
+  | 'auxBarcode'
+  | 'auxSellPrice'
 
 export type ProductImportFieldMapping = Partial<Record<ProductImportField, number>>
 

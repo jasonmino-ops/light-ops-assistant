@@ -34,20 +34,24 @@ const xmlParser = new XMLParser({
 })
 
 const FIELD_ALIASES: Record<ProductImportField, string[]> = {
-  barcode: ['barcode', '条码', '商品条码', '条形码', 'product barcode', 'ean', 'ean13'],
+  barcode: ['barcode', '条码', '商品条码', '条形码', '条形码主单位', 'product barcode', 'ean', 'ean13'],
   sku: ['sku', '商品编码', '编码', 'កូដទំនិញ/编码', '货号', 'item code', 'product code'],
-  nameZh: ['name_zh', '中文名', '名称_中文', 'name', '商品名', '商品名称', '名称', '品名'],
+  nameZh: ['name_zh', '中文名', '名称_中文', 'name', '商品名', '商品名称', '商品名称（必填）', '基本信息商品名称（必填）', '名称', '品名'],
   nameEn: ['name_en', '英文名', '名称_英文', 'english name', 'product name'],
   nameKm: ['name_km', '柬文名', '名称_柬文', 'khmer name', 'ឈ្មោះទំនិញ'],
   descZh: ['desc_zh', 'description', '描述', '商品描述', '中文描述'],
   descEn: ['desc_en', '英文描述', 'english description'],
   descKm: ['desc_km', '柬文描述', 'khmer description'],
-  spec: ['spec', '规格', '型号', 'size', 'unit'],
-  sellPrice: ['sell_price', 'sellprice', '售价', '价格', '单价', '销售单价', 'price', 'retail price'],
+  spec: ['spec', '规格', '基本信息规格', '型号', 'size'],
+  sellPrice: ['sell_price', 'sellprice', '售价', '价格', '价格零售价主单位', '单价', '销售单价', 'price', 'retail price'],
   status: ['status', '状态'],
   imageUrl: ['image_url', 'imageurl', 'image', 'photo_url', 'main_image_url', 'mainimageurl', '图片', '商品图片', '主图', '图片链接', '图片地址', '主图地址', '商品主图'],
-  category1: ['category1', 'cat1', '一级分类', '大类', '分类', 'category', 'main category'],
+  category1: ['category1', 'cat1', '一级分类', '商品分类一级分类', '大类', '分类', 'category', 'main category'],
   category2: ['category2', 'cat2', '二级分类', '小类', '子分类', 'subcategory', 'sub category'],
+  unitNames: ['单位', '销售单位'],
+  auxConversionFactor: ['换算率', '单位换算率'],
+  auxBarcode: ['辅条码', '辅单位条码', '条形码辅单位'],
+  auxSellPrice: ['辅单位售价', '价格零售价辅单位'],
 }
 
 export type OfficeEntries = Map<string, Uint8Array>
@@ -64,7 +68,7 @@ function arrays<T>(value: T | T[] | null | undefined): T[] {
 }
 
 function normalizeHeader(value: string): string {
-  return value.normalize('NFKC').trim().toLocaleLowerCase('und').replace(/[\s_-]+/g, '')
+  return value.normalize('NFKC').trim().toLocaleLowerCase('und').replace(/[\s_/|\-]+/g, '')
 }
 
 const SKU_HEADER_ALIASES = new Set(FIELD_ALIASES.sku.map(normalizeHeader))
@@ -295,6 +299,29 @@ function worksheetRowValues(sheet: XLSX.WorkSheet, row: number, range: XLSX.Rang
   return values
 }
 
+function mergedHeaderValue(sheet: XLSX.WorkSheet, row: number, column: number): string {
+  const direct = safeCellString(sheet, row, column)
+  if (direct) return direct
+  for (const merge of sheet['!merges'] ?? []) {
+    if (row >= merge.s.r && row <= merge.e.r && column >= merge.s.c && column <= merge.e.c) {
+      return safeCellString(sheet, merge.s.r, merge.s.c)
+    }
+  }
+  return ''
+}
+
+function compositeHeaderValues(sheet: XLSX.WorkSheet, endRow: number, range: XLSX.Range): string[] {
+  const startRow = Math.max(range.s.r, endRow - 2)
+  return Array.from({ length: range.e.c + 1 }, (_, column) => {
+    const parts: string[] = []
+    for (let row = startRow; row <= endRow; row += 1) {
+      const value = mergedHeaderValue(sheet, row, column).trim()
+      if (value && parts[parts.length - 1] !== value) parts.push(value)
+    }
+    return parts.join(' / ')
+  })
+}
+
 function deterministicMapping(headers: string[]): ProductImportFieldMapping | null {
   const normalized = headers.map(normalizeHeader)
   const mapping: ProductImportFieldMapping = {}
@@ -316,12 +343,13 @@ function inspectSheet(sheet: XLSX.WorkSheet, sheetIndex: number, sheetName: stri
   const candidateRows: SpreadsheetInspectionSheet['candidateRows'] = []
   const scanEnd = range ? Math.min(range.e.r, range.s.r + MAX_HEADER_SCAN_ROWS - 1) : -1
   for (let row = range?.s.r ?? 0; row <= scanEnd; row += 1) {
-    const headers = worksheetRowValues(sheet, row, range!)
+    const rowHeaders = worksheetRowValues(sheet, row, range!)
+    const headers = compositeHeaderValues(sheet, row, range!)
     candidateRows.push({
       rowNumber: row + 1,
-      cells: headers.flatMap((value, columnIndex) => value.trim() ? [{ columnIndex, value }] : []),
+      cells: rowHeaders.flatMap((value, columnIndex) => value.trim() ? [{ columnIndex, value }] : []),
     })
-    if (!fallback && headers.some((value) => value.trim())) fallback = { row, headers }
+    if (!fallback && rowHeaders.some((value) => value.trim())) fallback = { row, headers: rowHeaders }
     const mapping = deterministicMapping(headers)
     if (!mapping) continue
     const score = Object.keys(mapping).length
@@ -367,10 +395,28 @@ function optional(value: string): string | null {
   return trimmed ? trimmed : null
 }
 
-function parsePrice(value: string): number {
+function parsePrice(value: string): { value: number; sourceValue: string | null; normalizationReason: string | null } {
   const normalized = value.normalize('NFKC').replace(/[,\s$៛€£¥]/g, '')
-  const parsed = Number(normalized)
-  return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : 0
+  if (!/^\d+(?:\.\d+)?$/.test(normalized)) {
+    return { value: 0, sourceValue: value.trim() || null, normalizationReason: null }
+  }
+  const [whole, fraction = ''] = normalized.split('.')
+  let cents = Number(whole) * 100 + Number((fraction + '00').slice(0, 2))
+  if ((fraction[2] ?? '0') >= '5') cents += 1
+  const parsed = cents / 100
+  return {
+    value: Number.isSafeInteger(cents) ? parsed : 0,
+    sourceValue: value.trim() || null,
+    normalizationReason: fraction.length > 2 ? 'STANDARD_HALF_UP_TO_2_DECIMALS' : null,
+  }
+}
+
+function parseAuxFactor(value: string): number | null {
+  const normalized = value.normalize('NFKC').replace(/\s/g, '')
+  if (!normalized) return null
+  const ratio = normalized.match(/^1[/:](\d+)$/)
+  const parsed = ratio ? Number(ratio[1]) : /^\d+$/.test(normalized) ? Number(normalized) : Number.NaN
+  return Number.isInteger(parsed) && parsed >= 2 ? parsed : null
 }
 
 function unsupportedImageIssue(candidate: ProductImportImageCandidate): ProductImportIssue | null {
@@ -503,7 +549,7 @@ export function parseSpreadsheetBuffer(
     }
     const groupedVariantIssue = groupedVariantSourceIssue(sheet, range, headerRowIndex)
     if (groupedVariantIssue) warnings.push(groupedVariantIssue)
-    const headers = worksheetRowValues(sheet, headerRowIndex, range)
+    const headers = compositeHeaderValues(sheet, headerRowIndex, range)
     const firstRowIndex = options.cursor?.sheetIndex === inspection.sheetIndex
       ? Math.max(headerRowIndex + 1, options.cursor.rowIndex)
       : headerRowIndex + 1
@@ -521,7 +567,8 @@ export function parseSpreadsheetBuffer(
       let sourcePayloadBudget = MAX_SOURCE_PAYLOAD_CHARS
       const sourceValues = headers.reduce<Record<string, unknown>>((result, header, column) => {
         if (sourcePayloadBudget <= 0) return result
-        const key = header.trim() || `column_${column + 1}`
+        const baseKey = header.trim() || `column_${column + 1}`
+        const key = Object.prototype.hasOwnProperty.call(result, baseKey) ? `${baseKey} [${column + 1}]` : baseKey
         const value = safeCellString(sheet, rowIndex, column).slice(0, sourcePayloadBudget)
         sourcePayloadBudget -= Math.min(sourcePayloadBudget, key.length + value.length)
         result[key.slice(0, 512)] = value
@@ -533,7 +580,17 @@ export function parseSpreadsheetBuffer(
       const nameKm = optional(get('nameKm'))
       const name = nameZh ?? nameEn ?? nameKm ?? ''
       const priceText = get('sellPrice')
-      const sellPrice = parsePrice(priceText)
+      const sellPriceResult = parsePrice(priceText)
+      const sellPrice = sellPriceResult.value
+      const unitNames = get('unitNames').split(/[\/／]/).map((value) => value.trim()).filter(Boolean)
+      const mainUnitName = unitNames[0] ?? null
+      const auxUnitName = unitNames[1] ?? null
+      const auxBarcode = optional(get('auxBarcode', true))
+      const factorText = get('auxConversionFactor')
+      const auxConversionFactor = parseAuxFactor(factorText)
+      const auxPriceText = get('auxSellPrice')
+      const auxSellPriceResult = parsePrice(auxPriceText)
+      const auxSellPrice = auxPriceText.trim() && auxSellPriceResult.value > 0 ? auxSellPriceResult.value : null
       const sku = optional(get('sku'))
       if (!rawBarcode && !sku && !name && !priceText.trim()) continue
 
@@ -553,6 +610,39 @@ export function parseSpreadsheetBuffer(
       }
       if (!name) issues.push({ code: 'MISSING_NAME', field: 'name', message: '商品名不能为空', blocking: true })
       if (!(sellPrice > 0)) issues.push({ code: 'INVALID_PRICE', field: 'sellPrice', message: `售价无效：${priceText}`, blocking: true })
+      if (sellPriceResult.normalizationReason) {
+        issues.push({
+          code: 'PRICE_NORMALIZED', field: 'sellPrice',
+          message: `主单位价格 ${sellPriceResult.sourceValue} 已按标准四舍五入为 ${sellPrice.toFixed(2)}`,
+          blocking: false,
+          sourceValue: sellPriceResult.sourceValue ?? '', normalizedValue: sellPrice.toFixed(2),
+          normalizationReason: sellPriceResult.normalizationReason,
+        })
+      }
+      if (factorText.trim() && auxConversionFactor == null) {
+        issues.push({ code: 'INVALID_AUX_FACTOR', field: 'auxConversionFactor', message: `辅单位换算率无效：${factorText}`, blocking: true })
+      }
+      const hasAuxStructure = !!(auxUnitName || auxBarcode || factorText.trim())
+      if (hasAuxStructure && auxPriceText.trim() && !(auxSellPrice != null && auxSellPrice > 0)) {
+        issues.push({ code: 'INVALID_AUX_PRICE', field: 'auxSellPrice', message: `辅单位售价无效：${auxPriceText}`, blocking: true })
+      }
+      if (auxSellPriceResult.normalizationReason && auxSellPrice != null) {
+        issues.push({
+          code: 'PRICE_NORMALIZED', field: 'auxSellPrice',
+          message: `辅单位价格 ${auxSellPriceResult.sourceValue} 已按标准四舍五入为 ${auxSellPrice.toFixed(2)}`,
+          blocking: false,
+          sourceValue: auxSellPriceResult.sourceValue ?? '', normalizedValue: auxSellPrice.toFixed(2),
+          normalizationReason: auxSellPriceResult.normalizationReason,
+        })
+      }
+      const hasAuxDraft = !!(hasAuxStructure || auxSellPrice != null)
+      const auxEnabled = !!(auxUnitName && auxBarcode && auxConversionFactor != null && auxSellPrice != null && auxSellPrice > 0)
+      if (hasAuxDraft && !auxEnabled && !issues.some((issue) => issue.blocking && issue.field?.startsWith('aux'))) {
+        issues.push({
+          code: 'AUX_UNIT_CONFIG_INCOMPLETE', field: 'auxEnabled',
+          message: '辅单位配置不完整，商品将仅启用主单位；辅单位保持待启用', blocking: false,
+        })
+      }
       for (const image of rowImages) {
         const issue = unsupportedImageIssue(image)
         if (issue) issues.push(issue)
@@ -601,6 +691,16 @@ export function parseSpreadsheetBuffer(
           category1: optional(get('category1')),
           category2: optional(get('category2')),
           categoryId: null,
+          mainUnitName,
+          auxUnitName,
+          auxBarcode,
+          auxConversionFactor,
+          auxSellPrice,
+          auxEnabled,
+          sellPriceSourceValue: sellPriceResult.sourceValue,
+          sellPriceNormalizationReason: sellPriceResult.normalizationReason,
+          auxSellPriceSourceValue: auxSellPriceResult.sourceValue,
+          auxSellPriceNormalizationReason: auxSellPriceResult.normalizationReason,
         },
         images: rowImages.slice(0, PRODUCT_IMPORT_MAX_IMAGES),
         issues,
@@ -608,21 +708,26 @@ export function parseSpreadsheetBuffer(
     }
   }
 
-  const barcodeRows = new Map<string, ParsedProductImportRow[]>()
+  const barcodeRows = new Map<string, Array<{ row: ParsedProductImportRow; field: 'barcode' | 'auxBarcode' }>>()
   for (const row of rows) {
-    if (!row.product.barcode) continue
-    const matches = barcodeRows.get(row.product.barcode) ?? []
-    matches.push(row)
-    barcodeRows.set(row.product.barcode, matches)
+    for (const [field, barcode] of [['barcode', row.product.barcode], ['auxBarcode', row.product.auxBarcode]] as const) {
+      if (!barcode) continue
+      const matches = barcodeRows.get(barcode) ?? []
+      matches.push({ row, field })
+      barcodeRows.set(barcode, matches)
+    }
   }
   for (const [barcode, duplicates] of barcodeRows) {
     if (duplicates.length < 2) continue
-    const coordinates = duplicates.map((row) => row.coordinate.rowNumber ?? row.sourceOrdinal).join(', ')
-    for (const row of duplicates) {
+    const coordinates = duplicates.map(({ row, field }) => `${row.coordinate.rowNumber ?? row.sourceOrdinal}:${field}`).join(', ')
+    const mainOnly = duplicates.every(({ field }) => field === 'barcode')
+    for (const { row, field } of duplicates) {
       row.issues.push({
-        code: 'DUPLICATE_BARCODE_IN_FILE',
-        field: 'barcode',
-        message: `文件内条码 ${barcode} 重复（行 ${coordinates}）`,
+        code: mainOnly ? 'DUPLICATE_BARCODE_IN_FILE' : 'BARCODE_COLLISION_IN_FILE',
+        field,
+        message: mainOnly
+          ? `文件内条码 ${barcode} 重复（${coordinates}）`
+          : `文件内主/辅条码 ${barcode} 冲突（${coordinates}）`,
         blocking: true,
       })
     }

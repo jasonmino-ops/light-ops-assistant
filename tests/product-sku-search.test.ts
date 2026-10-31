@@ -12,8 +12,10 @@ assert.match(salePage, /sku: string \| null/)
 assert.match(salePage, /matchesProductSearch\(p, q\)/)
 assert.match(salePage, /p\.sku \? `\$\{p\.sku\} · \$\{p\.barcode\}` : p\.barcode/)
 assert.match(salePage, /allProducts\.find\(\(p\) => p\.sku\?\.toLowerCase\(\) === ql\)/)
-assert.match(salePage, /allProducts\.find\(\(p\) => p\.barcode\.toLowerCase\(\) === ql\)/)
-assert.match(salePage, /queryProductByBarcode\(localProduct\.barcode\)/)
+assert.match(salePage, /p\.barcode === query \|\| \(p\.auxEnabled && p\.auxBarcode === query\)/,
+  'selling-unit barcode resolution must be exact for both main and auxiliary barcodes')
+assert.match(salePage, /queryProductByBarcode\(query\)/,
+  'the actual scanned selling-unit barcode must reach the server resolver')
 assert.match(salePage, /\/api\/products\?barcode=\$\{encodeURIComponent\(barcode\)\}/)
 assert.match(productsPage, /matchesProductSearch\(p, q\)/)
 

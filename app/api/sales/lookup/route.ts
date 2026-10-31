@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       operatorUser: { select: { displayName: true } },
       refundChildren: {
         where: { saleType: 'REFUND', status: 'COMPLETED' },
-        select: { quantity: true },
+        select: { quantity: true, sellingQuantity: true },
       },
     },
   })
@@ -64,11 +64,13 @@ export async function GET(req: NextRequest) {
     )
   }
 
+  const factor = record.sellingConversionFactor ?? 1
+  const originalQty = record.sellingQuantity?.abs().toNumber() ?? record.quantity.abs().div(factor).toNumber()
   const refundedQty = record.refundChildren.reduce(
-    (sum, r) => sum + Math.abs(r.quantity.toNumber()),
+    (sum, r) => sum + (r.sellingQuantity?.abs().toNumber() ?? r.quantity.abs().div(factor).toNumber()),
     0,
   )
-  const availableQty = record.quantity.toNumber() - refundedQty
+  const availableQty = originalQty - refundedQty
   const refundable = availableQty > 0
 
   if (!refundable) {
@@ -90,10 +92,14 @@ export async function GET(req: NextRequest) {
         productNameSnapshot: record.productNameSnapshot,
         specSnapshot: record.specSnapshot,
         unitPrice: record.unitPrice.toNumber(),
-        originalQty: record.quantity.toNumber(),
+        originalQty,
+        baseQuantity: record.quantity.toNumber(),
         refundedQty,
         availableQty,
         refundable,
+        sellingUnitType: record.sellingUnitType ?? 'MAIN',
+        sellingUnitName: record.sellingUnitNameSnapshot,
+        sellingConversionFactor: factor,
       },
     ],
   })

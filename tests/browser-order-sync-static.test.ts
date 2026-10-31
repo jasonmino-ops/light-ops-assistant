@@ -27,6 +27,7 @@ function stripComments(src: string): string {
 function main() {
   const pendingRoute = read('app/api/cashier/pending-orders/route.ts')
   const recordsRoute = read('app/api/records/route.ts')
+  const receiptRoute = read('app/api/cashier/sale-records/[id]/receipt/route.ts')
   const cashierPage = read('app/cashier/page.tsx')
 
   // 1) 正式门店授权，禁止 storeCode 弱回退
@@ -41,13 +42,28 @@ function main() {
   const pendingCode = stripComments(pendingRoute)
   assert.match(pendingCode, /status:\s*'PENDING_PAYMENT'/,
     'pending-orders must be driven by PENDING_PAYMENT record status')
-  for (const field of ['unitPrice', 'quantity', 'lineAmount', 'productNameSnapshot']) {
+  for (const field of ['unitPrice', 'quantity', 'lineAmount', 'productNameSnapshot', 'sellingQuantity', 'sellingUnitNameSnapshot', 'sellingConversionFactor']) {
     assert.match(pendingCode, new RegExp(field), `pending-orders must expose ${field} for detail view`)
   }
+
+  assert.match(receiptRoute, /line\.sellingQuantity\?\.toNumber\(\) \?\? line\.quantity\.toNumber\(\)/,
+    'receipt and reprint must display actual selling quantity while preserving legacy rows')
+  assert.match(receiptRoute, /line\.sellingUnitNameSnapshot/,
+    'receipt and reprint must render the immutable selling-unit name snapshot')
+  assert.match(receiptRoute, /lineAmount:\s*line\.lineAmount\.toNumber\(\)/,
+    'receipt and reprint must use persisted lineAmount as the amount authority')
 
   // 3 & 4) 记录状态显示：透传 status + 前端展示“待收款”
   assert.match(recordsRoute, /status:\s*r\.status/,
     '/api/records must pass through SaleRecord.status for status display')
+  assert.match(recordsRoute, /quantity:\s*r\.sellingQuantity\?\.toNumber\(\) \?\? r\.quantity\.toNumber\(\)/,
+    '/api/records must display actual selling quantity and retain legacy fallback')
+  assert.match(recordsRoute, /sellingUnitName:\s*r\.sellingUnitNameSnapshot/,
+    '/api/records must preserve null legacy unit snapshots for localized UI fallback')
+  assert.doesNotMatch(recordsRoute, /sellingUnitName:\s*r\.sellingUnitNameSnapshot \?\? '件'/,
+    '/api/records must not inject a Chinese unit into legacy records')
+  assert.match(pendingRoute, /sellingUnitName:\s*r\.sellingUnitNameSnapshot/,
+    'pending-order details must preserve a nullable immutable unit snapshot')
   assert.match(cashierPage, /recordPendingPayment/,
     'cashier records must render a pending-payment label')
   assert.match(cashierPage, /status === 'PENDING_PAYMENT'/,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { NextRequest } from 'next/server'
 import { POST } from '../app/api/sales/route'
+import { GET as lookupSale } from '../app/api/sales/lookup/route'
 import { prisma } from '../lib/prisma'
 
 const databaseUrl = new URL(process.env.DATABASE_URL ?? 'http://invalid')
@@ -19,7 +20,7 @@ const userId = 'sales-tx-timeout-user'
 const productAId = 'sales-tx-timeout-product-a'
 const productBId = 'sales-tx-timeout-product-b'
 const merchantConfigId = 'sales-tx-timeout-khqr'
-const productA = { barcode: 'SALES-TX-A', price: 2.5 }
+const productA = { barcode: 'SALES-TX-A', price: 2.5, auxBarcode: 'SALES-TX-AUX-A', auxPrice: 4.25 }
 const productB = { barcode: 'SALES-TX-B', price: 1.25 }
 
 async function removeTestTriggers() {
@@ -53,6 +54,7 @@ async function resetFixture() {
       code: 'SALESTX',
       name: 'Sales Transaction Timeout Store',
       currencyCode: 'USD',
+      businessType: 'RETAIL',
     },
   })
   await prisma.user.create({
@@ -66,7 +68,19 @@ async function resetFixture() {
   })
   await prisma.product.createMany({
     data: [
-      { id: productAId, tenantId, barcode: productA.barcode, name: 'Product A', sellPrice: productA.price },
+      {
+        id: productAId,
+        tenantId,
+        barcode: productA.barcode,
+        name: 'Product A',
+        sellPrice: productA.price,
+        mainUnitName: 'bottle',
+        auxUnitName: 'case',
+        auxBarcode: productA.auxBarcode,
+        auxConversionFactor: 12,
+        auxSellPrice: productA.auxPrice,
+        auxEnabled: true,
+      },
       { id: productBId, tenantId, barcode: productB.barcode, name: 'Product B', sellPrice: productB.price },
     ],
   })
@@ -110,6 +124,37 @@ async function runSale(
   const response = await POST(saleRequest(items, paymentMethod))
   const elapsedMs = Math.round(performance.now() - startedAt)
   return { response, elapsedMs, body: await response.json() }
+}
+
+function refundRequest(originalSaleRecordId: string, refundQty: number) {
+  return new NextRequest('http://localhost/api/sales', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-tenant-id': tenantId,
+      'x-store-id': storeId,
+      'x-user-id': userId,
+      'x-role': 'OWNER',
+    },
+    body: JSON.stringify({ saleType: 'REFUND', originalSaleRecordId, refundQty, refundReason: 'test' }),
+  })
+}
+
+async function runRefund(originalSaleRecordId: string, refundQty: number) {
+  const response = await POST(refundRequest(originalSaleRecordId, refundQty))
+  return { response, body: await response.json() }
+}
+
+async function runLookup(recordNo: string) {
+  const response = await lookupSale(new NextRequest(`http://localhost/api/sales/lookup?recordNo=${encodeURIComponent(recordNo)}`, {
+    headers: {
+      'x-tenant-id': tenantId,
+      'x-store-id': storeId,
+      'x-user-id': userId,
+      'x-role': 'OWNER',
+    },
+  }))
+  return { response, body: await response.json() }
 }
 
 async function readOrderState() {
@@ -175,6 +220,86 @@ async function main() {
   assert.ok(state.payments[0].paidAt)
   assert.equal(state.logs[0].saleRecordId, state.sales[0].id)
   assert.equal(state.printJobCount, 0, 'generic /api/sales PrintJob behavior remains unchanged')
+
+  await clearSales()
+  await prisma.store.update({ where: { id: storeId }, data: { businessType: 'GENERAL' } })
+  const generalSale = await runSale([{ barcode: productB.barcode, quantity: 1 }])
+  assert.equal(generalSale.response.status, 201)
+  state = await readOrderState()
+  const generalLine = state.sales[0]
+  assert.deepEqual(
+    [generalLine.sellingUnitType, generalLine.sellingUnitNameSnapshot, generalLine.sellingQuantity, generalLine.sellingConversionFactor],
+    [null, null, null, null],
+    'GENERAL sales retain the legacy null selling-unit snapshot',
+  )
+  const generalLookup = await runLookup(generalLine.recordNo)
+  assert.equal(generalLookup.response.status, 200)
+  assert.equal(generalLookup.body.items[0].sellingUnitName, null, 'legacy/GENERAL lookup must not synthesize a Chinese unit name')
+  await prisma.store.update({ where: { id: storeId }, data: { businessType: 'RETAIL' } })
+
+  await clearSales()
+  const multiUnit = await runSale([
+    { barcode: productA.barcode, quantity: 1 },
+    { barcode: productA.auxBarcode, quantity: 3 },
+  ])
+  assert.equal(multiUnit.response.status, 201, 'main and auxiliary units of one Product remain separate sale lines')
+  state = await readOrderState()
+  assert.equal(state.sales.length, 2)
+  const mainLine = state.sales.find((row) => row.barcode === productA.barcode)!
+  const auxLine = state.sales.find((row) => row.barcode === productA.auxBarcode)!
+  assert.deepEqual(
+    [mainLine.productId, mainLine.quantity.toString(), mainLine.sellingUnitType, mainLine.sellingUnitNameSnapshot, mainLine.sellingQuantity?.toString(), mainLine.sellingConversionFactor, mainLine.unitPrice.toFixed(2), mainLine.lineAmount.toFixed(2)],
+    [productAId, '1', 'MAIN', 'bottle', '1', 1, '2.50', '2.50'],
+  )
+  assert.deepEqual(
+    [auxLine.productId, auxLine.quantity.toString(), auxLine.sellingUnitType, auxLine.sellingUnitNameSnapshot, auxLine.sellingQuantity?.toString(), auxLine.sellingConversionFactor, auxLine.unitPrice.toFixed(2), auxLine.lineAmount.toFixed(2)],
+    [productAId, '36', 'AUX', 'case', '3', 12, '4.25', '12.75'],
+  )
+  assert.equal(state.payments[0].amount.toFixed(2), '15.25')
+
+  await prisma.product.update({
+    where: { id: productAId },
+    data: { auxUnitName: 'changed case', auxConversionFactor: 24, auxSellPrice: '9.99' },
+  })
+  const unchangedSnapshot = await prisma.saleRecord.findUniqueOrThrow({ where: { id: auxLine.id } })
+  assert.deepEqual(
+    [unchangedSnapshot.sellingUnitNameSnapshot, unchangedSnapshot.sellingConversionFactor, unchangedSnapshot.unitPrice.toFixed(2), unchangedSnapshot.lineAmount.toFixed(2)],
+    ['case', 12, '4.25', '12.75'],
+    'later Product edits cannot rewrite historical selling semantics',
+  )
+  await prisma.product.update({
+    where: { id: productAId },
+    data: { auxUnitName: 'case', auxConversionFactor: 12, auxSellPrice: productA.auxPrice },
+  })
+
+  const excessiveRefund = await runRefund(auxLine.id, 4)
+  assert.deepEqual(
+    [excessiveRefund.response.status, excessiveRefund.body.error, excessiveRefund.body.availableQty],
+    [422, 'REFUND_QTY_EXCEEDED', 3],
+    'over-refund response preserves the legacy availableQty contract in selling units',
+  )
+  const fractionalRefund = await runRefund(auxLine.id, 0.5)
+  assert.deepEqual([fractionalRefund.response.status, fractionalRefund.body.error], [400, 'AUX_REFUND_MUST_BE_INTEGER'])
+  const concurrentRefunds = await Promise.all([runRefund(auxLine.id, 2), runRefund(auxLine.id, 2)])
+  assert.equal(concurrentRefunds.filter((entry) => entry.response.status === 201).length, 1, 'concurrent refunds cannot over-refund an auxiliary package')
+  assert.equal(concurrentRefunds.filter((entry) => ['REFUND_CONFLICT', 'REFUND_QTY_EXCEEDED'].includes(entry.body.error)).length, 1)
+  for (const entry of concurrentRefunds.filter((candidate) => candidate.body.error === 'REFUND_QTY_EXCEEDED')) {
+    assert.equal(typeof entry.body.availableQty, 'number', 'concurrent over-refund response retains availableQty')
+  }
+  const staleExcessiveRefund = await runRefund(auxLine.id, 2)
+  assert.deepEqual(
+    [staleExcessiveRefund.response.status, staleExcessiveRefund.body.error, staleExcessiveRefund.body.availableQty],
+    [422, 'REFUND_QTY_EXCEEDED', 1],
+    'stale refund UI receives the current available selling quantity',
+  )
+  const finalRefund = await runRefund(auxLine.id, 1)
+  assert.equal(finalRefund.response.status, 201)
+  const refundRows = await prisma.saleRecord.findMany({ where: { originalSaleRecordId: auxLine.id }, orderBy: { createdAt: 'asc' } })
+  assert.deepEqual(
+    refundRows.map((row) => [row.quantity.toString(), row.sellingQuantity?.toString(), row.sellingConversionFactor, row.sellingUnitNameSnapshot, row.unitPrice.toFixed(2), row.lineAmount.toFixed(2)]),
+    [['-24', '-2', 12, 'case', '4.25', '-8.50'], ['-12', '-1', 12, 'case', '4.25', '-4.25']],
+  )
+  assert.equal((await prisma.saleRecord.findUniqueOrThrow({ where: { id: auxLine.id } })).refundedQty?.toString(), '36')
 
   await clearSales()
   const mixedItems = Array.from({ length: 8 }, (_, index) => ({

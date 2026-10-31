@@ -109,6 +109,9 @@ type Product = {
   spec: string | null; sellPrice: number
   categoryId: string | null; imageUrl: string | null
   status?: string; updatedAt?: string | null
+  mainUnitName?: string | null; auxUnitName?: string | null; auxBarcode?: string | null
+  auxConversionFactor?: number | null; auxSellPrice?: number | null; auxEnabled?: boolean
+  sellingUnitType?: 'MAIN' | 'AUX'; sellingUnitName?: string; sellingConversionFactor?: number
 }
 
 type Category = { id: string; name: string; parentId: string | null }
@@ -117,6 +120,9 @@ type CartLine = {
   productId: string | null; barcode: string; name: string; spec: string | null
   price: number; qty: number; imageUrl: string | null
   sugar?: string
+  sellingUnitType: 'MAIN' | 'AUX'
+  sellingUnitName: string
+  sellingConversionFactor: number
 }
 
 // Separate from CartLine/SaleResult: immutable H5 facts never enter POS sales.
@@ -310,6 +316,7 @@ type CashierOrder = {
 type ServerPendingOrderItem = {
   productId: string | null; barcode: string; name: string; spec: string | null
   unitPrice: number; quantity: number; lineAmount: number
+  sellingUnitName?: string | null
 }
 type ServerPendingOrder = {
   orderNo: string; createdAt: string; totalAmount: number
@@ -376,7 +383,7 @@ function cashierDisplayItems(cart: CartLine[]) {
     .map((line) => ({
       productId: line.productId as string,
       name: line.name,
-      spec: [line.spec, line.sugar ? sugarZh(line.sugar) : null].filter(Boolean).join(' / ') || null,
+      spec: [line.spec, line.sellingUnitName, line.sugar ? sugarZh(line.sugar) : null].filter(Boolean).join(' / ') || null,
       imageUrl: line.imageUrl,
       price: line.price,
       qty: line.qty,
@@ -1901,6 +1908,12 @@ export default function CashierPage() {
               imageUrl: p.imageUrl,
               status: p.status,
               updatedAt: p.updatedAt,
+              mainUnitName: p.mainUnitName,
+              auxUnitName: p.auxUnitName,
+              auxBarcode: p.auxBarcode,
+              auxConversionFactor: p.auxConversionFactor,
+              auxSellPrice: p.auxSellPrice,
+              auxEnabled: p.auxEnabled,
             })))
             setCategories([])
             setProductsSource('cache')
@@ -3521,10 +3534,17 @@ export default function CashierPage() {
 
   // ── Cart ops ───────────────────────────────────────────────────────────────
   const addToCart = useCallback((p: Product, sugar?: string, options?: { focusSearch?: boolean }) => {
+    const sellingUnitType = p.sellingUnitType ?? 'MAIN'
+    const sellingUnitName = p.sellingUnitName ?? p.mainUnitName ?? ''
+    const sellingConversionFactor = p.sellingConversionFactor ?? 1
     setCart(prev => {
       const found = prev.find(c => c.barcode === p.barcode && c.sugar === sugar)
       if (found) return prev.map(c => c.barcode === p.barcode && c.sugar === sugar ? { ...c, qty: c.qty + 1 } : c)
-      return [...prev, { productId: p.id, barcode: p.barcode, name: p.name, spec: p.spec, price: p.sellPrice, qty: 1, imageUrl: p.imageUrl, sugar }]
+      return [...prev, {
+        productId: p.id, barcode: p.barcode, name: p.name, spec: p.spec,
+        price: p.sellPrice, qty: 1, imageUrl: p.imageUrl, sugar,
+        sellingUnitType, sellingUnitName, sellingConversionFactor,
+      }]
     })
     if (isDesktopPos && options?.focusSearch !== false) focusScannerInput()
   }, [focusScannerInput, isDesktopPos])
@@ -3757,6 +3777,9 @@ export default function CashierPage() {
             snapshotName: c.name,
             spec: c.spec,
             sugar: c.sugar ?? null,
+            sellingUnitType: c.sellingUnitType,
+            sellingUnitName: c.sellingUnitName,
+            sellingConversionFactor: c.sellingConversionFactor,
           })),
           subtotal: cartTotal(cart),
           discountAmount: 0,
@@ -3997,13 +4020,35 @@ export default function CashierPage() {
     return [
       p.name,
       p.barcode,
+      p.auxBarcode,
       p.sku,
       p.spec,
     ].some(value => normalizeSearchText(value).includes(keyword))
   }
   function productMatchesExactCode(p: Product, keyword: string) {
     if (!keyword) return false
-    return [p.barcode, p.sku, p.code].some(value => normalizeSearchText(value) === keyword)
+    if (p.barcode === keyword || (p.auxEnabled && p.auxBarcode === keyword)) return true
+    const normalizedKeyword = normalizeSearchText(keyword)
+    return [p.sku, p.code].some(value => normalizeSearchText(value) === normalizedKeyword)
+  }
+  function productForSellingBarcode(p: Product, rawBarcode: string): Product {
+    if (p.auxEnabled && p.auxBarcode === rawBarcode && p.auxSellPrice != null && p.auxConversionFactor != null && p.auxUnitName) {
+      return {
+        ...p,
+        barcode: p.auxBarcode,
+        sellPrice: p.auxSellPrice,
+        sellingUnitType: 'AUX',
+        sellingUnitName: p.auxUnitName,
+        sellingConversionFactor: p.auxConversionFactor,
+      }
+    }
+    return {
+      ...p,
+      barcode: p.barcode,
+      sellingUnitType: 'MAIN',
+      sellingUnitName: p.mainUnitName ?? '',
+      sellingConversionFactor: 1,
+    }
   }
   const displayProducts = products.filter(p => {
     if (!productMatchesKeyword(p, kw)) return false
@@ -4063,8 +4108,7 @@ export default function CashierPage() {
       return
     }
 
-    const normalized = normalizeSearchText(rawCode)
-    const matches = products.filter(p => productMatchesExactCode(p, normalized))
+    const matches = products.filter(p => productMatchesExactCode(p, rawCode))
     if (matches.length === 0) {
       setDebugResult({ matchCount: 0, addToCartCalled: false, lastError: '未找到商品' })
       showToast(`未找到商品：${rawCode}`)
@@ -4080,7 +4124,7 @@ export default function CashierPage() {
       showToast('当前无商品缓存，无法离线收银')
       return
     }
-    addToCart(matches[0], undefined, { focusSearch: false })
+    addToCart(productForSellingBarcode(matches[0], rawCode), undefined, { focusSearch: false })
     setDebugResult({ matchCount: matches.length, addToCartCalled: true, lastError: '' })
     focusScannerInput()
   }
@@ -5568,7 +5612,7 @@ export default function CashierPage() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 700, color: '#111827' }}>{it.name}</div>
                     {it.spec && <div style={{ fontSize: 11, color: '#6b7280' }}>{it.spec}</div>}
-                    <div style={{ fontSize: 11, color: '#6b7280' }}>{money(it.unitPrice)} × {it.quantity}</div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>{money(it.unitPrice)} × {it.quantity}{it.sellingUnitName ?? ''}</div>
                   </div>
                   <span style={{ fontWeight: 800, color: '#111827', whiteSpace: 'nowrap' }}>{money(it.lineAmount)}</span>
                 </div>

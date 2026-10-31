@@ -43,6 +43,8 @@ export async function GET(
       select: {
         id: true, barcode: true, sku: true, name: true,
         spec: true, sellPrice: true, status: true, createdAt: true,
+        mainUnitName: true, auxUnitName: true, auxBarcode: true,
+        auxConversionFactor: true, auxSellPrice: true, auxEnabled: true,
       },
     }),
     prisma.saleRecord.findMany({
@@ -55,6 +57,8 @@ export async function GET(
         productNameSnapshot: true, specSnapshot: true,
         unitPrice: true, quantity: true, lineAmount: true,
         orderNo: true, originalSaleRecordId: true, refundedQty: true,
+        sellingUnitType: true, sellingUnitNameSnapshot: true,
+        sellingQuantity: true, sellingConversionFactor: true,
         refundReason: true, remark: true, createdAt: true,
       },
     }),
@@ -67,6 +71,7 @@ export async function GET(
     quantity: r.quantity.toNumber(),
     lineAmount: r.lineAmount.toNumber(),
     refundedQty: r.refundedQty?.toNumber() ?? null,
+    sellingQuantity: r.sellingQuantity?.toNumber() ?? null,
     createdAt: r.createdAt.toISOString(),
   })
 
@@ -124,6 +129,7 @@ export async function GET(
     products: products.map((p) => ({
       ...p,
       sellPrice: p.sellPrice.toNumber(),
+      auxSellPrice: p.auxSellPrice?.toNumber() ?? null,
       createdAt: p.createdAt.toISOString(),
     })),
     saleRecords: saleRows.map(mapSale),

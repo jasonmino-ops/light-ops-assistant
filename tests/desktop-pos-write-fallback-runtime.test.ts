@@ -25,7 +25,7 @@ type Fixture = {
   store: { id: string; code: string }
   owner: { id: string }
   staff: { id: string }
-  product: { id: string; barcode: string; sellPrice: { toString(): string } }
+  product: { id: string; barcode: string; sellPrice: { toString(): string }; auxBarcode: string | null }
   member: { id: string; balance: { toString(): string } }
   order: { id: string }
 }
@@ -169,9 +169,16 @@ function salePayload(paymentMethod: 'CASH' | 'KHQR' = 'CASH', manualPaymentConfi
   }
 }
 
-function offlinePayload(offlineOrderId = `offline-${randomUUID()}`) {
+function offlinePayload(
+  offlineOrderId = `offline-${randomUUID()}`,
+  unit: { type: 'MAIN' | 'AUX'; quantity: number; price: number; name: string; factor: number } = {
+    type: 'MAIN', quantity: 1, price: 7.5, name: 'bottle', factor: 1,
+  },
+) {
   assert.ok(fixture)
   const now = Date.now()
+  const barcode = unit.type === 'AUX' ? fixture.product.auxBarcode! : fixture.product.barcode
+  const lineTotal = Number((unit.price * unit.quantity).toFixed(2))
   return {
     storeId: fixture.store.id,
     storeCode: fixture.store.code,
@@ -187,13 +194,19 @@ function offlinePayload(offlineOrderId = `offline-${randomUUID()}`) {
       createdAtClientTimestamp: now,
       items: [{
         productId: fixture.product.id,
-        barcode: fixture.product.barcode,
-        quantity: 1,
-        lineTotal: 7.5,
+        barcode,
+        quantity: unit.quantity,
+        unitPrice: unit.price,
+        lineTotal,
+        snapshotPrice: unit.price,
+        snapshotName: 'Security Test Product',
+        sellingUnitType: unit.type,
+        sellingUnitName: unit.name,
+        sellingConversionFactor: unit.factor,
       }],
-      subtotal: 7.5,
+      subtotal: lineTotal,
       discountAmount: 0,
-      totalAmount: 7.5,
+      totalAmount: lineTotal,
       paymentMethod: 'CASH',
       paymentStatus: 'PAID_OFFLINE',
       syncStatus: 'PENDING',
@@ -244,6 +257,7 @@ async function seedFixture(): Promise<Fixture> {
       name: 'Security runtime store',
       status: 'ACTIVE',
       currencyCode: 'USD',
+      businessType: 'RETAIL',
     },
     select: { id: true, code: true },
   })
@@ -279,9 +293,15 @@ async function seedFixture(): Promise<Fixture> {
       barcode: `SEC-${suffix}`,
       name: 'Security Test Product',
       sellPrice: '7.50',
+      mainUnitName: 'bottle',
+      auxUnitName: 'case',
+      auxBarcode: `SEC-AUX-${suffix}`,
+      auxConversionFactor: 12,
+      auxSellPrice: '4.25',
+      auxEnabled: true,
       status: 'ACTIVE',
     },
-    select: { id: true, barcode: true, sellPrice: true },
+    select: { id: true, barcode: true, sellPrice: true, auxBarcode: true },
   })
   const member = await prisma.member.create({
     data: {
@@ -413,6 +433,23 @@ async function testAuthorizedRegressionPaths() {
   ))
   assert.equal(staffCash.status, 201, 'active STAFF session must retain CASH sale access')
 
+  const auxCash = await postCashierSale(makeRequest(
+    '/api/cashier/sales',
+    {
+      storeCode: current.store.code,
+      items: [{ barcode: current.product.auxBarcode, quantity: 2 }],
+      paymentMethod: 'CASH',
+    },
+    sessionHeaders(current.staff.id, 'STAFF'),
+  ))
+  assert.equal(auxCash.status, 201, 'Desktop cashier resolves the exact auxiliary barcode')
+  const auxCashBody = await auxCash.json()
+  const auxCashLine = await prisma.saleRecord.findFirstOrThrow({ where: { orderNo: auxCashBody.orderNo } })
+  assert.deepEqual(
+    [auxCashLine.quantity.toString(), auxCashLine.sellingQuantity?.toString(), auxCashLine.sellingUnitType, auxCashLine.sellingUnitNameSnapshot, auxCashLine.unitPrice.toFixed(2), auxCashLine.lineAmount.toFixed(2)],
+    ['24', '2', 'AUX', 'case', '4.25', '8.50'],
+  )
+
   const confirmedKhqr = await postCashierSale(makeRequest(
     '/api/cashier/sales',
     salePayload('KHQR', true),
@@ -435,6 +472,23 @@ async function testAuthorizedRegressionPaths() {
   const member = await prisma.member.findUniqueOrThrow({ where: { id: current.member.id }, select: { balance: true } })
   assert.equal(member.balance.toString(), '92.5')
 
+  const auxMemberPay = await postMemberBalancePay(makeRequest('/api/cashier/member-balance-pay', {
+    storeCode: current.store.code,
+    memberId: current.member.id,
+    items: [{ barcode: current.product.auxBarcode, quantity: 2 }],
+  }, sessionHeaders(current.owner.id, 'OWNER')))
+  assert.equal(auxMemberPay.status, 201, 'member balance uses the actual auxiliary price')
+  const memberAfterAux = await prisma.member.findUniqueOrThrow({ where: { id: current.member.id }, select: { balance: true } })
+  assert.equal(memberAfterAux.balance.toString(), '84')
+  const auxMemberLine = await prisma.saleRecord.findFirstOrThrow({
+    where: { tenantId: current.tenant.id, memberId: current.member.id, barcode: current.product.auxBarcode! },
+    orderBy: { createdAt: 'desc' },
+  })
+  assert.deepEqual(
+    [auxMemberLine.quantity.toString(), auxMemberLine.sellingQuantity?.toString(), auxMemberLine.sellingConversionFactor, auxMemberLine.unitPrice.toFixed(2), auxMemberLine.lineAmount.toFixed(2)],
+    ['24', '2', 12, '4.25', '8.50'],
+  )
+
   const offline = await postOfflineSync(makeRequest(
     '/api/cashier/offline-sync',
     offlinePayload(),
@@ -444,6 +498,30 @@ async function testAuthorizedRegressionPaths() {
   const offlineBody = await offline.json()
   assert.equal(offlineBody.successCount, 1)
   assert.equal(offlineBody.failedCount, 0)
+
+  const auxOfflineOrderId = `offline-aux-${randomUUID()}`
+  const auxOffline = await postOfflineSync(makeRequest(
+    '/api/cashier/offline-sync',
+    offlinePayload(auxOfflineOrderId, { type: 'AUX', quantity: 2, price: 4.25, name: 'case', factor: 12 }),
+    sessionHeaders(current.owner.id, 'OWNER'),
+  ))
+  assert.equal(auxOffline.status, 200)
+  assert.deepEqual(
+    [((await auxOffline.json()).successCount), (await prisma.saleRecord.findFirstOrThrow({ where: { offlineOrderId: auxOfflineOrderId } })).quantity.toString()],
+    [1, '24'],
+  )
+
+  const driftOrderId = `offline-drift-${randomUUID()}`
+  const driftPayload = offlinePayload(driftOrderId, { type: 'AUX', quantity: 1, price: 4.25, name: 'case', factor: 12 })
+  await prisma.product.update({ where: { id: current.product.id }, data: { auxSellPrice: '5.00' } })
+  const drift = await postOfflineSync(makeRequest(
+    '/api/cashier/offline-sync', driftPayload, sessionHeaders(current.owner.id, 'OWNER'),
+  ))
+  assert.equal(drift.status, 200)
+  const driftBody = await drift.json()
+  assert.deepEqual([driftBody.successCount, driftBody.failedCount, driftBody.results[0].errorCode], [0, 1, 'OFFLINE_PRODUCT_CONFIG_CHANGED'])
+  assert.equal(await prisma.saleRecord.count({ where: { offlineOrderId: driftOrderId } }), 0, 'config drift never silently reprices an offline sale')
+  await prisma.product.update({ where: { id: current.product.id }, data: { auxSellPrice: '4.25' } })
 
   const orderUpdate = await invokeOrderPatch(
     makeRequest(`/api/cashier/orders/${current.order.id}?storeCode=${encodeURIComponent(current.store.code)}`, { status: 'CONFIRMED' }, sessionHeaders(current.owner.id, 'OWNER'), 'PATCH'),

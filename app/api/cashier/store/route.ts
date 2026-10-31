@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { isMultiUnitBusinessType } from '@/lib/product-unit'
 
 const CASHIER_PRODUCT_SELECT = {
   id: true,
@@ -16,6 +17,12 @@ const CASHIER_PRODUCT_SELECT = {
   name: true,
   spec: true,
   sellPrice: true,
+  mainUnitName: true,
+  auxUnitName: true,
+  auxBarcode: true,
+  auxConversionFactor: true,
+  auxSellPrice: true,
+  auxEnabled: true,
   categoryId: true,
   imageUrl: true,
   imageUrls: true,
@@ -45,7 +52,7 @@ export async function GET(req: NextRequest) {
 
   const store = await prisma.store.findUnique({
     where: { code: storeCode },
-    select: { id: true, name: true, tenantId: true, status: true, currencyCode: true, printKitchenTicket: true },
+    select: { id: true, name: true, tenantId: true, status: true, currencyCode: true, printKitchenTicket: true, businessType: true },
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
@@ -75,7 +82,17 @@ export async function GET(req: NextRequest) {
       orderBy: { name: 'asc' },
       take: 500,
     })
-    return legacyProducts.map((p) => ({ ...p, sku: null, imageUrls: null }))
+    return legacyProducts.map((p) => ({
+      ...p,
+      sku: null,
+      imageUrls: null,
+      mainUnitName: null,
+      auxUnitName: null,
+      auxBarcode: null,
+      auxConversionFactor: null,
+      auxSellPrice: null,
+      auxEnabled: false,
+    }))
   })
 
   const [products, categories] = await Promise.all([
@@ -94,6 +111,7 @@ export async function GET(req: NextRequest) {
     storeName: store.name,
     currencyCode: store.currencyCode,
     printKitchenTicket: store.printKitchenTicket,
+    ...(isMultiUnitBusinessType(store.businessType) ? { multiUnitEligible: true } : {}),
     products: products.map((p) => ({
       id: p.id,
       barcode: p.barcode,
@@ -106,6 +124,14 @@ export async function GET(req: NextRequest) {
       imageUrls: parseImageUrls(p.imageUrls, p.imageUrl),
       status: p.status,
       updatedAt: p.updatedAt.toISOString(),
+      ...(isMultiUnitBusinessType(store.businessType) ? {
+        mainUnitName: p.mainUnitName,
+        auxUnitName: p.auxUnitName,
+        auxBarcode: p.auxBarcode,
+        auxConversionFactor: p.auxConversionFactor,
+        auxSellPrice: p.auxSellPrice?.toNumber() ?? null,
+        auxEnabled: p.auxEnabled,
+      } : {}),
     })),
     categories,
   })
