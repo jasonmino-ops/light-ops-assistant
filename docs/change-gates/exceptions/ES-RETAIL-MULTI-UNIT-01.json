@@ -3,7 +3,7 @@
   "taskId": "ES-RETAIL-MULTI-UNIT-01",
   "featureBranch": "codex/es-retail-multi-unit-01",
   "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-  "baseOriginMainSha": "b86bfe30916ec8cab4ac110b35e392ad27a4b98c",
+  "baseOriginMainSha": "577c67cf4e0bb1f72a97f5d58acc26c4e0ce4269",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
   "status": "ACTIVE",
@@ -100,17 +100,17 @@
     "approvedAtMeaning": "Registration time of the explicit Founder authorization already received in this task; not an invented historical timestamp."
   },
   "closeAfter": "FEATURE_MERGE",
-  "reason": "Authorize only the 40 exact v3 resealed ES-RETAIL-MULTI-UNIT-01 candidate files whose bytes are bound below. Independent review invalidated v2 after finding two additional legacy response/race-evidence gaps; v3 preserves nullable legacy selling-unit lookup data, the refund availableQty response contract, legacy Product P2002 conflict codes, and adds true concurrent cross-column database evidence. This resolves the Scope Guard/exact-hash bootstrap cycle and does not authorize byte drift, additional paths, release, deployment, Production migration, Diamond import, FIELD, FINAL FROZEN or CLOSED.",
+  "reason": "Authorize only the 40 exact v4 resealed ES-RETAIL-MULTI-UNIT-01 candidate files whose bytes are bound below. Product bytes are identical to v3; v4 supersedes only the validation provenance by checksumming the concurrency harness, migration behavior SQL and validation driver, and by executing the sealed harness copy. This resolves the Scope Guard/exact-hash bootstrap cycle and does not authorize byte drift, additional paths, release, deployment, Production migration, Diamond import, FIELD, FINAL FROZEN or CLOSED.",
   "sealedCandidate": {
-    "manifestPath": "/private/tmp/es-retail-multi-unit-01-sealed-artifacts-v3/candidate-manifest.json",
-    "manifestSha256": "05b52d171c45f9b3f8643ace076cdcd6c278153d19f7192f77d9c55f66d0c485",
+    "manifestPath": "/private/tmp/es-retail-multi-unit-01-sealed-artifacts-v4/candidate-manifest.json",
+    "manifestSha256": "0dc686b6fe7caeb908f17c95f4f86bcb1010c3d61b2d4dd83afd4fddb8f33ea4",
     "hashSetSha256": "a3c7d4240ae72d7de37fc1e17581094eb05b85faca4901057d65e9c54b9e324c",
     "scopeDiffSha256": "b109db50fc78987ec2446cc1319e632321bfdd5a54166ed36958af9a1d226198",
     "changedPathCount": 40,
     "protectedPathCount": 13,
     "migrationSha256": "077df39c3557e048288de36a94eb247bc057e0335122955d00cc542c135f53f5",
-    "validationEvidenceChecksumsSha256": "9677c6c759ec57efc889378dced85cf8643a28ac892a55dd2334d644e442dce5",
-    "supersedesManifestSha256": "1da3735ab9f2124570fcac4407b5fc53d4c875feaeb8c5610742163d48088f69"
+    "validationEvidenceChecksumsSha256": "e7d862df096b5c525999eceaee515068b40064de7502282b562e7d2892272298",
+    "supersedesManifestSha256": "05b52d171c45f9b3f8643ace076cdcd6c278153d19f7192f77d9c55f66d0c485"
   },
   "allowedPurposes": [
     "Reconstruct the formal implementation from the sealed artifact with byte-identical content",
