@@ -107,7 +107,10 @@ function salesProfitResponse_(period) {
   }
   var from = start
   var to = today
-  var rows = rowsAsObjects_('DailyProfit').filter(function (row) { return row.date >= from && row.date <= to })
+  var rows = rowsAsObjects_('DailyProfit').filter(function (row) {
+    var date = normalizeBusinessDate_(row.date)
+    return date >= from && date <= to
+  })
   var netSales = sum_(rows, 'netSales')
   var weight = 0
   var coveredWeight = 0
@@ -220,7 +223,10 @@ function applyFeedPayload_(payload, fromDate, toDate) {
       name: product.name || ''
     }
   })
-  var current = rowsAsObjects_('SalesDaily').filter(function (row) { return row.date < fromDate || row.date > toDate })
+  var current = rowsAsObjects_('SalesDaily').filter(function (row) {
+    var date = normalizeBusinessDate_(row.date)
+    return date < fromDate || date > toDate
+  })
   var aggregates = {}
 
   function addLine(dateValue, productId, quantity, amount) {
@@ -297,13 +303,13 @@ function recalculateInventoryProfit_(freshProducts) {
   })
   var sales = rowsAsObjects_('SalesDaily')
   var events = []
-  entries.forEach(function (entry, index) { events.push({ date: String(entry.date), type: 0, index: index, row: entry }) })
+  entries.forEach(function (entry, index) { events.push({ date: normalizeBusinessDate_(entry.date), type: 0, index: index, row: entry }) })
   sales.forEach(function (sale, index) {
     var id = String(sale.productId)
     if (id !== INVENTORY_PROFIT_UNATTRIBUTED_PRODUCT_ID && !products[id]) {
       products[id] = { productId: id, sku: '', barcode: '', name: '' }
     }
-    events.push({ date: String(sale.date), type: 1, index: index, row: sale })
+    events.push({ date: normalizeBusinessDate_(sale.date), type: 1, index: index, row: sale })
   })
   events.sort(function (a, b) { return a.date.localeCompare(b.date) || a.type - b.type || a.index - b.index })
 
@@ -343,7 +349,7 @@ function recalculateInventoryProfit_(freshProducts) {
       return
     }
     var trackingStartDate = trackingStartByProduct[id]
-    if (!trackingStartDate || String(row.date) < trackingStartDate) {
+    if (!trackingStartDate || event.date < trackingStartDate) {
       row.costCovered = ''
       row.costOfGoodsSold = ''
       return
@@ -379,7 +385,7 @@ function recalculateInventoryProfit_(freshProducts) {
 
   var daily = {}
   sales.forEach(function (row) {
-    var date = String(row.date)
+    var date = normalizeBusinessDate_(row.date)
     var productId = String(row.productId)
     if (productId !== INVENTORY_PROFIT_UNATTRIBUTED_PRODUCT_ID) {
       var trackingStartDate = trackingStartByProduct[productId]
@@ -422,7 +428,7 @@ function trackingStartDates_(entries) {
   var sourceEntries = entries || rowsAsObjects_('Entries')
   sourceEntries.forEach(function (entry) {
     var id = String(entry.productId)
-    var date = String(entry.date)
+    var date = normalizeBusinessDate_(entry.date)
     if (!starts[id] || date < starts[id]) starts[id] = date
   })
   return starts
@@ -570,9 +576,20 @@ function shiftLocalDate_(date, days) {
 }
 
 function businessDate_(value) {
-  var date = new Date(String(value || ''))
-  if (!isFinite(date.getTime())) return ''
-  return localDateForInstant_(date)
+  return normalizeBusinessDate_(value)
+}
+
+function normalizeBusinessDate_(value) {
+  if (typeof value === 'string') {
+    var trimmed = value.trim()
+    if (validLocalDate_(trimmed)) return trimmed
+    value = trimmed.replace(/\s+\([^)]*\)\s*$/, '')
+  }
+  var date = value && typeof value.getTime === 'function' ? value : new Date(String(value || ''))
+  if (!date || !isFinite(date.getTime())) throw new Error('INVALID_BUSINESS_DATE')
+  var normalized = localDateForInstant_(date)
+  if (!validLocalDate_(normalized)) throw new Error('INVALID_BUSINESS_DATE')
+  return normalized
 }
 
 function validLocalDate_(value) {
