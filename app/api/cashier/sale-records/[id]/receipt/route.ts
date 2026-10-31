@@ -100,8 +100,8 @@ export async function GET(
       extraLines,
       items: lines.map((line) => ({
         name: line.productNameSnapshot,
-        spec: line.specSnapshot,
-        qty: line.quantity.toNumber(),
+        spec: [line.specSnapshot, line.sellingUnitNameSnapshot].filter(Boolean).join(' / ') || null,
+        qty: line.sellingQuantity?.toNumber() ?? line.quantity.toNumber(),
         price: line.unitPrice.toNumber(),
         lineAmount: line.lineAmount.toNumber(),
       })),

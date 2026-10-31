@@ -19,6 +19,7 @@ type SaleListItem = {
   quantity: number
   unitPrice: number
   lineAmount: number
+  sellingUnitName?: string
   saleType: 'SALE' | 'REFUND'
   refundReason: string | null
 }
@@ -42,6 +43,9 @@ type LookupItem = {
   refundedQty: number
   availableQty: number
   refundable: boolean
+  sellingUnitType: 'MAIN' | 'AUX'
+  sellingUnitName: string | null
+  sellingConversionFactor: number
 }
 
 type LookupResult = {
@@ -426,6 +430,7 @@ export default function RefundPage() {
                 onSelect={() => selectOrder(order)}
                 refundLabel={t('refund.refundBtn')}
                 selectRefundLabel={t('refund.selectRefundBtn')}
+                itemUnit={t('records.itemUnit')}
               />
             ))}
           </>
@@ -455,6 +460,7 @@ export default function RefundPage() {
                 item={lineItem}
                 onRefund={() => triggerRefund(lineItem)}
                 refundLabel={t('refund.refundBtn')}
+                itemUnit={t('records.itemUnit')}
               />
             ))}
           </>
@@ -626,8 +632,8 @@ export default function RefundPage() {
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function OrderCard({ order, index, onSelect, refundLabel, selectRefundLabel }: {
-  order: OrderGroup; index: number; onSelect: () => void; refundLabel: string; selectRefundLabel: string
+function OrderCard({ order, index, onSelect, refundLabel, selectRefundLabel, itemUnit }: {
+  order: OrderGroup; index: number; onSelect: () => void; refundLabel: string; selectRefundLabel: string; itemUnit: string
 }) {
   const accent = ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = order.items.length === 1
@@ -649,7 +655,7 @@ function OrderCard({ order, index, onSelect, refundLabel, selectRefundLabel }: {
       </div>
       <div style={oc.bottom}>
         {isSingle ? (
-          <span style={oc.qty}>{Math.abs(item.quantity)}件 × ${item.unitPrice.toFixed(2)}</span>
+          <span style={oc.qty}>{Math.abs(item.quantity)}{item.sellingUnitName ?? itemUnit} × ${item.unitPrice.toFixed(2)}</span>
         ) : (
           <span style={oc.qty}>{order.items.length} 种商品</span>
         )}
@@ -733,7 +739,7 @@ const oc: Record<string, React.CSSProperties> = {
 
 // ─── LineItemCard ─────────────────────────────────────────────────────────────
 
-function LineItemCard({ item, onRefund, refundLabel }: { item: SaleListItem; onRefund: () => void; refundLabel: string }) {
+function LineItemCard({ item, onRefund, refundLabel, itemUnit }: { item: SaleListItem; onRefund: () => void; refundLabel: string; itemUnit: string }) {
   return (
     <div style={li.card}>
       <div style={li.left}>
@@ -742,7 +748,7 @@ function LineItemCard({ item, onRefund, refundLabel }: { item: SaleListItem; onR
           {item.specSnapshot && <span style={li.spec}> · {item.specSnapshot}</span>}
         </div>
         <div style={li.meta}>
-          {Math.abs(item.quantity)}件 × ${item.unitPrice.toFixed(2)}
+          {Math.abs(item.quantity)}{item.sellingUnitName ?? itemUnit} × ${item.unitPrice.toFixed(2)}
           <span style={li.amt}> = ${item.lineAmount.toFixed(2)}</span>
         </div>
       </div>

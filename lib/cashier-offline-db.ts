@@ -1,8 +1,8 @@
 'use client'
 
 export const CASHIER_OFFLINE_DB_NAME = 'light_ops_cashier_offline'
-export const CASHIER_OFFLINE_DB_VERSION = 2
-export const CASHIER_CACHE_VERSION = 'cashier-offline-02'
+export const CASHIER_OFFLINE_DB_VERSION = 3
+export const CASHIER_CACHE_VERSION = 'cashier-offline-multi-unit-01'
 
 const PRODUCT_STORE = 'cashier_products'
 const META_STORE = 'cashier_meta'
@@ -21,6 +21,12 @@ export type CashierCachedProductInput = {
   imageUrl: string | null
   status?: string
   updatedAt?: string | null
+  mainUnitName?: string | null
+  auxUnitName?: string | null
+  auxBarcode?: string | null
+  auxConversionFactor?: number | null
+  auxSellPrice?: number | null
+  auxEnabled?: boolean
 }
 
 export type CashierCachedProduct = {
@@ -41,6 +47,12 @@ export type CashierCachedProduct = {
   updatedAt: string | null
   cachedAt: string
   cacheVersion: string
+  mainUnitName: string | null
+  auxUnitName: string | null
+  auxBarcode: string | null
+  auxConversionFactor: number | null
+  auxSellPrice: number | null
+  auxEnabled: boolean
 }
 
 export type CashierProductCacheMeta = {
@@ -65,6 +77,9 @@ export type CashierOfflineOrderItem = {
   snapshotName: string
   spec?: string | null
   sugar?: string | null
+  sellingUnitType: 'MAIN' | 'AUX'
+  sellingUnitName: string
+  sellingConversionFactor: number
 }
 
 export type CashierOfflineOrder = {
@@ -199,6 +214,12 @@ export async function cacheCashierProducts(input: {
       updatedAt: product.updatedAt ?? null,
       cachedAt: now,
       cacheVersion: CASHIER_CACHE_VERSION,
+      mainUnitName: product.mainUnitName ?? null,
+      auxUnitName: product.auxUnitName ?? null,
+      auxBarcode: product.auxBarcode ?? null,
+      auxConversionFactor: product.auxConversionFactor ?? null,
+      auxSellPrice: product.auxSellPrice ?? null,
+      auxEnabled: product.auxEnabled === true,
     }
     productStore.put(row)
   }

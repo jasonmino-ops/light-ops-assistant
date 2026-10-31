@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { NextRequest } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 import { shouldShowRecommendationBadge } from '../lib/product-recommendation'
 import { GET as getProducts, POST as createProduct } from '../app/api/products/route'
@@ -58,6 +59,7 @@ const categoryDelegate = prisma.productCategory as unknown as {
 }
 const storeDelegate = prisma.store as unknown as {
   findUnique: (args: unknown) => Promise<Record<string, unknown>>
+  findFirst: (args: unknown) => Promise<Record<string, unknown> | null>
 }
 const marketingDelegate = prisma.marketingProductPage as unknown as {
   findMany: (args: unknown) => Promise<unknown[]>
@@ -73,6 +75,7 @@ const originals = {
   productUpdate: productDelegate.update,
   categoryFindMany: categoryDelegate.findMany,
   storeFindUnique: storeDelegate.findUnique,
+  storeFindFirst: storeDelegate.findFirst,
   marketingFindMany: marketingDelegate.findMany,
   queryRaw: mutablePrisma.$queryRaw,
 }
@@ -99,6 +102,8 @@ let product: ProductRecord = {
   imageUrl: null,
   imageUrls: null,
 }
+let storeBusinessType = 'GENERAL'
+let raceBarcodeVisible: string | null = null
 
 async function main() {
   // Case 1: being first in a category is irrelevant when the explicit flag is false.
@@ -121,25 +126,43 @@ async function main() {
 
   productDelegate.findFirst = async ({ where }) => {
     if (where.id === product.id || where.barcode === product.barcode) return product
+    if (raceBarcodeVisible && where.barcode === raceBarcodeVisible) return product
+    if (Array.isArray(where.OR) && where.OR.some((condition) => (
+      condition && typeof condition === 'object' && (condition as { barcode?: unknown }).barcode === product.barcode
+    ))) return product
     return null
   }
   productDelegate.findMany = async () => [product]
   productDelegate.update = async ({ data }) => {
+    if (data.barcode === 'REC-PATCH-RACE') {
+      raceBarcodeVisible = 'REC-PATCH-RACE'
+      throw new Prisma.PrismaClientKnownRequestError('simulated concurrent primary-barcode conflict', {
+        code: 'P2002', clientVersion: 'test', meta: { modelName: 'Product' },
+      })
+    }
     product = { ...product, ...data }
     return product
   }
-  productDelegate.create = async ({ data }) => ({
-    ...product,
-    id: 'created-recommendation-test',
-    barcode: String(data.barcode),
-    name: String(data.name),
-    sellPrice: decimal(Number(data.sellPrice)),
-    discountPrice: data.discountPrice == null ? null : decimal(Number(data.discountPrice)),
-    discountEnabled: data.discountEnabled === true,
-    isRecommended: data.isRecommended === true,
-    printKitchenTicket: data.printKitchenTicket !== false,
-    categoryId: typeof data.categoryId === 'string' ? data.categoryId : null,
-  })
+  productDelegate.create = async ({ data }) => {
+    if (data.barcode === 'REC-POST-RACE') {
+      raceBarcodeVisible = 'REC-POST-RACE'
+      throw new Prisma.PrismaClientKnownRequestError('simulated concurrent primary-barcode conflict', {
+        code: 'P2002', clientVersion: 'test', meta: { modelName: 'Product' },
+      })
+    }
+    return {
+      ...product,
+      id: 'created-recommendation-test',
+      barcode: String(data.barcode),
+      name: String(data.name),
+      sellPrice: decimal(Number(data.sellPrice)),
+      discountPrice: data.discountPrice == null ? null : decimal(Number(data.discountPrice)),
+      discountEnabled: data.discountEnabled === true,
+      isRecommended: data.isRecommended === true,
+      printKitchenTicket: data.printKitchenTicket !== false,
+      categoryId: typeof data.categoryId === 'string' ? data.categoryId : null,
+    }
+  }
   categoryDelegate.findMany = async () => [{
     id: 'category-recommendation-test',
     name: 'Category',
@@ -157,6 +180,7 @@ async function main() {
     businessType: 'GENERAL',
     currencyCode: 'USD',
   })
+  storeDelegate.findFirst = async () => ({ businessType: storeBusinessType })
   marketingDelegate.findMany = async () => []
   mutablePrisma.$queryRaw = async () => [{
     id: 'store-recommendation-test',
@@ -177,7 +201,10 @@ async function main() {
     assert.equal(enableResponse.status, 200)
     assert.equal((await enableResponse.json()).isRecommended, true)
     const rereadResponse = await getProducts(ownerRequest(`/api/products?barcode=${product.barcode}`))
-    assert.equal((await rereadResponse.json()).isRecommended, true)
+    const rereadBody = await rereadResponse.json()
+    assert.equal(rereadBody.isRecommended, true)
+    assert.equal('primaryBarcode' in rereadBody, false, 'GENERAL product response must retain its legacy DTO')
+    assert.equal('multiUnitEligible' in rereadBody, false, 'GENERAL product response must not expose multi-unit fields')
 
     // Case 6: OWNER true -> false reaches the public menu DTO and removes the badge decision.
     const disableResponse = await updateProduct(
@@ -218,6 +245,57 @@ async function main() {
     assert.equal(compatibleCreate.status, 201)
     assert.equal((await compatibleCreate.json()).printKitchenTicket, true)
 
+    const duplicateCreate = await createProduct(ownerRequest('/api/products', 'POST', {
+      barcode: product.barcode, name: 'Duplicate main barcode', sellPrice: 5,
+    }))
+    assert.equal(duplicateCreate.status, 409)
+    assert.equal((await duplicateCreate.json()).error, 'BARCODE_EXISTS')
+
+    const duplicatePatch = await updateProduct(
+      ownerRequest(`/api/products/${product.id}`, 'PATCH', { barcode: product.barcode }),
+      { params: Promise.resolve({ id: product.id }) },
+    )
+    assert.equal(duplicatePatch.status, 409)
+    assert.equal((await duplicatePatch.json()).error, 'DUPLICATE_BARCODE')
+
+    raceBarcodeVisible = null
+    const concurrentDuplicateCreate = await createProduct(ownerRequest('/api/products', 'POST', {
+      barcode: 'REC-POST-RACE', name: 'Concurrent duplicate main barcode', sellPrice: 5,
+    }))
+    assert.equal(concurrentDuplicateCreate.status, 409)
+    assert.equal((await concurrentDuplicateCreate.json()).error, 'BARCODE_EXISTS')
+
+    raceBarcodeVisible = null
+    const concurrentDuplicatePatch = await updateProduct(
+      ownerRequest(`/api/products/${product.id}`, 'PATCH', { barcode: 'REC-PATCH-RACE' }),
+      { params: Promise.resolve({ id: product.id }) },
+    )
+    assert.equal(concurrentDuplicatePatch.status, 409)
+    assert.equal((await concurrentDuplicatePatch.json()).error, 'DUPLICATE_BARCODE')
+    raceBarcodeVisible = null
+
+    const nonRetailMultiUnit = await createProduct(ownerRequest('/api/products', 'POST', {
+      barcode: 'REC-GENERAL-AUX', name: 'General auxiliary blocked', sellPrice: 5,
+      auxUnitName: 'case', auxBarcode: 'REC-GENERAL-AUX-CASE', auxConversionFactor: 12,
+      auxSellPrice: 25, auxEnabled: true,
+    }))
+    assert.equal(nonRetailMultiUnit.status, 403)
+    assert.equal((await nonRetailMultiUnit.json()).error, 'MULTI_UNIT_NOT_AVAILABLE')
+
+    storeBusinessType = 'RETAIL'
+    const retailMultiUnit = await createProduct(ownerRequest('/api/products', 'POST', {
+      barcode: 'REC-RETAIL-MAIN', name: 'Retail auxiliary enabled', sellPrice: 2.5,
+      mainUnitName: 'bottle', auxUnitName: 'case', auxBarcode: 'REC-RETAIL-AUX',
+      auxConversionFactor: 12, auxSellPrice: 11.25, auxEnabled: true,
+    }))
+    assert.equal(retailMultiUnit.status, 201)
+    const retailBody = await retailMultiUnit.json()
+    assert.deepEqual(
+      [retailBody.mainUnitName, retailBody.auxUnitName, retailBody.auxBarcode, retailBody.auxConversionFactor, retailBody.auxSellPrice, retailBody.auxEnabled],
+      ['bottle', 'case', 'REC-RETAIL-AUX', 12, 11.25, true],
+    )
+    storeBusinessType = 'GENERAL'
+
     const invalidKitchenFlag = await createProduct(ownerRequest('/api/products', 'POST', {
       barcode: 'REC-KITCHEN-INVALID', name: 'Invalid kitchen flag', sellPrice: 5,
       printKitchenTicket: 'false',
@@ -246,6 +324,7 @@ async function main() {
     productDelegate.update = originals.productUpdate
     categoryDelegate.findMany = originals.categoryFindMany
     storeDelegate.findUnique = originals.storeFindUnique
+    storeDelegate.findFirst = originals.storeFindFirst
     marketingDelegate.findMany = originals.marketingFindMany
     mutablePrisma.$queryRaw = originals.queryRaw
   }

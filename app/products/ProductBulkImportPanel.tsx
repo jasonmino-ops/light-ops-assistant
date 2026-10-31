@@ -5,7 +5,7 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 import { formatMoney } from '@/lib/currency'
 
 type Category = { id: string; name: string; parentId: string | null }
-type Issue = { code: string; field?: string; message: string; blocking: boolean }
+type Issue = { code: string; field?: string; message: string; blocking: boolean; sourceValue?: string; normalizedValue?: string; normalizationReason?: string }
 type Preview = {
   barcode: string
   sku: string | null
@@ -17,6 +17,12 @@ type Preview = {
   category2: string | null
   categoryId: string | null
   imageCount: number
+  mainUnitName: string | null
+  auxUnitName: string | null
+  auxBarcode: string | null
+  auxConversionFactor: number | null
+  auxSellPrice: number | null
+  auxEnabled: boolean
 }
 type ImportRow = {
   id: string
@@ -606,10 +612,10 @@ export default function ProductBulkImportPanel({
             </div>
           )}
           <div style={{ overflowX: 'auto', maxHeight: 560 }}>
-            <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', minWidth: 1100, borderCollapse: 'collapse', fontSize: 12 }}>
               <thead><tr>
                 <th style={styles.th}>来源</th><th style={styles.th}>条码</th><th style={styles.th}>商品编码 / SKU</th><th style={styles.th}>商品名</th>
-                <th style={styles.th}>售价</th><th style={styles.th}>分类</th><th style={styles.th}>图片</th><th style={styles.th}>状态 / 异常</th>
+                <th style={styles.th}>售价</th><th style={styles.th}>销售单位</th><th style={styles.th}>分类</th><th style={styles.th}>图片</th><th style={styles.th}>状态 / 异常</th>
               </tr></thead>
               <tbody>{view.rows.map((row) => (
                 <tr key={row.id} style={row.status === 'INVALID' ? { background: '#fff7f7' } : undefined}>
@@ -637,6 +643,13 @@ export default function ProductBulkImportPanel({
                       onBlur={() => saveRow(row, { sellPrice: row.previewPayload.sellPrice })}
                     />
                     <div>{formatMoney(row.previewPayload.sellPrice || 0, currencyCode)}</div>
+                  </td>
+                  <td style={styles.td}>
+                    <div>主：{row.previewPayload.mainUnitName || '—'}</div>
+                    <div>辅：{row.previewPayload.auxUnitName || '—'} · ×{row.previewPayload.auxConversionFactor ?? '—'}</div>
+                    <div><code>{row.previewPayload.auxBarcode || '无辅条码'}</code></div>
+                    <div>{row.previewPayload.auxSellPrice == null ? '—' : formatMoney(row.previewPayload.auxSellPrice, currencyCode)}</div>
+                    <div style={styles.hint}>{row.previewPayload.auxEnabled ? '辅单位将启用' : '辅单位不启用'}</div>
                   </td>
                   <td style={styles.td}>
                     <select
@@ -684,7 +697,12 @@ export default function ProductBulkImportPanel({
                   </td>
                   <td style={styles.td}>
                     <strong>{row.status}</strong> · {row.action === 'UPDATE' ? '更新' : '新增'}
-                    {row.validationIssues.map((issue, index) => <div key={`${issue.code}-${index}`} style={styles.issue}>{issue.message}</div>)}
+                    {row.validationIssues.map((issue, index) => (
+                      <div key={`${issue.code}-${index}`} style={issue.blocking ? styles.issue : styles.hint}>
+                        {issue.message}
+                        {issue.normalizationReason && <div><code>{issue.sourceValue}</code> → <code>{issue.normalizedValue}</code> · {issue.normalizationReason}</div>}
+                      </div>
+                    ))}
                     {row.lastErrorMessage && <div style={styles.issue}>{row.lastErrorMessage}</div>}
                   </td>
                 </tr>

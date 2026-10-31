@@ -1,4 +1,5 @@
 import { after, NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { generateRecordNo } from '@/lib/record-no'
@@ -6,6 +7,12 @@ import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
 import { isKhqrSupportedCurrency } from '@/lib/currency'
 import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
+import {
+  decimalToMoney,
+  productUnitSnapshot,
+  ProductUnitError,
+  resolveProductSellingUnit,
+} from '@/lib/product-unit'
 
 /**
  * POST /api/sales
@@ -110,7 +117,7 @@ async function handleSale(
   // 获取门店信息
   const store = await prisma.store.findFirst({
     where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
-    select: { code: true, currencyCode: true },
+    select: { code: true, currencyCode: true, businessType: true },
   })
   if (!store) {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 400 })
@@ -122,20 +129,19 @@ async function handleSale(
     )
   }
 
-  // 批量获取商品（价格以数据库为权威）
-  const barcodes = [...new Set(items.map((i) => i.barcode))]
-  const products = await prisma.product.findMany({
-    where: { tenantId: ctx.tenantId, barcode: { in: barcodes }, status: 'ACTIVE' },
-  })
-  const productMap = new Map(products.map((p) => [p.barcode, p]))
-
-  for (const it of items) {
-    if (!productMap.has(it.barcode)) {
-      return NextResponse.json(
-        { error: 'PRODUCT_NOT_FOUND', barcode: it.barcode },
-        { status: 404 },
-      )
+  let saleLines
+  try {
+    saleLines = await Promise.all(items.map((item) => resolveProductSellingUnit(prisma, {
+      tenantId: ctx.tenantId,
+      businessType: store.businessType,
+      barcode: item.barcode,
+      quantity: item.quantity,
+    })))
+  } catch (error) {
+    if (error instanceof ProductUnitError) {
+      return NextResponse.json({ error: error.code, message: error.message }, { status: error.status })
     }
+    throw error
   }
 
   // KHQR 配置前置检查（事务外快速失败，避免创建半成品记录）
@@ -151,21 +157,14 @@ async function handleSale(
     khqrConfig = cfg
   }
 
-  let totalAmount = 0
-  const saleLines = items.map((it) => {
-    const product = productMap.get(it.barcode)!
-    const quantity = Number(it.quantity)
-    const lineAmount = product.sellPrice.mul(quantity)
-    totalAmount += lineAmount.toNumber()
-    return { product, quantity, lineAmount }
-  })
+  const totalAmount = saleLines.reduce((sum, line) => sum + line.lineAmount.toNumber(), 0)
 
   try {
     const result = await prisma.$transaction(async (tx) => {
       // 生成第一条记录号，同时用作整单的 orderNo
       const orderNo = await generateRecordNo(tx, 'S', ctx.tenantId, ctx.storeId, store.code)
 
-      const saleRecordData = saleLines.map(({ product, quantity, lineAmount }, index) => ({
+      const saleRecordData = saleLines.map((line, index) => ({
         tenantId: ctx.tenantId,
         storeId: ctx.storeId,
         operatorUserId: ctx.userId,
@@ -173,13 +172,10 @@ async function handleSale(
         orderNo,
         saleType: 'SALE' as const,
         status: 'COMPLETED' as const,
-        productId: product.id,
-        barcode: product.barcode,
-        productNameSnapshot: product.name,
-        specSnapshot: product.spec ?? null,
-        unitPrice: product.sellPrice,
-        quantity,
-        lineAmount,
+        productId: line.product.id,
+        productNameSnapshot: line.product.name,
+        specSnapshot: line.product.spec ?? null,
+        ...productUnitSnapshot(line),
       }))
 
       const records = await tx.saleRecord.createManyAndReturn({
@@ -287,20 +283,23 @@ async function handleDeferredSale(
 
   const store = await prisma.store.findFirst({
     where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
-    select: { id: true, tenantId: true, code: true },
+    select: { id: true, tenantId: true, code: true, businessType: true },
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 400 })
 
-  const barcodes = [...new Set(items.map((i) => i.barcode))]
-  const products = await prisma.product.findMany({
-    where: { tenantId: ctx.tenantId, barcode: { in: barcodes }, status: 'ACTIVE' },
-  })
-  const productMap = new Map(products.map((p) => [p.barcode, p]))
-
-  for (const it of items) {
-    if (!productMap.has(it.barcode)) {
-      return NextResponse.json({ error: 'PRODUCT_NOT_FOUND', barcode: it.barcode }, { status: 404 })
+  let saleLines
+  try {
+    saleLines = await Promise.all(items.map((item) => resolveProductSellingUnit(prisma, {
+      tenantId: ctx.tenantId,
+      businessType: store.businessType,
+      barcode: item.barcode,
+      quantity: item.quantity,
+    })))
+  } catch (error) {
+    if (error instanceof ProductUnitError) {
+      return NextResponse.json({ error: error.code, message: error.message }, { status: error.status })
     }
+    throw error
   }
 
   try {
@@ -311,11 +310,8 @@ async function handleDeferredSale(
       let firstCreatedAt: Date | null = null
       let isFirst = true
 
-      for (const it of items) {
-        const product = productMap.get(it.barcode)!
-        const qty = Number(it.quantity)
-        const lineAmount = product.sellPrice.mul(qty)
-        totalAmount += lineAmount.toNumber()
+      for (const line of saleLines) {
+        totalAmount += line.lineAmount.toNumber()
 
         const recordNo = isFirst
           ? orderNo
@@ -331,13 +327,10 @@ async function handleDeferredSale(
             orderNo,
             saleType: 'SALE',
             status: 'PENDING_PAYMENT',  // 挂单状态，待收款
-            productId: product.id,
-            barcode: product.barcode,
-            productNameSnapshot: product.name,
-            specSnapshot: product.spec ?? null,
-            unitPrice: product.sellPrice,
-            quantity: qty,
-            lineAmount,
+            productId: line.product.id,
+            productNameSnapshot: line.product.name,
+            specSnapshot: line.product.spec ?? null,
+            ...productUnitSnapshot(line),
           },
         })
 
@@ -391,41 +384,6 @@ async function handleRefund(
     )
   }
 
-  const original = await prisma.saleRecord.findFirst({
-    where: {
-      id: originalSaleRecordId,
-      tenantId: ctx.tenantId,
-      saleType: 'SALE',
-      status: 'COMPLETED',
-    },
-    include: {
-      refundChildren: {
-        where: { saleType: 'REFUND', status: 'COMPLETED' },
-        select: { quantity: true },
-      },
-    },
-  })
-
-  if (!original) {
-    return NextResponse.json(
-      { error: 'NOT_FOUND', message: 'Original sale record not found or not eligible for refund' },
-      { status: 404 },
-    )
-  }
-
-  const refundedSoFar = original.refundChildren.reduce(
-    (sum, r) => sum + Math.abs(r.quantity.toNumber()),
-    0,
-  )
-  const availableQty = original.quantity.toNumber() - refundedSoFar
-
-  if (rQty > availableQty) {
-    return NextResponse.json(
-      { error: 'REFUND_QTY_EXCEEDED', availableQty },
-      { status: 422 },
-    )
-  }
-
   const store = await prisma.store.findFirst({
     where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
     select: { code: true },
@@ -434,12 +392,71 @@ async function handleRefund(
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 400 })
   }
 
-  const lineAmount = -(original.unitPrice.toNumber() * rQty)
   const remarkValue =
     typeof remark === 'string' && remark.trim() !== '' ? remark.trim() : null
 
   try {
     const record = await prisma.$transaction(async (tx) => {
+      const original = await tx.saleRecord.findFirst({
+        where: {
+          id: originalSaleRecordId,
+          tenantId: ctx.tenantId,
+          saleType: 'SALE',
+          status: 'COMPLETED',
+        },
+        include: {
+          refundChildren: {
+            where: { saleType: 'REFUND', status: 'COMPLETED' },
+            select: { quantity: true, sellingQuantity: true, lineAmount: true },
+          },
+        },
+      })
+      if (!original) {
+        throw new ProductUnitError('NOT_FOUND', 404, 'Original sale record not found or not eligible for refund')
+      }
+
+      const unitType = original.sellingUnitType === 'AUX' ? 'AUX' : 'MAIN'
+      const factor = original.sellingConversionFactor ?? 1
+      if (unitType === 'AUX' && !Number.isInteger(rQty)) {
+        throw new ProductUnitError('AUX_REFUND_MUST_BE_INTEGER', 400, '辅单位只能按整包装退款')
+      }
+      const originalSellingQty = original.sellingQuantity?.abs() ?? original.quantity.abs().div(factor)
+      const refundedSellingQty = original.refundChildren.reduce(
+        (sum, child) => sum.add(child.sellingQuantity?.abs() ?? child.quantity.abs().div(factor)),
+        new Prisma.Decimal(0),
+      )
+      const availableSellingQty = originalSellingQty.sub(refundedSellingQty)
+      const requestedSellingQty = new Prisma.Decimal(rQty)
+      if (requestedSellingQty.gt(availableSellingQty)) {
+        throw new ProductUnitError(
+          'REFUND_QTY_EXCEEDED',
+          422,
+          `最多可退 ${availableSellingQty.toString()}`,
+          { availableQty: availableSellingQty.toNumber() },
+        )
+      }
+
+      const refundedBaseQty = original.refundChildren.reduce(
+        (sum, child) => sum.add(child.quantity.abs()),
+        new Prisma.Decimal(0),
+      )
+      const baseRefundQty = requestedSellingQty.mul(factor)
+      const newRefundedBaseQty = refundedBaseQty.add(baseRefundQty)
+      const updated = await tx.saleRecord.updateMany({
+        where: { id: original.id, refundedQty: original.refundedQty },
+        data: { refundedQty: newRefundedBaseQty },
+      })
+      if (updated.count !== 1) {
+        throw new ProductUnitError('REFUND_CONFLICT', 409, '退款数量已变化，请刷新后重试')
+      }
+
+      const refundedAmount = original.refundChildren.reduce(
+        (sum, child) => sum.add(child.lineAmount.abs()),
+        new Prisma.Decimal(0),
+      )
+      const lineAmount = requestedSellingQty.eq(availableSellingQty)
+        ? original.lineAmount.abs().sub(refundedAmount).neg()
+        : decimalToMoney(original.unitPrice.mul(requestedSellingQty)).neg()
       const recordNo = await generateRecordNo(tx, 'R', ctx.tenantId, ctx.storeId, store.code)
 
       const refund = await tx.saleRecord.create({
@@ -457,8 +474,14 @@ async function handleRefund(
           productNameSnapshot: original.productNameSnapshot,
           specSnapshot: original.specSnapshot ?? null,
           unitPrice: original.unitPrice,
-          quantity: -rQty,
+          quantity: baseRefundQty.neg(),
           lineAmount,
+          ...(original.sellingUnitType && original.sellingUnitNameSnapshot && original.sellingQuantity && original.sellingConversionFactor ? {
+            sellingUnitType: unitType,
+            sellingUnitNameSnapshot: original.sellingUnitNameSnapshot,
+            sellingQuantity: requestedSellingQty.neg(),
+            sellingConversionFactor: factor,
+          } : {}),
           refundReason: refundReason.trim(),
           remark: remarkValue,
         },
@@ -492,6 +515,9 @@ async function handleRefund(
       { status: 201 },
     )
   } catch (err) {
+    if (err instanceof ProductUnitError) {
+      return NextResponse.json({ error: err.code, message: err.message, ...err.details }, { status: err.status })
+    }
     console.error('[POST /api/sales REFUND]', err)
     return NextResponse.json({ error: 'INTERNAL_ERROR' }, { status: 500 })
   }

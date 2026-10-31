@@ -21,6 +21,11 @@ import {
   requiresCashierManualPaymentConfirmation,
   resolveCashierPaymentIntentStatus,
 } from '@/lib/cashier-payment-confirmation'
+import {
+  productUnitSnapshot,
+  ProductUnitError,
+  resolveProductSellingUnit,
+} from '@/lib/product-unit'
 
 type CartItem = { barcode: string; quantity: number; sugar?: string }
 
@@ -100,7 +105,7 @@ export async function POST(req: NextRequest) {
   // Resolve store
   const store = await prisma.store.findUnique({
     where: { code: storeCode.trim() },
-    select: { id: true, code: true, name: true, tenantId: true, status: true, currencyCode: true, printKitchenTicket: true },
+    select: { id: true, code: true, name: true, tenantId: true, status: true, currencyCode: true, printKitchenTicket: true, businessType: true },
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
@@ -135,16 +140,19 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Validate products
-  const barcodes = [...new Set(items.map((i) => i.barcode))]
-  const products = await prisma.product.findMany({
-    where: { tenantId: store.tenantId, barcode: { in: barcodes }, status: 'ACTIVE' },
-  })
-  const productMap = new Map(products.map((p) => [p.barcode, p]))
-  for (const it of items) {
-    if (!productMap.has(it.barcode)) {
-      return NextResponse.json({ error: 'PRODUCT_NOT_FOUND', barcode: it.barcode }, { status: 404 })
+  let saleLines
+  try {
+    saleLines = await Promise.all(items.map((item) => resolveProductSellingUnit(prisma, {
+      tenantId: store.tenantId,
+      businessType: store.businessType,
+      barcode: item.barcode,
+      quantity: item.quantity,
+    })))
+  } catch (error) {
+    if (error instanceof ProductUnitError) {
+      return NextResponse.json({ error: error.code, message: error.message }, { status: error.status })
     }
+    throw error
   }
 
   // 门店未配置系统内图片时仍可使用柜台实体码，但不改变人工确认语义。
@@ -168,18 +176,17 @@ export async function POST(req: NextRequest) {
       const snapshotItems: NetworkSnapshot['items'] = []
       const kitchenItems: NetworkSnapshot['items'] = []
 
-      for (const it of items) {
-        const product = productMap.get(it.barcode)!
-        const qty = Number(it.quantity)
-        const lineAmount = product.sellPrice.mul(qty)
-        totalAmount += lineAmount.toNumber()
+      for (const [index, line] of saleLines.entries()) {
+        const item = items[index]
+        const product = line.product
+        totalAmount += line.lineAmount.toNumber()
 
         const recordNo = isFirst
           ? orderNo
           : await generateRecordNo(tx, 'S', store.tenantId, store.id, store.code)
         isFirst = false
 
-        const sugarLabel = it.sugar ? sugarZh(it.sugar) : null
+        const sugarLabel = item.sugar ? sugarZh(item.sugar) : null
         const specSnapshot = [product.spec ?? null, sugarLabel].filter(Boolean).join(' / ') || null
 
         const record = await tx.saleRecord.create({
@@ -192,20 +199,19 @@ export async function POST(req: NextRequest) {
             saleType: 'SALE',
             status: 'COMPLETED',
             productId: product.id,
-            barcode: product.barcode,
             productNameSnapshot: product.name,
             specSnapshot,
-            unitPrice: product.sellPrice,
-            quantity: qty,
-            lineAmount,
+            ...productUnitSnapshot(line),
             remark: khqrFallback ? '电脑收银台-KHQR兜底' : '电脑收银台',
           },
         })
         if (!firstCreatedAt) firstCreatedAt = record.createdAt
         if (network) {
           const snapshotItem: NetworkSnapshot['items'][number] = {
-            name: record.productNameSnapshot, spec: record.specSnapshot,
-            qty: Number(record.quantity), price: Number(record.unitPrice), lineAmount: Number(record.lineAmount),
+            name: record.productNameSnapshot,
+            spec: [record.specSnapshot, record.sellingUnitNameSnapshot].filter(Boolean).join(' / ') || null,
+            qty: Number(record.sellingQuantity ?? record.quantity),
+            price: Number(record.unitPrice), lineAmount: Number(record.lineAmount),
           }
           snapshotItems.push(snapshotItem)
           if (product.printKitchenTicket) kitchenItems.push(snapshotItem)

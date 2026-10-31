@@ -424,6 +424,12 @@ model Product {
   name             String
   spec             String?
   sellPrice        Decimal       @db.Decimal(12, 2)
+  mainUnitName     String?
+  auxUnitName      String?
+  auxBarcode       String?
+  auxConversionFactor Int?
+  auxSellPrice     Decimal?      @db.Decimal(12, 2)
+  auxEnabled       Boolean       @default(false)
   discountPrice    Decimal?      @db.Decimal(12, 2)
   discountEnabled  Boolean       @default(false)
   isRecommended    Boolean       @default(false)
@@ -450,6 +456,7 @@ model Product {
   marketingProductPages MarketingProductPage[]
 
   @@unique([tenantId, barcode])
+  @@unique([tenantId, auxBarcode])
   @@index([tenantId])
   @@index([name])
   @@index([categoryId])
@@ -536,6 +543,10 @@ model SaleRecord {
   unitPrice           Decimal @db.Decimal(12, 2)
   quantity            Decimal @db.Decimal(12, 2)
   lineAmount          Decimal @db.Decimal(12, 2)
+  sellingUnitType         String?
+  sellingUnitNameSnapshot String?
+  sellingQuantity         Decimal? @db.Decimal(12, 2)
+  sellingConversionFactor Int?
 
   orderNo String? // 一次结账所有明细行共享此单号；null = 历史单行记录
 

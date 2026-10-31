@@ -69,10 +69,20 @@ function productData(preview: ProductImportPreviewPayload) {
     sellPrice: String(preview.sellPrice),
     status: preview.status,
     categoryId: preview.categoryId,
+    mainUnitName: preview.mainUnitName,
+    auxUnitName: preview.auxUnitName,
+    auxBarcode: preview.auxBarcode,
+    auxConversionFactor: preview.auxConversionFactor,
+    auxSellPrice: preview.auxSellPrice == null ? null : String(preview.auxSellPrice),
+    auxEnabled: preview.auxEnabled,
   }
 }
 
 function productUpdateData(preview: ProductImportPreviewPayload) {
+  const hasMultiUnitSource = !!(
+    preview.mainUnitName || preview.auxUnitName || preview.auxBarcode
+    || preview.auxConversionFactor != null || preview.auxSellPrice != null
+  )
   return {
     name: preview.name.trim(),
     sellPrice: String(preview.sellPrice),
@@ -86,6 +96,14 @@ function productUpdateData(preview: ProductImportPreviewPayload) {
     ...(preview.spec ? { spec: preview.spec } : {}),
     ...(preview.statusProvided ? { status: preview.status } : {}),
     ...(preview.categoryId ? { categoryId: preview.categoryId } : {}),
+    ...(hasMultiUnitSource ? {
+      mainUnitName: preview.mainUnitName,
+      auxUnitName: preview.auxUnitName,
+      auxBarcode: preview.auxBarcode,
+      auxConversionFactor: preview.auxConversionFactor,
+      auxSellPrice: preview.auxSellPrice == null ? null : String(preview.auxSellPrice),
+      auxEnabled: preview.auxEnabled,
+    } : {}),
   }
 }
 
@@ -169,6 +187,13 @@ async function confirmRow(input: {
     const category = await prisma.productCategory.findFirst({ where: { id: preview.categoryId, tenantId }, select: { id: true } })
     if (!category) throw new ProductImportError('CATEGORY_NOT_FOUND', '分类不属于当前租户', 409)
   }
+  if (preview.auxUnitName || preview.auxBarcode || preview.auxConversionFactor != null || preview.auxSellPrice != null || preview.auxEnabled) {
+    const eligibleStore = await prisma.store.findFirst({
+      where: { tenantId, businessType: { in: ['RETAIL', 'ECOMMERCE'] } },
+      select: { id: true },
+    })
+    if (!eligibleStore) throw new ProductImportError('MULTI_UNIT_NOT_AVAILABLE', '当前商户类别不能导入多销售单位配置', 403)
+  }
   const uploaded: UploadedImage[] = []
   let uploadIntentKeys: string[] = []
   let committed: { productId: string; imageResult: ProductImportImageResult }
@@ -226,6 +251,18 @@ async function confirmRow(input: {
       const existing = await tx.product.findUnique({
         where: { tenantId_barcode: { tenantId, barcode: row.assignedBarcode! } },
       })
+      const candidateBarcodes = [row.assignedBarcode!, ...(preview.auxBarcode ? [preview.auxBarcode] : [])]
+      const collision = await tx.product.findFirst({
+        where: {
+          tenantId,
+          ...(existing ? { id: { not: existing.id } } : {}),
+          OR: [{ barcode: { in: candidateBarcodes } }, { auxBarcode: { in: candidateBarcodes } }],
+        },
+        select: { id: true },
+      })
+      if (collision || preview.auxBarcode === row.assignedBarcode) {
+        throw new ProductImportError('BARCODE_COLLISION', '主/辅条码与现有商品冲突', 409)
+      }
       const imageFields = uploaded.length > 0 ? {
         imageUrl: uploaded[0].url,
         imageStorageKey: uploaded[0].key,

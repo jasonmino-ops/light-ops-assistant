@@ -8,11 +8,12 @@ const receipt: DesktopReceiptData = {
   createdAt: '2026-07-26T06:00:00.000Z',
   cashierName: 'Desktop POS',
   paymentMethod: 'CASH',
-  totalAmount: 13.5,
+  totalAmount: 36,
   currencyCode: 'USD',
   items: [
     { name: 'Item A', spec: 'Large', qty: 2, price: 1.25, lineAmount: 2.5 },
     { name: 'Item B', spec: 'Blue', qty: 1, price: 11, lineAmount: 11 },
+    { name: 'Case item', spec: '24 × 330ml / case', qty: 2, price: 11.25, lineAmount: 22.5 },
   ],
 }
 
@@ -23,13 +24,16 @@ function testRenderedHtmlCarriesReceiptContent() {
   assert.match(html, /Mino Pet Shop/, 'the QZ path must include the store name')
   assert.match(html, /Item A \(Large\)/, 'the QZ path must include the first item and spec')
   assert.match(html, /Item B \(Blue\)/, 'the QZ path must include the second item and spec')
+  assert.match(html, /Case item \(24 × 330ml \/ case\)/, 'reprint renders the persisted selling-unit snapshot supplied by the receipt DTO')
+  assert.match(html, /2 × \$11\.25/, 'reprint renders actual selling quantity and selling-unit price')
+  assert.match(html, /\$22\.50/, 'reprint uses the persisted packaging line amount')
   assert.match(html, /2 × \$1\.25/, 'the QZ path must include the first item quantity and unit price')
   assert.match(html, /\$2\.50/, 'the QZ path must include the first item amount')
   assert.match(html, /\$11\.00/, 'the QZ path must include the second item amount')
   assert.match(html, /现金/, 'the QZ path must include the payment method')
-  assert.match(html, /\$13\.50/, 'the QZ path must include the receipt total')
+  assert.match(html, /\$36\.00/, 'the QZ path must include the receipt total')
   assert.match(html, /80mm/, 'the QZ path must keep the 80mm receipt layout')
-  assert.equal((html.match(/<div class="item">/g) ?? []).length, 2, 'all receipt lines must be rendered')
+  assert.equal((html.match(/<div class="item">/g) ?? []).length, 3, 'all receipt lines must be rendered')
 }
 
 function testRenderedHtmlIsPureAndDeterministic() {
