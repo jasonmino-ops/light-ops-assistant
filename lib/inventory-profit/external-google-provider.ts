@@ -99,7 +99,7 @@ export class ExternalGoogleProvider implements InventoryProfitProvider {
   private readonly fetcher: FetchLike
 
   constructor(private readonly options: ExternalGoogleProviderOptions) {
-    this.timeoutMs = options.timeoutMs ?? 5_000
+    this.timeoutMs = options.timeoutMs ?? 8_000
     this.fetcher = options.fetcher ?? fetch
   }
 
