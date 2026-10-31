@@ -6,7 +6,10 @@
   "baseOriginMainSha": "db88c10ca8ee33e63b22b3f92f231b67c1c14bb5",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
+  "closedAt": "2026-10-31T08:15:30Z",
+  "featureMergeCommitSha": "1fdc2cc6212c98dabc81fba3f80f43a89db7d7e2",
+  "closureReason": "Closed after the exact Inventory Profit Pilot release candidate entered the authorized main integration merge. The historical exact path and SHA-256 remain audit evidence; this CLOSED exception cannot authorize future Dashboard changes.",
   "authorizedPaths": [
     "app/dashboard/page.tsx"
   ],
