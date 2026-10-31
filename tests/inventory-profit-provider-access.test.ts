@@ -228,16 +228,52 @@ async function main() {
   }))).status, 503, 'provider responses must echo the requested identity')
   wrongEcho = ''
 
+  const slowSuccessfulFetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(resolve, 5_200)
+      init?.signal?.addEventListener('abort', () => {
+        clearTimeout(timer)
+        reject(new DOMException('aborted', 'AbortError'))
+      })
+    })
+    return Response.json({ ok: true, asOf: new Date().toISOString(), data: {
+      period: 'TODAY',
+      netSales: 2,
+      costOfGoodsSold: 1,
+      grossProfit: 1,
+      grossMarginRate: 0.5,
+      costCoverageRate: 1,
+      costMethod: 'DAILY_PERIODIC_WAC',
+    } })
+  }) as typeof fetch
+  const slowProvider = new ExternalGoogleProvider({
+    endpoint: 'https://script.test/exec', secret: 'secret', fetcher: slowSuccessfulFetch,
+  })
+  const slowStartedAt = Date.now()
+  const slowProfit = await slowProvider.getSalesProfit('pilot-store', 'TODAY')
+  assert.ok(Date.now() - slowStartedAt >= 5_000, 'default timeout accepts a provider response after five seconds')
+  assert.deepEqual(slowProfit.data, {
+    period: 'TODAY',
+    netSales: 2,
+    costOfGoodsSold: 1,
+    grossProfit: 1,
+    grossMarginRate: 0.5,
+    costCoverageRate: 1,
+    costMethod: 'DAILY_PERIODIC_WAC',
+  })
+
   const abortingFetch = ((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
     init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
   })) as typeof fetch
   const timeoutProvider = new ExternalGoogleProvider({
-    endpoint: 'https://script.test/exec', secret: 'secret', timeoutMs: 5, fetcher: abortingFetch,
+    endpoint: 'https://script.test/exec', secret: 'secret', fetcher: abortingFetch,
   })
+  const timeoutStartedAt = Date.now()
   await assert.rejects(
     () => timeoutProvider.listInventory('pilot-store', {}),
     (error: unknown) => error instanceof InventoryProfitExternalError && error.code === 'TIMEOUT',
   )
+  assert.ok(Date.now() - timeoutStartedAt >= 7_500, 'default timeout fails closed at the eight-second budget')
 
   const unavailableProvider = new ExternalGoogleProvider({
     endpoint: 'https://script.test/exec', secret: 'secret',
