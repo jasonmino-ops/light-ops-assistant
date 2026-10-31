@@ -383,7 +383,7 @@ function recalculateInventoryProfit_(freshProducts) {
     var productId = String(row.productId)
     if (productId !== INVENTORY_PROFIT_UNATTRIBUTED_PRODUCT_ID) {
       var trackingStartDate = trackingStartByProduct[productId]
-      if (!trackingStartDate || date < trackingStartDate) return
+      if (trackingStartDate && date < trackingStartDate) return
     }
     if (!daily[date]) daily[date] = { date: date, netSales: 0, cogs: 0, weight: 0, coveredWeight: 0 }
     var item = daily[date]

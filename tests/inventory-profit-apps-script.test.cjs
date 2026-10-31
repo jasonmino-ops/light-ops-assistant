@@ -293,6 +293,39 @@ assert.deepEqual(
   'only on-or-after tracking-start sales enter Pilot profit and coverage',
 )
 
+context.replaceObjectRows_('Entries', [{
+  requestKey: 'def09-tracked-entry', productId: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1',
+  quantity: 100, unitCost: 1, date: trackingToday, createdAt: `${trackingToday}T01:00:00Z`,
+}])
+context.replaceObjectRows_('SalesDaily', [
+  { date: trackingToday, productId: 'p1', quantity: 1, netSales: 2, costOfGoodsSold: '', costCovered: '', updatedAt: '' },
+  { date: trackingToday, productId: 'p2', quantity: 1, netSales: 800, costOfGoodsSold: '', costCovered: '', updatedAt: '' },
+])
+context.recalculateInventoryProfit_({
+  p1: { productId: 'p1', sku: 'SKU-1', barcode: 'BAR-1', name: 'Product 1' },
+  p2: { productId: 'p2', sku: 'SKU-2', barcode: 'BAR-2', name: 'Product 2' },
+})
+const mixedTrackingProfit = post({ action: 'GET_SALES_PROFIT', secret: 'provider-secret', storeId: 'pilot-store', period: 'TODAY' }).data
+assert.equal(mixedTrackingProfit.netSales, 802, 'untracked-product sales remain in revenue')
+assert.ok(mixedTrackingProfit.costCoverageRate < 1, 'untracked-product sales remain uncovered')
+assert.equal(mixedTrackingProfit.costOfGoodsSold, null, 'partial coverage keeps COGS unavailable')
+assert.equal(mixedTrackingProfit.grossProfit, null, 'partial coverage keeps gross profit unavailable')
+assert.equal(mixedTrackingProfit.grossMarginRate, null, 'partial coverage keeps gross margin unavailable')
+
+context.replaceObjectRows_('Entries', [])
+context.replaceObjectRows_('SalesDaily', [
+  { date: trackingToday, productId: 'p2', quantity: 1, netSales: 800, costOfGoodsSold: '', costCovered: '', updatedAt: '' },
+])
+context.recalculateInventoryProfit_({
+  p2: { productId: 'p2', sku: 'SKU-2', barcode: 'BAR-2', name: 'Product 2' },
+})
+const untrackedOnlyProfit = post({ action: 'GET_SALES_PROFIT', secret: 'provider-secret', storeId: 'pilot-store', period: 'TODAY' }).data
+assert.equal(untrackedOnlyProfit.netSales, 800, 'all-untracked sales still produce non-zero revenue')
+assert.equal(untrackedOnlyProfit.costCoverageRate, 0, 'all-untracked sales have zero cost coverage')
+assert.equal(untrackedOnlyProfit.costOfGoodsSold, null, 'all-untracked COGS is unavailable')
+assert.equal(untrackedOnlyProfit.grossProfit, null, 'all-untracked gross profit is unavailable')
+assert.equal(untrackedOnlyProfit.grossMarginRate, null, 'all-untracked gross margin is unavailable')
+
 context.replaceObjectRows_('Entries', [])
 context.replaceObjectRows_('SalesDaily', [])
 const products = Array.from({ length: 5000 }, (_, index) => ({
@@ -333,4 +366,4 @@ const source = fs.readFileSync('apps-script/inventory-profit/Code.gs', 'utf8')
 assert.match(source, /shiftLocalDate_\(today, -3\)/, 'hourly sync covers today through D-3')
 assert.match(source, /shiftLocalDate_\(today, -34\)/, 'weekly sync covers 35 days')
 
-console.log('inventory profit Apps Script tests passed: tracking start, locked reads, receiving date guard, requestKey, WAC, timezone, coupon allocation, NULL cost, 5,000 SKU and retry')
+console.log('inventory profit Apps Script tests passed: DEF-01 tracking start, DEF-09 untracked sales coverage, locked reads, receiving date guard, requestKey, WAC, timezone, coupon allocation, NULL cost, 5,000 SKU and retry')
