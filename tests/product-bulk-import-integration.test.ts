@@ -316,8 +316,10 @@ async function verifyBucketInitializationContract() {
 async function main() {
   await verifyBucketInitializationContract()
   await prisma.product.deleteMany({ where: { tenantId } })
+  await prisma.store.deleteMany({ where: { tenantId } })
   await prisma.tenant.deleteMany({ where: { id: tenantId } })
   await prisma.product.deleteMany({ where: { tenantId: otherTenantId } })
+  await prisma.store.deleteMany({ where: { tenantId: otherTenantId } })
   await prisma.tenant.deleteMany({ where: { id: otherTenantId } })
   await prisma.tenant.create({ data: { id: tenantId, name: 'Bulk Import Test' } })
   try {
@@ -537,6 +539,110 @@ async function main() {
     await confirmProductImportJob(tenantId, first.job.id)
     assert.equal(await prisma.product.count({ where: { tenantId, barcode: firstBarcode } }), 1, 'duplicate Confirm does not create another Product')
 
+    const validationIsolationJob = await createAndAnalyze(
+      'validation-isolation.csv',
+      'text/csv',
+      Buffer.from('barcode,name_zh,sell_price\nCF1-VALID-1,校验商品1,1\nCF1-INVALID,,2\nCF1-VALID-2,校验商品2,3\nCF1-VALID-3,校验商品3,4\n'),
+    )
+    assert.equal(validationIsolationJob.job.readyRowCount, 3)
+    assert.equal(validationIsolationJob.job.invalidRowCount, 1)
+    const validationIsolationResult = await confirmProductImportJob(tenantId, validationIsolationJob.job.id)
+    assert.deepEqual(validationIsolationResult.batch, { claimed: 3, succeeded: 3, failed: 0 })
+    assert.deepEqual(validationIsolationResult.job.resultSummary, { total: 4, confirmed: 3, invalid: 1, failed: 0, compensationRequired: 0 })
+
+    await prisma.store.create({
+      data: { tenantId, code: 'CF1-RETAIL', name: 'CF1 Retail', businessType: 'RETAIL' },
+    })
+    const collisionJob = await createAndAnalyze(
+      'late-barcode-collision.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      xlsxBuffer([
+        ['条码', '商品名称', '售价', '销售单位', '辅条码', '换算率', '辅单位售价'],
+        ['CF1-COLLISION-MAIN', '条码冲突商品', 5, '瓶/件', 'CF1-LATE-COLLISION', 12, 50],
+      ]),
+    )
+    assert.equal(collisionJob.rows[0].status, 'READY')
+    const collisionProduct = await prisma.product.create({
+      data: { tenantId, barcode: 'CF1-LATE-COLLISION', name: '并发创建的现有商品', sellPrice: '5' },
+    })
+    const collisionResult = await confirmProductImportJob(tenantId, collisionJob.job.id)
+    assert.deepEqual(collisionResult.batch, { claimed: 1, succeeded: 0, failed: 1 })
+    assert.equal(collisionResult.job.status, 'FAILED')
+    assert.equal(await prisma.product.count({ where: { tenantId, barcode: 'CF1-LATE-COLLISION' } }), 1)
+    assert.equal(
+      (await prisma.product.findUniqueOrThrow({ where: { tenantId_barcode: { tenantId, barcode: 'CF1-LATE-COLLISION' } } })).id,
+      collisionProduct.id,
+      'a late barcode collision never replaces the existing Product',
+    )
+    await retryProductImportJob(tenantId, collisionJob.job.id)
+    const repeatedCollision = await confirmProductImportJob(tenantId, collisionJob.job.id)
+    assert.deepEqual(repeatedCollision.batch, { claimed: 1, succeeded: 0, failed: 1 })
+    assert.equal(await prisma.product.count({ where: { tenantId, barcode: 'CF1-LATE-COLLISION' } }), 1)
+
+    const capacityJob = await createAndAnalyze(
+      'transaction-capacity.csv',
+      'text/csv',
+      Buffer.from('barcode,name_zh,sell_price\nCF1-CAP-1,并发商品1,1\nCF1-CAP-2,并发商品2,2\nCF1-CAP-3,并发商品3,3\nCF1-CAP-4,并发商品4,4\n'),
+    )
+    const capacityResult = await confirmProductImportJob(tenantId, capacityJob.job.id)
+    assert.deepEqual(capacityResult.batch, { claimed: 4, succeeded: 4, failed: 0 })
+    assert.equal(capacityResult.job.status, 'COMPLETED', 'a four-row batch completes with the two-connection application pool')
+    const capacityProducts = await prisma.product.findMany({
+      where: { tenantId, barcode: { in: capacityJob.rows.map((row) => row.assignedBarcode!) } },
+      orderBy: { barcode: 'asc' },
+    })
+    assert.equal(capacityProducts.length, 4)
+    const capacityIds = capacityProducts.map((product) => product.id)
+    const repeatedCapacityResult = await confirmProductImportJob(tenantId, capacityJob.job.id)
+    assert.equal(repeatedCapacityResult.job.status, 'COMPLETED')
+    assert.deepEqual(
+      (await prisma.product.findMany({
+        where: { tenantId, barcode: { in: capacityJob.rows.map((row) => row.assignedBarcode!) } },
+        orderBy: { barcode: 'asc' },
+      })).map((product) => product.id),
+      capacityIds,
+      'repeating a completed four-row Confirm preserves Product IDs and count',
+    )
+
+    const recoveryJob = await createAndAnalyze(
+      'partial-recovery.csv',
+      'text/csv',
+      Buffer.from('barcode,name_zh,sell_price\nCF1-REC-1,恢复商品1,1\nCF1-REC-2,恢复商品2,2\nCF1-REC-3,恢复商品3,3\nCF1-REC-4,恢复商品4,999999999999\n'),
+    )
+    const partialResult = await confirmProductImportJob(tenantId, recoveryJob.job.id)
+    assert.deepEqual(partialResult.batch, { claimed: 4, succeeded: 3, failed: 1 })
+    assert.equal(partialResult.job.status, 'FAILED')
+    assert.deepEqual(partialResult.job.resultSummary, { total: 4, confirmed: 3, invalid: 0, failed: 1, compensationRequired: 0 })
+    const confirmedBeforeRecovery = await prisma.product.findMany({
+      where: { tenantId, barcode: { in: recoveryJob.rows.slice(0, 3).map((row) => row.assignedBarcode!) } },
+      orderBy: { barcode: 'asc' },
+    })
+    assert.equal(confirmedBeforeRecovery.length, 3)
+    const confirmedIdsBeforeRecovery = confirmedBeforeRecovery.map((product) => product.id)
+
+    const resetRecovery = await retryProductImportJob(tenantId, recoveryJob.job.id)
+    assert.equal(resetRecovery.job.status, 'PREVIEW_READY')
+    const recoveryRows = (await getProductImportJob(tenantId, recoveryJob.job.id)).rows
+    assert.deepEqual(recoveryRows.map((row) => row.status), ['CONFIRMED', 'CONFIRMED', 'CONFIRMED', 'READY'])
+    await patchProductImportRow(tenantId, recoveryJob.job.id, recoveryRows[3].id, {
+      version: recoveryRows[3].version,
+      sellPrice: 4,
+    })
+    const recoveredResult = await confirmProductImportJob(tenantId, recoveryJob.job.id)
+    assert.deepEqual(recoveredResult.batch, { claimed: 1, succeeded: 1, failed: 0 })
+    assert.equal(recoveredResult.job.status, 'COMPLETED')
+    const recoveredProducts = await prisma.product.findMany({
+      where: { tenantId, barcode: { in: recoveryJob.rows.map((row) => row.assignedBarcode!) } },
+      orderBy: { barcode: 'asc' },
+    })
+    assert.equal(recoveredProducts.length, 4, 'same-job recovery creates only the previously failed Product')
+    assert.deepEqual(recoveredProducts.slice(0, 3).map((product) => product.id), confirmedIdsBeforeRecovery)
+    assert.equal((await confirmProductImportJob(tenantId, recoveryJob.job.id)).job.status, 'COMPLETED')
+    assert.equal(
+      await prisma.product.count({ where: { tenantId, barcode: { in: recoveryJob.rows.map((row) => row.assignedBarcode!) } } }),
+      4,
+      'repeated recovery remains idempotent',
+    )
     await prisma.product.create({
       data: { tenantId, sku: 'ERA1001', barcode: 'ERA1001-BARCODE', name: 'ERA1001 展示验证', sellPrice: '1.49' },
     })
@@ -1086,8 +1192,10 @@ async function main() {
     console.log('product bulk import integration checks passed')
   } finally {
     await prisma.product.deleteMany({ where: { tenantId } })
+    await prisma.store.deleteMany({ where: { tenantId } })
     await prisma.tenant.deleteMany({ where: { id: tenantId } })
     await prisma.product.deleteMany({ where: { tenantId: otherTenantId } })
+    await prisma.store.deleteMany({ where: { tenantId: otherTenantId } })
     await prisma.tenant.deleteMany({ where: { id: otherTenantId } })
     await prisma.$disconnect()
     globalThis.fetch = originalFetch
