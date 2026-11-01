@@ -26,6 +26,38 @@ import {
 import { unzipOfficeEntries, type OfficeEntries } from './xlsx'
 
 const PRODUCT_IMAGES_BUCKET = 'product-images'
+export const PRODUCT_IMPORT_CONFIRM_TRANSACTION_CONCURRENCY = 1
+
+export type ProductImportTransactionLimiter = <T>(operation: () => Promise<T>) => Promise<T>
+
+export function createProductImportTransactionLimiter(
+  limit = PRODUCT_IMPORT_CONFIRM_TRANSACTION_CONCURRENCY,
+): ProductImportTransactionLimiter {
+  const concurrency = Math.max(1, Math.floor(limit))
+  let active = 0
+  const waiters: Array<() => void> = []
+
+  return async function runWithTransactionLimit<T>(operation: () => Promise<T>): Promise<T> {
+    if (active < concurrency) active += 1
+    else await new Promise<void>((resolve) => waiters.push(resolve))
+    try {
+      return await operation()
+    } finally {
+      const next = waiters.shift()
+      if (next) next()
+      else active -= 1
+    }
+  }
+}
+
+// Prisma's application pool is capped at two connections. Keep one connection
+// available for the surrounding job-state reads and commit reconciliation while
+// ensuring concurrent Confirm requests share the same transaction capacity.
+const confirmTransactionLimiter = createProductImportTransactionLimiter()
+
+function runConfirmTransaction<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return confirmTransactionLimiter(() => prisma.$transaction(operation))
+}
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -239,7 +271,7 @@ async function confirmRow(input: {
     }
 
     transactionStarted = true
-    committed = await prisma.$transaction(async (tx) => {
+    committed = await runConfirmTransaction(async (tx) => {
       // Lock and re-check the row before changing Product. If cancellation won
       // the race, no product write is allowed. Holding this row lock also makes
       // cancellation wait until an in-flight commit has a definite outcome.
