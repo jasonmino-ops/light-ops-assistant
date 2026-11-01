@@ -18,6 +18,10 @@ import {
   normalizeImportImage,
   testExternalImageDeadline,
 } from '../lib/product-bulk-import/images'
+import {
+  createProductImportTransactionLimiter,
+  PRODUCT_IMPORT_CONFIRM_TRANSACTION_CONCURRENCY,
+} from '../lib/product-bulk-import/confirm'
 import { productImportAiConfig, PRODUCT_IMPORT_AI_DEFAULT_MODEL } from '../lib/product-bulk-import/ai/config'
 import { AnthropicProductImportAiProvider } from '../lib/product-bulk-import/ai/anthropic'
 import { pdfBlocksToRows } from '../lib/product-bulk-import/pdf'
@@ -599,6 +603,22 @@ async function main() {
     activeImageOperations -= 1
   })))
   assert.equal(peakImageOperations, 2, 'one Confirm batch never runs more than two image decodes at once')
+
+  assert.equal(PRODUCT_IMPORT_CONFIRM_TRANSACTION_CONCURRENCY, 1, 'Confirm reserves pool capacity for state and reconciliation queries')
+  const transactionLimiter = createProductImportTransactionLimiter(2)
+  let activeTransactions = 0
+  let peakTransactions = 0
+  const transactionCapacity = 2
+  await Promise.all(Array.from({ length: 4 }, (_, index) => transactionLimiter(async () => {
+    activeTransactions += 1
+    peakTransactions = Math.max(peakTransactions, activeTransactions)
+    if (activeTransactions > transactionCapacity) {
+      throw new Error('Transaction API error: Unable to start a transaction in the given time.')
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5 + index))
+    activeTransactions -= 1
+  })))
+  assert.equal(peakTransactions, transactionCapacity, 'four Confirm rows respect a two-transaction capacity')
 
   const saved = { ...process.env }
   const savedFetch = globalThis.fetch
