@@ -1,6 +1,7 @@
 'use strict'
 // V2-INVARIANCE-02 / I-2b —— lib/es-tray-relay/service.ts 的区段级不变性守卫。
-// 冻结基线：origin/main = 5a2c4dcb30debd75fa2c89a3e165b0ba634502b8
+// 原 G1 冻结基线：origin/main = 5a2c4dcb30debd75fa2c89a3e165b0ba634502b8
+// ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01：仅更新 M4 授权的一处间隙与五个区段。
 // 依据：ES-PRINT-LOCAL-FIRST-SHARED-CORE-01 Design Freeze V1.4 §4（技术不变式）
 //
 // 为什么不用整文件哈希：
@@ -63,15 +64,15 @@ const FROZEN_REGIONS = [
   { name: "isOrderedNetworkItemSubset", sha256: "32cd31007946f44fd2dbbc510b7ab51118f7fd34cfd31027a958fdd7e0cd1a5f", lines: 14 },
   { name: "isValidKitchenDependency", sha256: "0d7ec3fc6c99e67ebc13167763d244807eaf4bc9d09986c8567ba8e729ecd2e8", lines: 16 },
   { name: "recoverTimedOutJobs", sha256: "232ab9fc56ef0dfa336a4e0158a95db48fcd382f825600581b877050b0997a91", lines: 106 },
-  { name: "lockActiveClaimScope", sha256: "976abfadeaf06e23499c58433695050a37f2f4a08db8d83a3572e985ceeefb79", lines: 36 },
+  { name: "lockActiveClaimScope", sha256: "4f093924669f65b7d7b74d10fc8f18e95bebc06d32f706203de33e542aa93a7e", lines: 120 },
   { name: "readNetworkQueueState", sha256: "a15a292d3dc9252ce0aa1f20f8e4ba26c9b50f76c7cfddb90faa62bc319db2ab", lines: 16 },
   { name: "assertExpectedNetworkMode", sha256: "5f7106382a2586269238dab0cda4620970caed76fabb2e20587a651600b51837", lines: 29 },
   { name: "hasPotentialRelayWork", sha256: "768965eeb9b79fe3a6476f5824c6aa457441f942b53f50bfbc75b84dde439d17", lines: 19 },
-  { name: "claimNextRelayPrintJob", sha256: "0a90cb5612fa27b88f32aa433ecab41fc36812e638378ed35f1c9020941cb4e7", lines: 175 },
-  { name: "findClaimedJob", sha256: "bdb801e698034933acb739d33b3360e918d178c78be4113cd63f28aae23414d7", lines: 14 },
-  { name: "markRelayPrintJobExecuting", sha256: "2dc5ffe01f52c006162f20abba70edaefda9383110bbddc7366fa9335dd90cbf", lines: 47 },
+  { name: "claimNextRelayPrintJob", sha256: "d238b0c42d5ba19718dec8eaaf47b16cafe60fb338442c38583fd871632c2caf", lines: 175 },
+  { name: "findClaimedJob", sha256: "697e6e1221638a1295e5b91b0f446bcd24cedc654a320ad13ae564f10f420439", lines: 19 },
+  { name: "markRelayPrintJobExecuting", sha256: "240ea4f031b5bc98119644ca8d9564cb2e2918f01593351041348f8e7428d181", lines: 54 },
   { name: "sameTerminalResult", sha256: "2642a198cd2b978ecc992da01f58b76f359513df0b1d5b07fe91b0cca091880b", lines: 8 },
-  { name: "completeRelayPrintJob", sha256: "12b55aaa1887a41cc603e8fec3c735b4d37d833f28ebb7efecc466a1cc68cd74", lines: 55 },
+  { name: "completeRelayPrintJob", sha256: "ae14b1ab71ffaf4bcab99f2e234bd0d02758b1453598d1010956d43b8131d18f", lines: 61 },
 ]
 
 // 顶层函数之间的既有间隙逐字冻结。空白间隙使用 SHA-256 仍然校验，
@@ -90,7 +91,7 @@ const FROZEN_GAPS = [
   { from: "readNetworkQueueState", to: "assertExpectedNetworkMode", sha256: "e974d816549ade1b4292ba7e0f3f7e067245db7dc3bfed6e20be14029cad123f", lines: 3 },
   { from: "assertExpectedNetworkMode", to: "hasPotentialRelayWork", sha256: "0e9a6b9c6a78c917f35247dda3e2b5e3532fe5baca6b5e0288073050dcffe55d", lines: 3 },
   { from: "hasPotentialRelayWork", to: "claimNextRelayPrintJob", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
-  { from: "claimNextRelayPrintJob", to: "findClaimedJob", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "claimNextRelayPrintJob", to: "findClaimedJob", sha256: "3820200bc25d85be2052d3a122696db85350f007884d21640ecee1624d8c84ae", lines: 3 },
   { from: "findClaimedJob", to: "markRelayPrintJobExecuting", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
   { from: "markRelayPrintJobExecuting", to: "sameTerminalResult", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
   { from: "sameTerminalResult", to: "completeRelayPrintJob", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
@@ -220,4 +221,4 @@ for (const expected of EXTENSION_V2_PREDICATES) {
 console.log(
   `I-2b PASS：${FROZEN_REGIONS.length} 个 v2 执行分支逐字冻结、` +
   `头部、${REGION_ORDER.length} 个顶层函数集合/顺序、${FROZEN_GAPS.length} 个函数间隙、尾部均冻结、` +
-  `扩展点 ${EXTENSION_REGION} 的 ${EXTENSION_V2_PREDICATES.length} 条 v2 判定行完整保留（基线 5a2c4dcb30de）`)
+  `扩展点 ${EXTENSION_REGION} 的 ${EXTENSION_V2_PREDICATES.length} 条 v2 判定行完整保留（原 G1 5a2c4dcb30de + ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01）`)

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createCashierRealtimeWakeCoalescer } from '../lib/cashier-realtime-client'
@@ -407,6 +408,25 @@ async function main() {
     'git', ['merge-base', '--is-ancestor', ancestor, descendant], { cwd: root },
   ).status === 0
   const unmergedCommits = gitPaths('rev-list', 'origin/main..HEAD')
+  // ES-DIAMOND-STORE-OPERATIONAL-RECOVERY-01. This branch accepts only the
+  // reviewed V3 source and frozen successor bytes on the merged Stage 1 base.
+  const diamondBase = '67338b57bf2d872e2b0755c76820036f6f0743f4'
+  const diamondPath = 'tests/cashier-realtime-integration.test.ts'
+  const diamondContent = new Map([
+    ['app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/route.ts', 'ecdcfc48d334a7b1b623efd3bb45e2e146cb2475a1889878199e8895005ee678'],
+    ['app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts', '14603085ab8398269cdab7d3180f84b87b08f1a31b349d070f6ee11ff421c24c'],
+    ['docs/freezes/ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01.md', 'b1277d2d78ad1391d2b4928fcc30a909d43d528fe43e6201969d0de5259b9b50'],
+    ['tests/es-tray-device-print-contract.test.ts', '4eafd378442affdcda7b28ca7237b640f83b3b113ffe3644ccdfb1436b43a49e'],
+    ['tests/v2-invariance-extension-points.test.cjs', 'db05bd55d071f916fdfcd7c0a8c91d204cbfc95a62b9f3c849713f62470e8cef'],
+    ['tests/v2-invariance-service-regions.test.cjs', 'd985f9cb0b170ff054f38f2fc6628e82cb66de829fb2c4315fd95da8d68b5335'],
+    ['tests/v3-print-control-plane-service.test.ts', '2e45bd0f1631ab752c27d62be2d614d0112bae1e0e51fa79879ea72247eb35e1'],
+    ['tests/v3-reprint-recovery.test.ts', 'a3ef7906411245af074f7e990f6417e6143eabcc4d15a447d602fc346313ed11'],
+  ])
+  const diamondStaged = gitPaths('diff', '--cached', '--no-renames', '--name-only', 'origin/main')
+  const diamondCommitted = gitPaths('diff', '--no-renames', '--name-only', 'origin/main', 'HEAD')
+  const diamondWorktree = gitPaths('diff', '--no-renames', '--name-only', 'origin/main')
+  const diamondChanged = [...new Set([...changed, ...diamondWorktree, ...diamondStaged, ...diamondCommitted])]
+  const isDiamond = diamondChanged.some(path => diamondContent.has(path))
   const isM2 = gitPaths('rev-parse', 'origin/main')[0] === m2ApprovedBase
     && changed.some(path => m2Paths.includes(path))
   const isM3 = gitPaths('rev-parse', 'origin/main')[0] === m3ApprovedBase
@@ -498,6 +518,72 @@ async function main() {
     assert.ok(gitIsAncestor(storeNameApprovedBase, storeNameCandidate), 'Store.name candidate must descend from its trusted baseline')
     assert.ok(storeNamePaths.every(path => changed.includes(path)), 'Store.name candidate requires all four exact paths')
     assertBoundary(changed, new Set([...storeNamePaths, 'tests/cashier-realtime-integration.test.ts']))
+  } else if (isDiamond) {
+    const diamondRegistration = 'docs/change-gates/exceptions/ES-DIAMOND-CASHIER-EXACT-BOUNDARY-01.json'
+    const [diamondTrustedMain] = gitPaths('rev-parse', 'origin/main')
+    assert.ok(gitIsAncestor(diamondBase, diamondTrustedMain), 'Diamond trusted main must descend from the exact Stage 1 base')
+    const h5Registration = 'docs/change-gates/exceptions/ES-DIAMOND-H5-MISSING-SEAL-SUCCESSOR-01.json'
+    const approvedBaseline = {
+      'lib/customer-order-fulfillment.ts': '7611a003ebbfba7a1dabf18fcd7c1b93ee025885ae645d91e6ae24409d1039e0',
+      'tests/customer-order-fulfillment-db.test.ts': 'ab141992742743228a9dd501eec9b28c3f5b10e8795d4d6cf0ac3c0389ec7f36',
+      'tests/es-tray-device-print-runtime.test.ts': '343ca290d2dbbe8706fac62d5c0476a7263abf69941996323ed9e52b6701d053',
+    }
+    assert.deepEqual(
+      gitPaths('diff', '--no-renames', '--name-only', diamondBase, diamondTrustedMain),
+      [diamondRegistration, h5Registration, ...Object.keys(approvedBaseline)].sort(),
+      'Diamond trusted main may differ only by exact registrations and approved baseline fixes',
+    )
+    const trustedBlob = (path: string) => execFileSync('git', ['show', `origin/main:${path}`], { cwd: root })
+    for (const [path, digest] of Object.entries(approvedBaseline)) {
+      assert.equal(createHash('sha256').update(trustedBlob(path)).digest('hex'), digest, `Diamond baseline content changed: ${path}`)
+    }
+    const h5Grant = JSON.parse(trustedBlob(h5Registration).toString('utf8'))
+    assert.equal(h5Grant.taskId, 'ES-DIAMOND-H5-MISSING-SEAL-SUCCESSOR-01')
+    assert.equal(h5Grant.status, 'CLOSED')
+    assert.equal(h5Grant.approvedBy, 'Founder')
+    assert.equal(h5Grant.authorizationType, 'FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION')
+    assert.equal(h5Grant.trustedRef, 'origin/main')
+    assert.equal(h5Grant.lineageMode, 'PRE_COMMIT_CONTENT_SHA256')
+    assert.equal(h5Grant.baseOriginMainSha, 'fc351529da576793eec2e2618c6f32867f62703f')
+    assert.equal(h5Grant.featureBranch, 'codex/es-diamond-h5-fail-closed-successor')
+    assert.deepEqual(h5Grant.additionalAuthorizations ?? [], [])
+    assert.deepEqual(h5Grant.authorizedPaths, ['lib/customer-order-fulfillment.ts', 'tests/customer-order-fulfillment-db.test.ts'])
+    assert.deepEqual(h5Grant.authorizedPathSha256, {
+      'lib/customer-order-fulfillment.ts': '7611a003ebbfba7a1dabf18fcd7c1b93ee025885ae645d91e6ae24409d1039e0',
+      'tests/customer-order-fulfillment-db.test.ts': 'ab141992742743228a9dd501eec9b28c3f5b10e8795d4d6cf0ac3c0389ec7f36',
+    })
+    assert.match(h5Grant.featureMergeCommitSha, /^[0-9a-f]{40}$/)
+    assert.ok(gitIsAncestor(h5Grant.featureMergeCommitSha, diamondTrustedMain), 'H5 closure must name a merged commit')
+    assert.ok(gitIsAncestor(diamondTrustedMain, 'HEAD'), 'Diamond HEAD must descend from the registered trusted main')
+    const registration = JSON.parse(execFileSync('git', ['show', `origin/main:${diamondRegistration}`], { cwd: root, encoding: 'utf8' }))
+    assert.equal(registration.taskId, 'ES-DIAMOND-CASHIER-EXACT-BOUNDARY-01')
+    assert.equal(registration.status, 'ACTIVE')
+    assert.equal(registration.authorizationType, 'FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION')
+    assert.equal(registration.approvedBy, 'Founder')
+    assert.equal(registration.trustedRef, 'origin/main')
+    assert.equal(registration.lineageMode, 'PRE_COMMIT_CONTENT_SHA256')
+    assert.equal(registration.baseOriginMainSha, diamondBase)
+    assert.equal(registration.featureBranch, 'codex/es-diamond-v3-print-frozen-successor-01')
+    assert.deepEqual(registration.authorizedPaths, [diamondPath])
+    assert.deepEqual(registration.additionalAuthorizations ?? [], [])
+    assert.deepEqual(Object.keys(registration.authorizedPathSha256), [diamondPath])
+    const cashierDigest: string = registration.authorizedPathSha256[diamondPath]
+    assert.match(cashierDigest, /^[0-9a-f]{64}$/, 'Diamond registration must pin the exact Cashier bytes')
+    const diamondAllowed = new Set([...diamondContent.keys(), diamondPath])
+    assertBoundary(diamondChanged, diamondAllowed)
+    assert.deepEqual([...diamondChanged].sort(), [...diamondAllowed].sort(), 'Diamond requires all nine exact paths')
+    const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
+    for (const [path, digest] of [...diamondContent, [diamondPath, cashierDigest]]) {
+      assert.equal(sha256(readFileSync(resolve(root, path))), digest, `Diamond worktree content changed: ${path}`)
+      if (diamondStaged.includes(path)) {
+        const staged = execFileSync('git', ['show', `:${path}`], { cwd: root })
+        assert.equal(sha256(staged), digest, `Diamond staged content changed: ${path}`)
+      }
+      if (diamondCommitted.includes(path)) {
+        const committed = execFileSync('git', ['show', `HEAD:${path}`], { cwd: root })
+        assert.equal(sha256(committed), digest, `Diamond committed content changed: ${path}`)
+      }
+    }
   } else {
     // ES-CASHIER-COST-01 exclusions and the existing H5/Dine-in approved set
     // retain their prior semantics. Closed historical grants are not reopened.
