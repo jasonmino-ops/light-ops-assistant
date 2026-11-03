@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "taskId": "ES-DIAMOND-CASHIER-EXACT-BOUNDARY-01",
+  "featureBranch": "codex/es-diamond-v3-print-frozen-successor-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "67338b57bf2d872e2b0755c76820036f6f0743f4",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "createdAt": "2026-11-03T17:27:27.674Z",
+  "approvedAt": "2026-11-03T17:27:27.674Z",
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Register only the exact Diamond Cashier boundary test. The test accepts the Stage 1 anchor plus this one registration path and checks the ACTIVE grant against its own exact bytes. Product and Frozen Successor approvals are separate.",
+  "authorizedPaths": [
+    "tests/cashier-realtime-integration.test.ts"
+  ],
+  "authorizedPathSha256": {
+    "tests/cashier-realtime-integration.test.ts": "e6526cfd39e4f80266cb4fc26a40c45d23a73e43227a2e81f08571ba4f065899"
+  }
+}
