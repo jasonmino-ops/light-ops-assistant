@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import BarcodeScanner from '@/app/components/BarcodeScanner'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import {
@@ -12,6 +13,8 @@ import {
 import styles from '../inventory-profit.module.css'
 
 const DEV_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
+// The Pilot provider truncates inventory search results at this limit.
+const INVENTORY_SEARCH_LIMIT = 5000
 
 type InventoryAlert = 'NEGATIVE' | 'OUT_OF_STOCK' | 'LOW_STOCK' | null
 type InventoryItem = {
@@ -55,7 +58,13 @@ export default function InventoryPage() {
   const [query, setQuery] = useState('')
   const [showAll, setShowAll] = useState(false)
   const [minimumStock, setMinimumStock] = useState('10')
-  const [productId, setProductId] = useState('')
+  const [productId, setProductId] = useState<string | null>(null)
+  const scanVersion = useRef(0)
+  const [scannerSession, setScannerSession] = useState<number | null>(null)
+  const [lookingUpBarcode, setLookingUpBarcode] = useState(false)
+  const [scannedItem, setScannedItem] = useState<InventoryItem | null>(null)
+  const [scanError, setScanError] = useState('')
+  const [canContinueScanning, setCanContinueScanning] = useState(false)
   const [quantity, setQuantity] = useState('')
   const [unitCost, setUnitCost] = useState('')
   const [date, setDate] = useState(localDate)
@@ -66,6 +75,10 @@ export default function InventoryPage() {
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
+    scanVersion.current += 1
+    setScannerSession(null)
+    setLookingUpBarcode(false)
+    setScannedItem(null)
     setLoading(true)
     setError('')
     try {
@@ -78,7 +91,7 @@ export default function InventoryPage() {
       setSnapshot(body)
       setDefaultAlertProductIds(new Set(alertBody.items.map((item) => item.productId)))
       setMinimumStock(String(body.items[0]?.minimumStock ?? 10))
-      setProductId((current) => current || body.items[0]?.productId || '')
+      setProductId((current) => current ?? body.items[0]?.productId ?? null)
     } catch (failure) {
       setSnapshot(null)
       setDefaultAlertProductIds(new Set())
@@ -91,6 +104,68 @@ export default function InventoryPage() {
   useEffect(() => {
     if (realRole === 'OWNER') void load()
   }, [realRole, load])
+
+  useEffect(() => () => { scanVersion.current += 1 }, [])
+
+  const selectedItem = scannedItem?.productId === productId
+    ? scannedItem
+    : snapshot?.items.find((item) => item.productId === productId)
+  const extraScanOption = scannedItem && !snapshot?.items.some((item) => item.productId === scannedItem.productId)
+    ? scannedItem
+    : null
+
+  function openScanner() {
+    setScanError('')
+    setCanContinueScanning(false)
+    setScannerSession(++scanVersion.current)
+  }
+
+  const closeScanner = useCallback(() => {
+    scanVersion.current += 1
+    setScannerSession(null)
+  }, [])
+
+  const handleCameraError = useCallback((reason: string) => {
+    closeScanner()
+    setScanError(reason)
+  }, [closeScanner])
+
+  const handleScanned = useCallback(async (barcode: string) => {
+    if (scannerSession !== scanVersion.current) return
+    const version = ++scanVersion.current
+    setScannerSession(null)
+    setProductId('')
+    setScannedItem(null)
+    const code = barcode.trim()
+    if (!code) {
+      setScanError('未识别到有效条码，请重新扫码或手动选择')
+      return
+    }
+    setLookingUpBarcode(true)
+    try {
+      const response = await apiFetch(`/api/inventory-profit/inventory?all=1&q=${encodeURIComponent(code)}`, { cache: 'no-store' }, DEV_CTX)
+      if (!response.ok) throw new Error(await inventoryProfitError(response))
+      const { items } = await response.json() as InventoryResponse
+      if (version !== scanVersion.current) return
+      if (items.length >= INVENTORY_SEARCH_LIMIT) {
+        setScanError('该条码的查询结果过多，无法确认唯一商品，请手动选择')
+        return
+      }
+      const matches = items.filter((item) => item.barcode === code)
+      if (matches.length === 1) {
+        setScannedItem(matches[0])
+        setProductId(matches[0].productId)
+      } else {
+        setScanError(matches.length > 1 ? '该条码匹配多个商品，请手动选择' : '未找到该条码对应的商品，请手动选择或重新扫码')
+      }
+    } catch (failure) {
+      if (version === scanVersion.current) {
+        setScanError(failure instanceof Error ? failure.message : '查询条码失败，请手动选择或重新扫码')
+      }
+    } finally {
+      if (version === scanVersion.current) setLookingUpBarcode(false)
+    }
+  }, [scannerSession])
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase()
@@ -128,6 +203,7 @@ export default function InventoryPage() {
 
   async function submitReceiving(event: React.FormEvent) {
     event.preventDefault()
+    if (!snapshot || !productId || !selectedItem || scannerSession !== null || lookingUpBarcode || saving) return
     const presence = telegramPresenceHeaders()
     if (!presence) {
       setError(TELEGRAM_PRESENCE_REQUIRED)
@@ -154,6 +230,9 @@ export default function InventoryPage() {
       setQuantity('')
       setUnitCost('')
       setRequestKey(newRequestKey())
+      if (extraScanOption) setProductId('')
+      setScannedItem(null)
+      setCanContinueScanning(true)
       await load()
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '数据暂时无法更新')
@@ -265,9 +344,15 @@ export default function InventoryPage() {
             <div className={styles.formRow}>
               <label className={styles.field}>
                 商品
-                <select className={styles.select} required value={productId} onChange={(event) => setProductId(event.target.value)}>
+                <select className={styles.select} required value={selectedItem ? selectedItem.productId : ''} onChange={(event) => {
+                  closeScanner()
+                  setLookingUpBarcode(false)
+                  setScanError('')
+                  setProductId(event.target.value)
+                }}>
                   <option value="">请选择</option>
                   {(snapshot?.items ?? []).map((item) => <option key={item.productId} value={item.productId}>{item.name} · {item.sku || item.barcode}</option>)}
+                  {extraScanOption ? <option value={extraScanOption.productId}>{extraScanOption.name} · {extraScanOption.barcode}</option> : null}
                 </select>
               </label>
               <label className={styles.field}>
@@ -283,10 +368,24 @@ export default function InventoryPage() {
                 <input className={styles.input} type="date" required value={date} onChange={(event) => setDate(event.target.value)} />
               </label>
             </div>
-            <button type="submit" className={styles.primary} disabled={saving || !snapshot?.items.length}>
-              {saving ? '提交中…' : '确认入账'}
-            </button>
+            {selectedItem ? (
+              <p className={styles.itemMeta} aria-live="polite">
+                {selectedItem.name} · 条码：{selectedItem.barcode} · 当前库存：{selectedItem.currentStock}
+              </p>
+            ) : null}
+            {scanError ? <p className={styles.error} role="alert">{scanError}</p> : null}
+            <div className={styles.actions}>
+              <button type="button" className={styles.secondary} disabled={!snapshot || loading || saving || lookingUpBarcode || scannerSession !== null} onClick={openScanner}>
+                {lookingUpBarcode ? '正在查询条码…' : canContinueScanning ? '继续扫码' : '扫码商品'}
+              </button>
+              <button type="submit" className={styles.primary} disabled={saving || !snapshot || !selectedItem || scannerSession !== null || lookingUpBarcode}>
+                {saving ? '提交中…' : '确认入账'}
+              </button>
+            </div>
           </form>
+          {scannerSession !== null ? (
+            <BarcodeScanner onScanned={handleScanned} onClose={closeScanner} onCameraError={handleCameraError} />
+          ) : null}
         </section>
       </div>
     </main>
