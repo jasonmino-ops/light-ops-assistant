@@ -780,8 +780,25 @@ for (const mismatch of ['none', 'unknown', 'hash', 'missing-seal'] as const) {
       assert.equal(current.state, 'PENDING')
       assert.equal(current.printJobId, null)
       assert.notEqual(current.lastErrorCode, 'FRONT_UNPAID_SUPERSEDED_BY_PAYMENT')
-      const again = await processCustomerOrderFulfillmentIntent(admin.client as any, id, new Date(), runtime)
+      const recover = () => processCustomerOrderFulfillmentIntent(admin.client as any, id, new Date(), runtime)
+      const beforeJob = mismatch === 'missing-seal'
+        ? await admin.client.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: created.printJobId } })
+        : null
+      const [again, concurrent] = await Promise.all([recover(), mismatch === 'missing-seal' ? recover() : null])
       assert.equal(again.status, matches ? 'ALREADY_PRESENT' : 'MANUAL_REVIEW'); assert.equal(again.created, false)
+      if (beforeJob) {
+        assert.equal(concurrent?.status, 'MANUAL_REVIEW')
+        assert.equal(concurrent?.created, false)
+        assert.equal(concurrent?.printJobId, null)
+        const reviewed = await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: { id } })
+        assert.equal(reviewed.revision, current.revision + 1)
+        assert.equal(reviewed.state, 'MANUAL_REVIEW')
+        assert.equal(reviewed.printJobId, null)
+        assert.equal(reviewed.idempotencyKey, current.idempotencyKey)
+        assert.equal((await recover()).status, 'MANUAL_REVIEW')
+        assert.deepEqual(await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: { id } }), reviewed)
+        assert.deepEqual(await admin.client.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: beforeJob.id } }), beforeJob)
+      }
       if (!matches) assert.equal((await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: { id } })).manualReviewReason, 'CUSTOMER_ORDER_EXISTING_JOB_IDENTITY_MISMATCH')
       const evidence = await (await route.get(`id=${f.orderId}`)).json()
       assert.equal(evidence.fulfillment.frontUnpaid, matches ? mismatch === 'unknown' ? 'RESULT_UNKNOWN' : 'QUEUED' : 'REVIEW_REQUIRED')
@@ -796,6 +813,21 @@ for (const mismatch of ['none', 'unknown', 'hash', 'missing-seal'] as const) {
     } finally { route.close() }
   }))
 }
+
+test('DB unsealed intent without a durable job still waits for normal rendering', { skip: skipReason }, async () => withFixture(async h => {
+  const { admin, fixture: f } = h, { route, intents } = await acceptedThreePurposeFixture(h)
+  try {
+    const unpaid = intents.find(intent => intent.purpose === 'FRONT_UNPAID')!
+    assert.equal(unpaid.sealedAt, null)
+    const result = await processCustomerOrderFulfillmentIntent(admin.client as any, unpaid.id, new Date(), runtime)
+    assert.equal(result.status, 'NOT_READY')
+    assert.equal(result.created, false)
+    const current = await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: { id: unpaid.id } })
+    assert.equal(current.state, 'RENDER_PENDING')
+    assert.equal(current.manualReviewReason, null)
+    assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId: f.tenantId } }), 0)
+  } finally { route.close() }
+}))
 
 for (const deliveryState of ['unclaimed', 'claimed', 'unknown', 'mismatch'] as const) {
   test(`DB R3: cancel association gap ${deliveryState} verifies the real job; repeat and lost-link receipt fail closed`, { skip: skipReason, timeout: 90_000 }, async () => withFixture(async h => {
@@ -886,10 +918,11 @@ for (const phase of ['seal', 'create'] as const) for (const first of ['render', 
       const [r, p] = await Promise.all([rendering, payment]); assert.equal(p.status, 200)
       assert.equal(phase === 'seal' ? r.kind : r.status, phase === 'seal' ? 'SEALED' : 'QUEUED')
       const current = await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: { id } })
-      const createdBeforePayment = first === 'render' && phase === 'create'
-      assert.equal(current.state, createdBeforePayment ? 'ENQUEUED' : 'PENDING')
-      assert.equal(Boolean(current.printJobId), createdBeforePayment)
-      assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId: f.tenantId } }), createdBeforePayment ? 1 : 0)
+      // Payment leaves the independent FRONT_UNPAID effect valid in either lock order.
+      const jobCreated = phase === 'create'
+      assert.equal(current.state, jobCreated ? 'ENQUEUED' : 'PENDING')
+      assert.equal(Boolean(current.printJobId), jobCreated)
+      assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId: f.tenantId } }), jobCreated ? 1 : 0)
       assert.equal(await admin.client.paymentIntent.count({ where: { tenantId: f.tenantId } }), 1)
       assert.equal(await admin.client.saleRecord.count({ where: { tenantId: f.tenantId } }), 0)
     } finally { held.release(); route.close() }
@@ -974,7 +1007,9 @@ for (const phase of ['rendering', 'sealed'] as const) {
       const paid = await sealPurpose(h, 'FRONT_PAID')
       assert.equal((await processCustomerOrderFulfillmentIntent(admin.client as any, paid, new Date(), runtime)).status, 'QUEUED')
       assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId: f.tenantId } }), 3)
-      assert.ok(unpaid.printJobId)
+      const persistedUnpaid = await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: { id: unpaid.id } })
+      assert.equal(persistedUnpaid.state, 'ENQUEUED')
+      assert.ok(persistedUnpaid.printJobId)
       assert.equal(await admin.client.eshopTrayPrintJob.count({ where: jobWhere(f, unpaid.idempotencyKey).tenantId_storeId_idempotencyKey }), 1)
       assert.equal(await admin.client.saleRecord.count({ where: { tenantId: f.tenantId } }), 0)
     } finally { route.close() }
