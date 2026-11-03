@@ -1,0 +1,28 @@
+{
+  "releaseId": "ES-INVENTORY-SCAN-RECEIVING-01-RC1",
+  "taskIds": [
+    "ES-INVENTORY-SCAN-RECEIVING-01"
+  ],
+  "baseProductionSha": "754866c956568a1e728f1476e34010f6146e3a00",
+  "sourceMainSha": "1f67e57d2a03de712d10ed7584b2d6e78425c209",
+  "includedSourceCommits": [
+    "1f67e57d2a03de712d10ed7584b2d6e78425c209"
+  ],
+  "founderAuthorization": {
+    "approvedBy": "Founder",
+    "status": "APPROVED",
+    "includedSourceCommits": [
+      "1f67e57d2a03de712d10ed7584b2d6e78425c209"
+    ],
+    "authorizationId": "ES-INVENTORY-SCAN-RECEIVING-01-Founder-Production-Release-Authorization",
+    "approvedAt": "2026-11-03T08:03:56Z",
+    "authorizedCandidateSha": "9c83e36052117dfbba03a4fa66b9be3f9b9e3114",
+    "authorizedProductionSha": "754866c956568a1e728f1476e34010f6146e3a00"
+  },
+  "releaseSha": "9c83e36052117dfbba03a4fa66b9be3f9b9e3114",
+  "deploymentId": "dpl_5nyYnhFFWs3XMcCT25qKNZKA84dZ",
+  "productionSha": "9c83e36052117dfbba03a4fa66b9be3f9b9e3114",
+  "allowedPaths": [
+    "app/inventory/page.tsx"
+  ]
+}
