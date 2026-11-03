@@ -8,14 +8,14 @@
   "trustedRef": "origin/main",
   "status": "ACTIVE",
   "approvedBy": "Founder",
-  "createdAt": "2026-11-03T17:27:27.674Z",
-  "approvedAt": "2026-11-03T17:27:27.674Z",
+  "createdAt": "2026-11-03T18:05:10.266Z",
+  "approvedAt": "2026-11-03T18:05:10.266Z",
   "closeAfter": "FEATURE_MERGE",
-  "reason": "Register only the exact Diamond Cashier boundary test. The test accepts the Stage 1 anchor plus this one registration path and checks the ACTIVE grant against its own exact bytes. Product and Frozen Successor approvals are separate.",
+  "reason": "Exact successor to the Cashier authorization recorded by PR #14. Register only the Diamond boundary test. Its trusted main checks admit the separately approved H5 and ES Tray baseline bytes and the recorded H5 closure. Other grants are separate.",
   "authorizedPaths": [
     "tests/cashier-realtime-integration.test.ts"
   ],
   "authorizedPathSha256": {
-    "tests/cashier-realtime-integration.test.ts": "e6526cfd39e4f80266cb4fc26a40c45d23a73e43227a2e81f08571ba4f065899"
+    "tests/cashier-realtime-integration.test.ts": "c18dda3aa8756333170117ba35cb67946aa22123f747d20de0748a9a2efa72a6"
   }
 }
