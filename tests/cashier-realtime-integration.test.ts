@@ -402,6 +402,15 @@ async function main() {
     'tests/settings-center-static.test.cjs',
     'tests/settings-center-browser.spec.ts',
   ]
+  // ES-CI-BASELINE-RECOVERY-01: preserve the reviewed test/manifest bytes.
+  const recoveryBase = '012b619a154f52cba96a9391936f02854de11fc9'
+  const recoveryCandidate = '1b08e4d89654417b93e720e6feb235c2601b2d50'
+  const recoverySuccessorPath = 'tests/cashier-realtime-integration.test.ts'
+  const recoveryPaths = [
+    'scripts/test/manifests/root-core-tests.json',
+    'tests/product-bulk-import-integration.test.ts',
+    recoverySuccessorPath,
+  ]
   const gitPaths = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
   const gitIsAncestor = (ancestor: string, descendant: string) => spawnSync(
     'git', ['merge-base', '--is-ancestor', ancestor, descendant], { cwd: root },
@@ -425,7 +434,25 @@ async function main() {
   // path edits still enter this branch and fail without that exact grant.
   const isM1 = !isM4 && (unmergedCommits.includes(productCandidate) || changed.some(path => productPaths.includes(path)))
   const isCombinedCorrective = isM1 && unmergedCommits.includes(correctiveCandidate)
-  if (isM2) {
+  if (unmergedCommits.includes(recoveryCandidate)) {
+    assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [recoveryBase], 'CI recovery requires the authorized trusted baseline')
+    for (const args of [
+      ['diff', '--name-only', '--no-renames', recoveryCandidate, 'HEAD'],
+      ['diff', '--cached', '--name-only', '--no-renames', recoveryCandidate],
+      ['diff', '--name-only', '--no-renames', recoveryCandidate],
+    ]) {
+      assert.deepEqual(gitPaths(...args).filter(path => path !== recoverySuccessorPath), [], 'CI recovery changed the reviewed candidate content')
+    }
+    const recoveryAllowed = new Set(recoveryPaths)
+    assertBoundary(changed, recoveryAllowed)
+    assert.ok(recoveryPaths.every(path => changed.includes(path)), 'CI recovery requires all three exact paths')
+    assert.throws(() => assertBoundary([...recoveryPaths, 'tests/unrelated.test.ts'], recoveryAllowed), { code: 'ERR_ASSERTION' })
+    const cashierProtectedPath = 'app/api/cashier/orders/route.ts'
+    assert.throws(
+      () => assertBoundary([...recoveryPaths, cashierProtectedPath], new Set([...recoveryPaths, cashierProtectedPath])),
+      { code: 'ERR_ASSERTION' },
+    )
+  } else if (isM2) {
     assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [m2ApprovedBase], 'M2 requires the authorized trusted baseline')
     assert.ok(m2Paths.every(path => changed.includes(path)), 'M2 complete sealed 14-path package required')
     assertBoundary(changed, new Set([...m2Paths, m2SuccessorPath]))
