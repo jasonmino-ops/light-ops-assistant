@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
+import { PDFDocument } from 'pdf-lib'
 import * as XLSX from 'xlsx'
 import { strToU8, unzipSync, zipSync } from 'fflate'
 import sharp from 'sharp'
@@ -700,14 +701,111 @@ async function main() {
     assert.equal(deepParsed.rows[0].product.sku, 'SKU-DEEP-01')
     assert.equal(deepParsed.rows[0].product.nameKm, 'ក្បាលទឹកជ្រៅ')
     assert.equal(deepParsed.rows[0].product.sellPrice, 8.75)
-    globalThis.fetch = async () => Response.json({ content: [{ type: 'text', text: JSON.stringify([
-      { pageNumber: 1, sourceBox: [100, 300, 900, 420], name: '下方商品', price: 2 },
-      { pageNumber: 1, sourceBox: [100, 100, 900, 220], name: '上方商品', price: 1 },
-    ]) }] })
-    const pdfBlocks = await adapter.recognizePdf(Buffer.from('%PDF-test'))
-    assert.deepEqual(pdfBlocks.map((block) => [block.name, block.blockIndex]), [['上方商品', 0], ['下方商品', 1]])
-    globalThis.fetch = async () => Response.json({ content: [{ type: 'text', text: '[{"pageNumber":1,"blockIndex":0,"price":1}]' }] })
-    await assert.rejects(() => adapter.recognizePdf(Buffer.from('%PDF-test')), /AI_SCHEMA_INVALID/)
+    const singlePagePdf = await PDFDocument.create()
+    singlePagePdf.addPage()
+    const pdf = Buffer.from(await singlePagePdf.save())
+    const first = { pageNumber: 1, sourceBox: [100, 100, 900, 220], name: '上方商品', price: 1 }
+    const second = { pageNumber: 1, sourceBox: [100, 300, 900, 420], name: '下方商品 ឈ្មោះ', price: 2 }
+    const response = (stopReason: string | undefined, blocks: unknown[], extraText?: string) => Response.json({
+      stop_reason: stopReason,
+      usage: { output_tokens: 123 },
+      content: [
+        { type: 'text', text: JSON.stringify(blocks) },
+        ...(extraText ? [{ type: 'text', text: extraText }] : []),
+      ],
+    }, { headers: { 'request-id': 'req_test_123' } })
+    globalThis.fetch = async () => response('end_turn', [second, first])
+    const pdfBlocks = await adapter.recognizePdf(pdf)
+    assert.deepEqual(pdfBlocks.map((block) => [block.name, block.blockIndex]), [[first.name, 0], [second.name, 1]])
+
+    const warnings: unknown[] = []
+    const savedWarn = console.warn
+    try {
+      console.warn = (message: string) => warnings.push(JSON.parse(message))
+      for (const [reason, stopReason] of [
+        ['max_tokens', 'max_tokens'], ['refusal', 'refusal'], [undefined, 'missing'], ['sensitive-unknown', 'unknown'],
+      ]) {
+        globalThis.fetch = async () => response(reason, [first])
+        await assert.rejects(() => adapter.recognizePdf(pdf), { message: 'AI_RESPONSE_INCOMPLETE' })
+        assert.deepEqual(warnings.pop(), {
+          event: 'product_import_pdf_ai_rejected',
+          code: 'AI_RESPONSE_INCOMPLETE', reason: 'unexpected_stop_reason', requestId: 'req_test_123', stopReason, outputTokens: 123,
+        })
+      }
+      globalThis.fetch = async () => response('end_turn', [first], JSON.stringify([second]))
+      await assert.rejects(() => adapter.recognizePdf(pdf), { message: 'AI_RESP_PARSE_ERROR' })
+      assert.deepEqual(warnings.pop(), {
+        event: 'product_import_pdf_ai_rejected',
+        code: 'AI_RESP_PARSE_ERROR', reason: 'multiple_text_blocks', requestId: 'req_test_123', stopReason: 'end_turn', outputTokens: 123,
+      })
+      for (const [item, reason, context] of [
+        [null, 'invalid_item', {}],
+        [{ ...second, pageNumber: 0 }, 'invalid_page_number', {}],
+        [{ ...second, pageNumber: { toString: null } }, 'invalid_page_number', {}],
+        [{ ...second, name: ' ' }, 'invalid_name', { pageNumber: 1 }],
+        [{ ...second, sourceBox: null }, 'source_box_shape', { pageNumber: 1 }],
+        [{ ...second, sourceBox: [100, 300, 1001, 420] }, 'source_box_coordinate', { pageNumber: 1 }],
+        [{ ...second, sourceBox: [100, { toString: null }, 900, 420] }, 'source_box_coordinate', { pageNumber: 1 }],
+        [{ ...second, sourceBox: [100, 300, 900, 300] }, 'source_box_area', { pageNumber: 1 }],
+        [{ ...second, sourceBox: [101, 101, 901, 221] }, 'duplicate_source_box', { pageNumber: 1, conflictingItemIndex: 0 }],
+      ] as const) {
+        globalThis.fetch = async () => response('end_turn', [first, item])
+        await assert.rejects(() => adapter.recognizePdf(pdf), { message: 'AI_SCHEMA_INVALID' })
+        assert.deepEqual(warnings.pop(), {
+          event: 'product_import_pdf_ai_rejected',
+          code: 'AI_SCHEMA_INVALID', reason, requestId: 'req_test_123', stopReason: 'end_turn', outputTokens: 123,
+          itemCount: 2, itemIndex: 1, ...context,
+        })
+      }
+      globalThis.fetch = async () => Response.json({ error: { message: 'sensitive document details' } }, { status: 400 })
+      await assert.rejects(() => adapter.recognizePdf(pdf), { message: 'AI_API_400' })
+
+      const pdfDocument = await PDFDocument.create()
+      for (const width of [200, 210, 220, 230]) pdfDocument.addPage([width, 100])
+      const fourPagePdf = Buffer.from(await pdfDocument.save())
+      const sentPageWidths: number[] = []
+      let incompletePageWidth: number | null = null
+      globalThis.fetch = async (_input, init) => {
+        const request = JSON.parse(String(init?.body))
+        const bytes = Buffer.from(request.messages[0].content[0].source.data, 'base64')
+        const sentPdf = await PDFDocument.load(bytes)
+        assert.equal(sentPdf.getPageCount(), 1)
+        const width = sentPdf.getPage(0).getWidth()
+        sentPageWidths.push(width)
+        return response(width === incompletePageWidth ? 'max_tokens' : 'end_turn', width === 230 ? [] : [first])
+      }
+      const splitBlocks = await adapter.recognizePdf(fourPagePdf)
+      assert.deepEqual(sentPageWidths.slice().sort((a, b) => a - b), [200, 210, 220, 230])
+      assert.deepEqual(splitBlocks.map(({ pageNumber, blockIndex }) => [pageNumber, blockIndex]), [[1, 0], [2, 0], [3, 0]])
+      incompletePageWidth = 210
+      sentPageWidths.length = 0
+      await assert.rejects(() => adapter.recognizePdf(fourPagePdf), { message: 'AI_RESPONSE_INCOMPLETE' })
+      assert.equal(sentPageWidths.length, 4, 'all page requests settle before the document fails')
+      assert.deepEqual(warnings.pop(), {
+        event: 'product_import_pdf_ai_rejected',
+        code: 'AI_RESPONSE_INCOMPLETE', reason: 'unexpected_stop_reason', requestId: 'req_test_123',
+        stopReason: 'max_tokens', outputTokens: 123, sourcePageNumber: 2,
+      })
+
+      pdfDocument.addPage([240, 100])
+      const fivePagePdf = Buffer.from(await pdfDocument.save())
+      const formDocument = await PDFDocument.create()
+      formDocument.addPage()
+      const formPage = formDocument.addPage()
+      formDocument.getForm().createTextField('product').addToPage(formPage)
+      const formPdf = Buffer.from(await formDocument.save())
+      const wholePdfRequests: Buffer[] = []
+      globalThis.fetch = async (_input, init) => {
+        const request = JSON.parse(String(init?.body))
+        wholePdfRequests.push(Buffer.from(request.messages[0].content[0].source.data, 'base64'))
+        return response('end_turn', [second])
+      }
+      assert.equal((await adapter.recognizePdf(fivePagePdf)).length, 1)
+      assert.equal((await adapter.recognizePdf(formPdf)).length, 1)
+      assert.deepEqual(wholePdfRequests, [fivePagePdf, formPdf])
+    } finally {
+      console.warn = savedWarn
+    }
     process.env.PRODUCT_IMPORT_AI_PROVIDER = 'local'
     assert.throws(() => productImportAiConfig(), /PROVIDER_UNSUPPORTED/)
   } finally {

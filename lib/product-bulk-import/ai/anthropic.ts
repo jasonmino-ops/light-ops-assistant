@@ -1,3 +1,4 @@
+import { Worker } from 'node:worker_threads'
 import type {
   ProductImportAiCategoryCandidate,
   ProductImportAiPdfBlock,
@@ -10,7 +11,16 @@ import type { ProductImportField, ProductImportFieldMapping, SpreadsheetInspecti
 type AnthropicResponse = {
   content?: Array<{ type?: string; text?: string }>
   error?: { message?: string }
+  stop_reason?: string | null
+  usage?: { output_tokens?: number }
 }
+
+const PDF_STOP_REASONS = new Set([
+  'end_turn', 'max_tokens', 'stop_sequence', 'tool_use', 'pause_turn', 'refusal', 'model_context_window_exceeded',
+])
+const PDF_SPLIT_MAX_BYTES = 5 * 1024 * 1024
+
+type PdfSourceBoxFailure = 'source_box_shape' | 'source_box_coordinate' | 'source_box_area'
 
 const IMPORT_FIELDS = new Set<ProductImportField>([
   'barcode', 'sku', 'nameZh', 'nameEn', 'nameKm', 'descZh', 'descEn', 'descKm',
@@ -53,19 +63,62 @@ function parseJsonArray(text: string): unknown[] {
   return parsed
 }
 
-function sourceBox(value: unknown): [number, number, number, number] | null {
-  if (!Array.isArray(value) || value.length !== 4) return null
-  const coordinates = value.map(Number)
-  if (
-    coordinates.some((coordinate) => !Number.isInteger(coordinate) || coordinate < 0 || coordinate > 1_000)
-    || coordinates[2] <= coordinates[0]
-    || coordinates[3] <= coordinates[1]
-  ) return null
+function pdfNumber(value: unknown): number {
+  try {
+    return Number(value)
+  } catch {
+    return NaN
+  }
+}
+
+function sourceBox(value: unknown, fail: (reason: PdfSourceBoxFailure) => never): [number, number, number, number] {
+  if (!Array.isArray(value) || value.length !== 4) return fail('source_box_shape')
+  const coordinates = value.map(pdfNumber)
+  if (coordinates.some((coordinate) => !Number.isInteger(coordinate) || coordinate < 0 || coordinate > 1_000)) {
+    return fail('source_box_coordinate')
+  }
+  if (coordinates[2] <= coordinates[0] || coordinates[3] <= coordinates[1]) return fail('source_box_area')
   return coordinates as [number, number, number, number]
 }
 
 function quantizedSourceBox(value: [number, number, number, number]) {
   return value.map((coordinate) => Math.round(coordinate / 10))
+}
+
+function splitPdfPages(pdf: Buffer): Promise<Uint8Array[] | null> {
+  if (pdf.length > PDF_SPLIT_MAX_BYTES) return Promise.resolve(null)
+  return new Promise((resolve, reject) => {
+    const fail = () => reject(new Error('AI_PDF_SPLIT_FAILED'))
+    // The parser can emit source values in its warnings. Keep them out of application logs.
+    let worker: Worker
+    try {
+      worker = new Worker(new URL('./pdf-page-worker.cjs', import.meta.url), {
+        name: 'product-import-pdf-worker',
+        workerData: pdf,
+        stdout: true,
+        stderr: true,
+        resourceLimits: { maxOldGenerationSizeMb: 96 },
+      })
+    } catch {
+      fail()
+      return
+    }
+    worker.stdout?.resume()
+    worker.stderr?.resume()
+    const deadline = setTimeout(() => {
+      fail()
+      void worker.terminate()
+    }, 5_000)
+    worker.once('message', (pages: Uint8Array[] | null | { failed: true }) => {
+      if (pages === null || Array.isArray(pages)) resolve(pages)
+      else fail()
+    })
+    worker.once('error', fail)
+    worker.once('exit', () => {
+      clearTimeout(deadline)
+      fail()
+    })
+  })
 }
 
 export class AnthropicProductImportAiProvider implements ProductImportAiProvider {
@@ -76,7 +129,7 @@ export class AnthropicProductImportAiProvider implements ProductImportAiProvider
     this.modelId = config.model
   }
 
-  private async request(content: Array<Record<string, unknown>>, maxTokens = 4096): Promise<unknown[]> {
+  private async requestMessage(content: Array<Record<string, unknown>>, maxTokens: number, redactApiError = false) {
     let response: Response
     try {
       response = await fetch(this.config.baseUrl, {
@@ -98,6 +151,7 @@ export class AnthropicProductImportAiProvider implements ProductImportAiProvider
       throw new Error('AI_NETWORK_ERROR')
     }
     if (!response.ok) {
+      if (redactApiError) throw new Error(`AI_API_${response.status}`)
       let suffix = ''
       try {
         const body = await response.json() as AnthropicResponse
@@ -111,6 +165,11 @@ export class AnthropicProductImportAiProvider implements ProductImportAiProvider
     } catch {
       throw new Error('AI_RESP_PARSE_ERROR')
     }
+    return { body, requestId: response.headers.get('request-id') }
+  }
+
+  private async request(content: Array<Record<string, unknown>>): Promise<unknown[]> {
+    const { body } = await this.requestMessage(content, 4096)
     const text = body.content?.find((block) => block.type === 'text')?.text
     if (!text) throw new Error('AI_EMPTY_RESPONSE')
     return parseJsonArray(text)
@@ -186,20 +245,76 @@ export class AnthropicProductImportAiProvider implements ProductImportAiProvider
   }
 
   async recognizePdf(pdf: Buffer): Promise<ProductImportAiPdfBlock[]> {
-    const raw = await this.request([
+    const pages = await splitPdfPages(pdf)
+    if (!pages) return this.recognizePdfDocument(pdf)
+
+    const results = await Promise.allSettled(pages.map((page, index) => (
+      this.recognizePdfDocument(Buffer.from(page), index + 1)
+    )))
+    return results.flatMap((result) => {
+      if (result.status === 'rejected') throw result.reason
+      return result.value
+    })
+  }
+
+  private async recognizePdfDocument(pdf: Buffer, sourcePageNumber?: number): Promise<ProductImportAiPdfBlock[]> {
+    const { body, requestId } = await this.requestMessage([
       { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf.toString('base64') } },
-      { type: 'text', text: '识别 PDF 中的商品块、原文名称、条码、SKU、价格、两级分类、描述、规格，以及相邻图片的简短描述。只输出 JSON 数组，不要 markdown。每项格式：{"pageNumber":1,"sourceBox":[100,100,900,250],"name":"","barcode":null,"sku":null,"price":null,"category1":null,"category2":null,"description":null,"spec":null,"nearbyImageDescription":null,"confidence":0.8,"warnings":[]}。sourceBox 是商品块在该页中的 [left,top,right,bottom]，必须用 0..1000 整数坐标；不得编造看不清的字段；pageNumber 从 1 开始。' },
-    ], 8192)
+      { type: 'text', text: `识别 PDF 中的商品块。按 PDF 物理页面顺序逐页处理，每页先看该页图像并确定商品表格的首末行。若同页印有页码、小计或合计，以它们核对当前页的结束边界，边界上方仍属于该页的商品行不得移到下一页。有序号列时，先读取该页实际首末序号；若序号连续，用末序号减首序号加一核对本页条数。各页行数可以不同，不得按固定行数分页。每条实际商品行各输出一项。表头、小计、合计、签收、店铺信息和页脚不属于商品。没有商品的页不输出任何项。
+pageNumber 必须是商品实际出现的 PDF 物理页序号，从 1 开始。sourceBox 必须框住该页实际的商品块或表格行，格式为 [left,top,right,bottom]。每页单独从左上到右下归一化到 0..1000 的整数坐标，left < right 且 top < bottom。同页不同商品使用各自的框，不复用框。输出前逐页核对实际首末行、商品数、页码和坐标。
+保留完整原文名称和原始条码字符，不翻译、不补造。只输出紧凑 JSON 数组，不要 Markdown。每项必含 pageNumber、sourceBox、name。示例：{"pageNumber":1,"sourceBox":[100,100,900,140],"name":"原文商品名"}。如来源清楚，保留 barcode（字符串）、sku、price（商品单价，数字）、category1、category2、description、spec、nearbyImageDescription、confidence 和 warnings。无来源或为空的可选字段省略。` },
+    ], 8192, true)
+    const stopReason = body?.stop_reason
+    const responseMetadata = {
+      requestId: requestId && /^req_[a-zA-Z0-9_-]{1,80}$/.test(requestId) ? requestId : null,
+      stopReason: stopReason && PDF_STOP_REASONS.has(stopReason) ? stopReason : stopReason == null ? 'missing' : 'unknown',
+      outputTokens: Number.isInteger(body?.usage?.output_tokens) ? body.usage?.output_tokens : null,
+      sourcePageNumber,
+    }
+    function reject(code: string, reason: string, context?: {
+      itemCount: number
+      itemIndex: number
+      pageNumber?: number
+      conflictingItemIndex?: number
+    }): never {
+      console.warn(JSON.stringify({
+        event: 'product_import_pdf_ai_rejected', code, reason, ...responseMetadata, ...context,
+      }))
+      throw new Error(code)
+    }
+    if (stopReason !== 'end_turn') reject('AI_RESPONSE_INCOMPLETE', 'unexpected_stop_reason')
+    const textBlocks = Array.isArray(body.content) ? body.content.filter((block) => block?.type === 'text') : []
+    if (textBlocks.length > 1) reject('AI_RESP_PARSE_ERROR', 'multiple_text_blocks')
+    const text = textBlocks[0]?.text
+    if (typeof text !== 'string' || !text) return reject('AI_EMPTY_RESPONSE', 'missing_text')
+    let raw: unknown[]
+    try {
+      raw = parseJsonArray(text)
+    } catch (error) {
+      return reject(error instanceof Error ? error.message : 'AI_RESP_PARSE_ERROR', 'invalid_json_array')
+    }
     const result: ProductImportAiPdfBlock[] = []
-    for (const value of raw) {
-      if (!value || typeof value !== 'object') throw new Error('AI_SCHEMA_INVALID')
+    const identities = new Map<string, number>()
+    for (const [itemIndex, value] of raw.entries()) {
+      const context = { itemCount: raw.length, itemIndex }
+      if (!value || typeof value !== 'object') reject('AI_SCHEMA_INVALID', 'invalid_item', context)
       const item = value as Record<string, unknown>
       const name = boundedString(item.name)
-      const pageNumber = Number(item.pageNumber)
-      const blockSourceBox = sourceBox(item.sourceBox)
-      if (!name || !Number.isInteger(pageNumber) || pageNumber < 1 || !blockSourceBox) {
-        throw new Error('AI_SCHEMA_INVALID')
+      const reportedPageNumber = pdfNumber(item.pageNumber)
+      if (!Number.isInteger(reportedPageNumber) || reportedPageNumber < 1
+        || (sourcePageNumber !== undefined && reportedPageNumber !== 1)) {
+        reject('AI_SCHEMA_INVALID', 'invalid_page_number', context)
       }
+      const pageNumber = sourcePageNumber ?? reportedPageNumber
+      const pageContext = { ...context, pageNumber: pageNumber <= 600 ? pageNumber : undefined }
+      if (!name) return reject('AI_SCHEMA_INVALID', 'invalid_name', pageContext)
+      const blockSourceBox = sourceBox(item.sourceBox, (reason) => reject('AI_SCHEMA_INVALID', reason, pageContext))
+      const identity = `${pageNumber}:${quantizedSourceBox(blockSourceBox).join(':')}`
+      const conflictingItemIndex = identities.get(identity)
+      if (conflictingItemIndex !== undefined) {
+        reject('AI_SCHEMA_INVALID', 'duplicate_source_box', { ...pageContext, conflictingItemIndex })
+      }
+      identities.set(identity, itemIndex)
       const price = typeof item.price === 'number' && Number.isFinite(item.price) && item.price > 0
         ? Math.round(item.price * 100) / 100
         : null
@@ -227,13 +342,9 @@ export class AnthropicProductImportAiProvider implements ProductImportAiProvider
       || left.sourceBox[3] - right.sourceBox[3]
       || left.sourceBox[2] - right.sourceBox[2]
     ))
-    const identities = new Set<string>()
     let pageNumber = -1
     let blockIndex = 0
     for (const block of result) {
-      const identity = `${block.pageNumber}:${quantizedSourceBox(block.sourceBox).join(':')}`
-      if (identities.has(identity)) throw new Error('AI_SCHEMA_INVALID')
-      identities.add(identity)
       if (block.pageNumber !== pageNumber) {
         pageNumber = block.pageNumber
         blockIndex = 0

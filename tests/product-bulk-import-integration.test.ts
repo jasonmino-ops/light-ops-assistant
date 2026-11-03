@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { PDFDocument } from 'pdf-lib'
 import * as XLSX from 'xlsx'
 import { strToU8, unzipSync, zipSync } from 'fflate'
 import sharp from 'sharp'
@@ -24,6 +25,8 @@ import { GET as productsGet } from '../app/api/products/route'
 import { POST as recognizeMenu } from '../app/api/products/import-ai/recognize/route'
 import { POST as uploadSingleProductImage } from '../app/api/products/[id]/image/route'
 import { PATCH as patchJobRoute } from '../app/api/products/import/jobs/[id]/route'
+import { POST as analyzeJobRoute } from '../app/api/products/import/jobs/[id]/analyze/route'
+import { POST as confirmJobRoute } from '../app/api/products/import/jobs/[id]/confirm/route'
 import { GET as imagePreviewRoute } from '../app/api/products/import/jobs/[id]/rows/[rowId]/images/[slot]/route'
 import { internalEan13Candidate, stableRowIdentity } from '../lib/product-bulk-import/barcode'
 import { createSignedUploadUrl, ensurePrivateBucket } from '../lib/supabase-storage'
@@ -53,8 +56,6 @@ let lostStagingArtifactKey: string | null = null
 let failStagingBulkDeletePrefix: string | null = null
 let reverseMenuAiItems = false
 let menuAiCallCount = 0
-let reversePdfAiBlocks = false
-let pdfAiCallCount = 0
 const defaultSpreadsheetMappings = [{ sheetIndex: 0, selected: true, headerRowNumber: 1, mapping: { nameZh: 0, sellPrice: 1 } }]
 let spreadsheetMappings: unknown = defaultSpreadsheetMappings
 
@@ -67,14 +68,6 @@ globalThis.fetch = async (input, init = {}) => {
     const prompt = requestBody.messages?.[0]?.content?.find((part) => part.type === 'text')?.text ?? ''
     if (prompt.includes('商品导入字段映射器')) {
       return Response.json({ content: [{ type: 'text', text: JSON.stringify(spreadsheetMappings) }] })
-    }
-    if (prompt.includes('识别 PDF 中的商品块')) {
-      pdfAiCallCount += 1
-      const pdfBlocks = [
-        { pageNumber: 1, sourceBox: [100, 100, 900, 220], name: 'PDF 商品 A', price: 2 },
-        { pageNumber: 1, sourceBox: [100, 300, 900, 420], name: 'PDF 商品 B', price: 3 },
-      ]
-      return Response.json({ content: [{ type: 'text', text: JSON.stringify(reversePdfAiBlocks ? pdfBlocks.reverse() : pdfBlocks) }] })
     }
     menuAiCallCount += 1
     const menuItems = [
@@ -220,6 +213,125 @@ async function withFetch<T>(fetchImpl: typeof fetch, action: () => Promise<T>): 
   }
 }
 
+async function verifyPdfPreviewAndRetry() {
+  const pageCounts = [16, 21, 14, 0]
+  const pdf = await PDFDocument.create()
+  const expected = pageCounts.map((count, pageIndex) => {
+    pdf.addPage([400 + pageIndex, 600])
+    return Array.from({ length: count }, (_, index) => ({
+      pageNumber: 1,
+      sourceBox: [100, 20 + index * 40, 900, 45 + index * 40],
+      name: `测试商品 ឈ្មោះ ${pageIndex + 1}-${index + 1}`,
+      barcode: internalEan13Candidate(`pdf-regression-${pageIndex}-${index}`, 0),
+      price: 2.5,
+    }))
+  })
+  const source = Buffer.from(await pdf.save())
+  const malformed = Buffer.from('%PDF-1.7\nmalformed page tree\n%%EOF')
+  const beforeProducts = await prisma.product.count({ where: { tenantId } })
+  const cacheWhere = { tenantId, sourceFormat: 'PDF_AI_CACHE' }
+  const beforeCaches = await prisma.productBulkImportJob.count({ where: cacheWhere })
+  const storageFetch = globalThis.fetch
+  const calls: number[] = []
+  let fault: 'http' | 'schema' | 'truncated' | null = null
+
+  async function createPdfJob(fileName: string, bytes: Buffer) {
+    const created = await createProductImportJob(tenantId, { fileName, mimeType: 'application/pdf', fileSize: bytes.length })
+    staged.set(created.storageKey, bytes)
+    return created.jobId
+  }
+
+  function analyze(id: string) {
+    return analyzeJobRoute(ownerRequest(`/api/products/import/jobs/${id}/analyze`, 'POST'), { params: Promise.resolve({ id }) })
+  }
+
+  async function assertAtomicFailure(id: string, code: string) {
+    const analyzeResponse = await analyze(id)
+    assert.equal(analyzeResponse.status, 500, `${code} must never return a preview`)
+    assert.equal((await analyzeResponse.json()).message, code)
+    const { job, rows } = await getProductImportJob(tenantId, id)
+    assert.deepEqual([job.status, job.lastErrorCode, job.totalRowCount, job.analyzedRowCount, job.readyRowCount], ['FAILED', code, 0, 0, 0])
+    assert.equal(rows.length, 0)
+    assert.equal(await prisma.productBulkImportRow.count({ where: { jobId: id } }), 0)
+    assert.equal(await prisma.productBulkImportJob.count({ where: cacheWhere }), beforeCaches)
+    assert.equal([...staged.keys()].some(key => key.includes(`/${id}/analysis/`)), false)
+    const confirmation = await confirmJobRoute(ownerRequest(`/api/products/import/jobs/${id}/confirm`, 'POST'), { params: Promise.resolve({ id }) })
+    assert.equal(confirmation.status, 409)
+    assert.equal((await confirmation.json()).error, 'JOB_NOT_CONFIRMABLE')
+    assert.equal(await prisma.product.count({ where: { tenantId } }), beforeProducts)
+  }
+
+  await withFetch(async (input, init) => {
+    if (String(input) !== 'https://api.anthropic.com/v1/messages') return storageFetch(input, init)
+    const request = JSON.parse(String(init?.body))
+    const sent = Buffer.from(request.messages[0].content[0].source.data, 'base64')
+    if (sent.equals(malformed)) {
+      calls.push(-1)
+      return Response.json({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(expected[0].slice(0, 1)) }] })
+    }
+    const pagePdf = await PDFDocument.load(sent)
+    assert.equal(pagePdf.getPageCount(), 1)
+    const pageIndex = pagePdf.getPage(0).getWidth() - 400
+    assert.ok(pageIndex >= 0 && pageIndex < expected.length)
+    calls.push(pageIndex)
+    const items = expected[pageIndex]
+    if (pageIndex === 1 && fault === 'http') return Response.json({ error: { message: 'test' } }, { status: 503 })
+    const responseItems = pageIndex === 1 && fault === 'schema'
+      ? [{ ...items[0], sourceBox: [100, 20, 900, 20] }]
+      : pageIndex === 1 && fault === 'truncated' ? items.slice(0, 1) : items
+    return Response.json({
+      stop_reason: pageIndex === 1 && fault === 'truncated' ? 'max_tokens' : 'end_turn',
+      content: [{ type: 'text', text: JSON.stringify(responseItems) }],
+    })
+  }, async () => {
+    const invalidId = await createPdfJob('corrupt.pdf', malformed)
+    await assertAtomicFailure(invalidId, 'AI_PDF_SPLIT_FAILED')
+    assert.deepEqual(calls, [], 'a parser failure must not fall back to a potentially confirmable model response')
+
+    const jobId = await createPdfJob('51-items.pdf', source)
+    for (const [failure, code] of [
+      ['http', 'AI_API_503'],
+      ['schema', 'AI_SCHEMA_INVALID'],
+      ['truncated', 'AI_RESPONSE_INCOMPLETE'],
+    ] as const) {
+      fault = failure
+      calls.length = 0
+      await assertAtomicFailure(jobId, code)
+      assert.deepEqual(calls.slice().sort(), [0, 1, 2, 3])
+    }
+
+    fault = null
+    calls.length = 0
+    const successfulRetry = await analyze(jobId)
+    assert.equal(successfulRetry.status, 200)
+    if ((await successfulRetry.json()).hasMoreAnalysis) assert.equal((await analyze(jobId)).status, 200)
+    const preview = await getProductImportJob(tenantId, jobId, { limit: 200 })
+    assert.deepEqual(
+      [preview.job.status, preview.job.totalRowCount, preview.job.analyzedRowCount, preview.job.readyRowCount, preview.job.invalidRowCount],
+      ['PREVIEW_READY', 51, 51, 51, 0],
+    )
+    assert.deepEqual(calls.slice().sort(), [0, 1, 2, 3])
+    assert.deepEqual(preview.rows.map(row => [row.sourcePageNumber, row.assignedBarcode, row.status]),
+      expected.flatMap((items, pageIndex) => items.map(item => [pageIndex + 1, item.barcode, 'READY'])))
+    assert.equal(new Set(preview.rows.map(row => row.stableSourceRowIdentity)).size, 51)
+
+    calls.length = 0
+    assert.equal((await analyze(jobId)).status, 200)
+    const repeated = await getProductImportJob(tenantId, jobId, { limit: 200 })
+    assert.deepEqual(repeated.rows, preview.rows)
+    const cached = await createAndAnalyze('same-51-items.pdf', 'application/pdf', source)
+    assert.deepEqual(cached.rows.map(row => [row.stableSourceRowIdentity, row.assignedBarcode]),
+      preview.rows.map(row => [row.stableSourceRowIdentity, row.assignedBarcode]))
+    assert.deepEqual(calls, [])
+    assert.equal(await prisma.productBulkImportJob.count({ where: cacheWhere }), beforeCaches + 1)
+    assert.equal(await prisma.product.count({ where: { tenantId } }), beforeProducts)
+    await cancelProductImportJob(tenantId, invalidId)
+    await cancelProductImportJob(tenantId, jobId)
+    await cancelProductImportJob(tenantId, cached.job.id)
+  })
+  console.log('PDF PostgreSQL integration PASS: 51 ready previews, 16/21/14/0, four atomic failure cases, retry and cache idempotency')
+}
+
 async function assertMissingBucketCreates(status: 400 | 404) {
   let createCount = 0
   await withFetch(async (input, init = {}) => {
@@ -323,6 +435,8 @@ async function main() {
   await prisma.tenant.deleteMany({ where: { id: otherTenantId } })
   await prisma.tenant.create({ data: { id: tenantId, name: 'Bulk Import Test' } })
   try {
+    await verifyPdfPreviewAndRetry()
+    if (process.argv.includes('--pdf-only')) return
     const sourceA = Buffer.from('name_zh,sell_price\n稳定商品,5.25\n')
     const first = await createAndAnalyze('stable.csv', 'text/csv', sourceA)
     assert.equal(stagingBucketUpgraded, true, 'existing private staging bucket adds the JSON artifact MIME')
@@ -750,19 +864,6 @@ async function main() {
     assert.equal(await prisma.productCategory.count({ where: { tenantId } }), categoryCountBeforeMenuConfirm, 'unknown AI category does not create a Category')
     const menuProduct = await prisma.product.findUnique({ where: { tenantId_barcode: { tenantId, barcode: menuPreview1[0].barcode } } })
     assert.equal(menuProduct?.categoryId, null)
-
-    const pdfSource = Buffer.from('%PDF-1.7 deterministic test source')
-    const pdfFirst = await createAndAnalyze('products-a.pdf', 'application/pdf', pdfSource)
-    reversePdfAiBlocks = true
-    const pdfSecond = await createAndAnalyze('products-b.pdf', 'application/pdf', pdfSource)
-    assert.deepEqual(
-      Object.fromEntries(pdfSecond.rows.map((row) => [(row.previewPayload as { name?: string }).name, row.assignedBarcode])),
-      Object.fromEntries(pdfFirst.rows.map((row) => [(row.previewPayload as { name?: string }).name, row.assignedBarcode])),
-      'same PDF in a new Job reuses canonical blocks and generated barcodes',
-    )
-    assert.equal(pdfAiCallCount, 1)
-    await cancelProductImportJob(tenantId, pdfFirst.job.id)
-    await cancelProductImportJob(tenantId, pdfSecond.job.id)
 
     const manyRows = Array.from({ length: 501 }, (_, index) => `商品${index + 1},${index + 1}.5`).join('\n')
     const largeSource = Buffer.from(`name_zh,sell_price\n${manyRows}\n`)
