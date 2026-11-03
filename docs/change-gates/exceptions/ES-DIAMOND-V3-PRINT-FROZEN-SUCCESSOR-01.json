@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "taskId": "ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01",
+  "featureBranch": "codex/es-diamond-v3-print-frozen-successor-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "012b619a154f52cba96a9391936f02854de11fc9",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Exact test and additive freeze record successor for three historical frozen drift categories across four CORE tests. Product Candidate 37fda6f75d013f5957c20191c509fd588c6d4ed5. No product, release, field, merge, or migration authority.",
+  "authorizedPaths": [
+    "docs/freezes/ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01.md",
+    "tests/es-tray-device-print-contract.test.ts",
+    "tests/v2-invariance-extension-points.test.cjs",
+    "tests/v2-invariance-service-regions.test.cjs",
+    "tests/v3-reprint-recovery.test.ts"
+  ],
+  "authorizedPathSha256": {
+    "docs/freezes/ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01.md": "b1277d2d78ad1391d2b4928fcc30a909d43d528fe43e6201969d0de5259b9b50",
+    "tests/es-tray-device-print-contract.test.ts": "4eafd378442affdcda7b28ca7237b640f83b3b113ffe3644ccdfb1436b43a49e",
+    "tests/v2-invariance-extension-points.test.cjs": "db05bd55d071f916fdfcd7c0a8c91d204cbfc95a62b9f3c849713f62470e8cef",
+    "tests/v2-invariance-service-regions.test.cjs": "d985f9cb0b170ff054f38f2fc6628e82cb66de829fb2c4315fd95da8d68b5335",
+    "tests/v3-reprint-recovery.test.ts": "a3ef7906411245af074f7e990f6417e6143eabcc4d15a447d602fc346313ed11"
+  },
+  "approvedBy": "Founder",
+  "createdAt": "2026-11-03T12:55:37Z",
+  "approvedAt": "2026-11-03T13:00:56.194Z"
+}
