@@ -6,7 +6,7 @@
   "baseOriginMainSha": "fc351529da576793eec2e2618c6f32867f62703f",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "approvedBy": "Founder",
   "createdAt": "2026-11-03T17:59:21.834Z",
   "approvedAt": "2026-11-03T17:59:21.834Z",
@@ -19,5 +19,7 @@
   "authorizedPathSha256": {
     "lib/customer-order-fulfillment.ts": "7611a003ebbfba7a1dabf18fcd7c1b93ee025885ae645d91e6ae24409d1039e0",
     "tests/customer-order-fulfillment-db.test.ts": "ab141992742743228a9dd501eec9b28c3f5b10e8795d4d6cf0ac3c0389ec7f36"
-  }
+  },
+  "closedAt": "2026-11-03T18:02:13.788Z",
+  "featureMergeCommitSha": "d69892f519b2355650e604a1a69b7eaa242846e0"
 }
