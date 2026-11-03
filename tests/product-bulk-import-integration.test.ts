@@ -547,6 +547,7 @@ async function main() {
     assert.equal(validationIsolationJob.job.readyRowCount, 3)
     assert.equal(validationIsolationJob.job.invalidRowCount, 1)
     const validationIsolationResult = await confirmProductImportJob(tenantId, validationIsolationJob.job.id)
+    assert.ok('batch' in validationIsolationResult, 'expected a new Confirm batch')
     assert.deepEqual(validationIsolationResult.batch, { claimed: 3, succeeded: 3, failed: 0 })
     assert.deepEqual(validationIsolationResult.job.resultSummary, { total: 4, confirmed: 3, invalid: 1, failed: 0, compensationRequired: 0 })
 
@@ -566,6 +567,7 @@ async function main() {
       data: { tenantId, barcode: 'CF1-LATE-COLLISION', name: '并发创建的现有商品', sellPrice: '5' },
     })
     const collisionResult = await confirmProductImportJob(tenantId, collisionJob.job.id)
+    assert.ok('batch' in collisionResult, 'expected a new Confirm batch')
     assert.deepEqual(collisionResult.batch, { claimed: 1, succeeded: 0, failed: 1 })
     assert.equal(collisionResult.job.status, 'FAILED')
     assert.equal(await prisma.product.count({ where: { tenantId, barcode: 'CF1-LATE-COLLISION' } }), 1)
@@ -576,6 +578,7 @@ async function main() {
     )
     await retryProductImportJob(tenantId, collisionJob.job.id)
     const repeatedCollision = await confirmProductImportJob(tenantId, collisionJob.job.id)
+    assert.ok('batch' in repeatedCollision, 'expected a new Confirm batch')
     assert.deepEqual(repeatedCollision.batch, { claimed: 1, succeeded: 0, failed: 1 })
     assert.equal(await prisma.product.count({ where: { tenantId, barcode: 'CF1-LATE-COLLISION' } }), 1)
 
@@ -585,6 +588,7 @@ async function main() {
       Buffer.from('barcode,name_zh,sell_price\nCF1-CAP-1,并发商品1,1\nCF1-CAP-2,并发商品2,2\nCF1-CAP-3,并发商品3,3\nCF1-CAP-4,并发商品4,4\n'),
     )
     const capacityResult = await confirmProductImportJob(tenantId, capacityJob.job.id)
+    assert.ok('batch' in capacityResult, 'expected a new Confirm batch')
     assert.deepEqual(capacityResult.batch, { claimed: 4, succeeded: 4, failed: 0 })
     assert.equal(capacityResult.job.status, 'COMPLETED', 'a four-row batch completes with the two-connection application pool')
     const capacityProducts = await prisma.product.findMany({
@@ -610,6 +614,7 @@ async function main() {
       Buffer.from('barcode,name_zh,sell_price\nCF1-REC-1,恢复商品1,1\nCF1-REC-2,恢复商品2,2\nCF1-REC-3,恢复商品3,3\nCF1-REC-4,恢复商品4,999999999999\n'),
     )
     const partialResult = await confirmProductImportJob(tenantId, recoveryJob.job.id)
+    assert.ok('batch' in partialResult, 'expected a new Confirm batch')
     assert.deepEqual(partialResult.batch, { claimed: 4, succeeded: 3, failed: 1 })
     assert.equal(partialResult.job.status, 'FAILED')
     assert.deepEqual(partialResult.job.resultSummary, { total: 4, confirmed: 3, invalid: 0, failed: 1, compensationRequired: 0 })
@@ -629,6 +634,7 @@ async function main() {
       sellPrice: 4,
     })
     const recoveredResult = await confirmProductImportJob(tenantId, recoveryJob.job.id)
+    assert.ok('batch' in recoveredResult, 'expected a new Confirm batch')
     assert.deepEqual(recoveredResult.batch, { claimed: 1, succeeded: 1, failed: 0 })
     assert.equal(recoveredResult.job.status, 'COMPLETED')
     const recoveredProducts = await prisma.product.findMany({
@@ -1000,7 +1006,7 @@ async function main() {
     await patchProductImportRow(tenantId, confirmFailure.job.id, confirmFailureResetRow.id, { version: confirmFailureResetRow.version, sellPrice: 9 })
     assert.equal((await confirmProductImportJob(tenantId, confirmFailure.job.id)).job.status, 'COMPLETED')
 
-    const failingSource = await xlsxWithImage([['name_zh', 'sell_price'], ['回滚商品', 999999999999]])
+    const failingSource = await xlsxWithImage([['name_zh', 'sell_price'], ['回滚商品', '999999999999']])
     const failing = await createAndAnalyze('rollback.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', failingSource)
     failProductImageDelete = true
     const failedConfirm = await confirmProductImportJob(tenantId, failing.job.id)

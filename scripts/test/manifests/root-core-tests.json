@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "lane": "CORE",
-  "expectedCount": 101,
+  "expectedCount": 102,
   "tests": [
     { "file": "tests/inventory-profit-feed.test.ts", "lane": "CORE", "reason": "The read-only external feed route runs with in-process Prisma delegates and validates secret, fixed-store isolation, sale, CustomerOrder, refund quantity and PII exclusion.", "dependencyType": "NONE", "evidence": "tests/inventory-profit-feed.test.ts:1" },
     { "file": "tests/inventory-profit-provider-access.test.ts", "lane": "CORE", "reason": "Provider, access wrapper and inventory/profit routes run with in-process fetch and Prisma delegates, including Telegram presence, NULL cost, idempotency, stale/error behavior and CSV BOM.", "dependencyType": "NONE", "evidence": "tests/inventory-profit-provider-access.test.ts:1" },
@@ -38,6 +38,7 @@
     { "file": "tests/desktop-operator-boundary-static.test.ts", "lane": "CORE", "reason": "Repository source inspection only; no runtime, database, or browser service required.", "dependencyType": "NONE", "evidence": "tests/desktop-operator-boundary-static.test.ts:1-22" },
     { "file": "tests/desktop-owner-web-session-static.test.ts", "lane": "CORE", "reason": "Repository source inspection only.", "dependencyType": "NONE", "evidence": "tests/desktop-owner-web-session-static.test.ts:1-51" },
     { "file": "tests/desktop-owner-web-session.test.ts", "lane": "CORE", "reason": "Prisma delegates are replaced by an in-process test stub; real route and token/session crypto run in-process.", "dependencyType": "NONE", "evidence": "tests/desktop-owner-web-session.test.ts:1-367" },
+    { "file": "tests/desktop-print-child-lifecycle.test.ts", "lane": "CORE", "reason": "In-process database delegates and static assertions cover the managed print child lifecycle.", "dependencyType": "NONE", "evidence": "tests/desktop-print-child-lifecycle.test.ts:15-87" },
     { "file": "tests/electronic-menu-data.test.ts", "lane": "CORE", "reason": "Prisma delegates are replaced by in-process database fixtures.", "dependencyType": "NONE", "evidence": "tests/electronic-menu-data.test.ts:94-134" },
     { "file": "tests/electronic-menu-layout.test.ts", "lane": "CORE", "reason": "Pure in-process layout tests.", "dependencyType": "NONE", "evidence": "tests/electronic-menu-layout.test.ts:1-70" },
     { "file": "tests/electronic-menu-media.test.ts", "lane": "CORE", "reason": "Database delegates are replaced by in-process stubs.", "dependencyType": "NONE", "evidence": "tests/electronic-menu-media.test.ts:38-68" },
