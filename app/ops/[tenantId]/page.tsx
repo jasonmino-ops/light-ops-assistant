@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import QRCode from 'react-qr-code'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
+import DiamondFounderRecoveryPanel, { type DiamondRecoveryReadout } from './DiamondFounderRecoveryPanel'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -461,6 +462,8 @@ const PRINT_MODE_ERRORS: Record<string, string> = {
 
 function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store }) {
   const [state, setState] = useState<OpsPrintModeState | null>(null)
+  const [diamondRecovery, setDiamondRecovery] = useState<DiamondRecoveryReadout | null>(null)
+  const [diamondRecoveryError, setDiamondRecoveryError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -472,9 +475,18 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
     try {
       const response = await apiFetch(endpoint, { cache: 'no-store' }, OWNER_CTX)
       const body = await response.json().catch(() => ({}))
-      if (!response.ok || !body.state) setError(PRINT_MODE_ERRORS[body.error] ?? '无法读取打印模式。')
-      else setState(body.state)
+      if (!response.ok || !body.state) {
+        setDiamondRecovery(null)
+        setDiamondRecoveryError(null)
+        setError(PRINT_MODE_ERRORS[body.error] ?? '无法读取打印模式。')
+      } else {
+        setState(body.state)
+        setDiamondRecovery(body.diamondRecovery ?? null)
+        setDiamondRecoveryError(body.diamondRecoveryError ?? null)
+      }
     } catch {
+      setDiamondRecovery(null)
+      setDiamondRecoveryError(null)
       setError('打印控制面网络不可用。')
     } finally {
       setLoading(false)
@@ -593,6 +605,9 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
         </div>
       )}
       {error && <div style={{ marginTop: 8, fontSize: 11, color: '#fca5a5', lineHeight: 1.5 }}>{error}</div>}
+      {diamondRecoveryError && <div style={{ marginTop: 8, fontSize: 11, color: '#fca5a5', lineHeight: 1.5 }}>
+        Diamond 恢复证据读取失败（{diamondRecoveryError}）；Founder REVIEW / EXPIRE 不可用。现有打印模式状态仍可单独读取与操作。
+      </div>}
 
       {state && (
         <details style={{ marginTop: 8, color: 'rgba(255,255,255,0.48)' }}>
@@ -609,6 +624,9 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
           </div>
         </details>
       )}
+      {state && diamondRecovery && <DiamondFounderRecoveryPanel tenantId={tenantId} store={store}
+        recovery={diamondRecovery} state={state}
+        disabled={controlsDisabled} onUpdated={loadPrintMode} />}
     </div>
   )
 }

@@ -51,6 +51,13 @@ function newRequestKey() {
   return `receiving:${crypto.randomUUID()}`
 }
 
+function exactReceivingMatches(items: InventoryItem[], code: string) {
+  const sku = code.toLowerCase()
+  return Array.from(new Map(items
+    .filter((item) => item.barcode === code || item.sku?.toLowerCase() === sku)
+    .map((item) => [item.productId, item])).values())
+}
+
 export default function InventoryPage() {
   const { realRole } = useWorkMode()
   const [snapshot, setSnapshot] = useState<InventoryResponse | null>(null)
@@ -65,6 +72,12 @@ export default function InventoryPage() {
   const [scannedItem, setScannedItem] = useState<InventoryItem | null>(null)
   const [scanError, setScanError] = useState('')
   const [canContinueScanning, setCanContinueScanning] = useState(false)
+  const [manualCode, setManualCode] = useState('')
+  const [manualMatches, setManualMatches] = useState<InventoryItem[]>([])
+  const [manualLookupError, setManualLookupError] = useState('')
+  const selectedByManualLookup = useRef(false)
+  const manualCodeInput = useRef<HTMLInputElement>(null)
+  const focusManualCodeAfterReceiving = useRef(false)
   const [quantity, setQuantity] = useState('')
   const [unitCost, setUnitCost] = useState('')
   const [date, setDate] = useState(localDate)
@@ -79,6 +92,8 @@ export default function InventoryPage() {
     setScannerSession(null)
     setLookingUpBarcode(false)
     setScannedItem(null)
+    setManualMatches([])
+    setManualLookupError('')
     setLoading(true)
     setError('')
     try {
@@ -107,6 +122,14 @@ export default function InventoryPage() {
 
   useEffect(() => () => { scanVersion.current += 1 }, [])
 
+  useEffect(() => {
+    const input = manualCodeInput.current
+    if (!saving && !loading && focusManualCodeAfterReceiving.current && input && !input.disabled) {
+      focusManualCodeAfterReceiving.current = false
+      input.focus()
+    }
+  }, [saving, loading])
+
   const selectedItem = scannedItem?.productId === productId
     ? scannedItem
     : snapshot?.items.find((item) => item.productId === productId)
@@ -115,6 +138,8 @@ export default function InventoryPage() {
     : null
 
   function openScanner() {
+    setManualMatches([])
+    setManualLookupError('')
     setScanError('')
     setCanContinueScanning(false)
     setScannerSession(++scanVersion.current)
@@ -125,6 +150,63 @@ export default function InventoryPage() {
     setScannerSession(null)
   }, [])
 
+  function clearLookupFeedback() {
+    closeScanner()
+    setLookingUpBarcode(false)
+    setScanError('')
+    setManualMatches([])
+    setManualLookupError('')
+  }
+
+  async function lookupReceivingProduct() {
+    if (!snapshot || loading || saving) return
+    clearLookupFeedback()
+    const version = scanVersion.current
+    const code = manualCode.trim()
+    if (!code) {
+      setManualLookupError('请输入条码或 SKU')
+      return
+    }
+    setProductId('')
+    setScannedItem(null)
+    selectedByManualLookup.current = false
+    setCanContinueScanning(false)
+    let matches = exactReceivingMatches(snapshot.items, code)
+    let resultsMayBeTruncated = snapshot.items.length >= INVENTORY_SEARCH_LIMIT
+    if (matches.length === 0 && resultsMayBeTruncated) {
+      setLookingUpBarcode(true)
+      try {
+        const response = await apiFetch(`/api/inventory-profit/inventory?all=1&q=${encodeURIComponent(code)}`, { cache: 'no-store' }, DEV_CTX)
+        if (!response.ok) throw new Error(await inventoryProfitError(response))
+        const { items } = await response.json() as InventoryResponse
+        if (version !== scanVersion.current) return
+        if (items.length >= INVENTORY_SEARCH_LIMIT) {
+          setManualLookupError('查询结果过多，无法确认匹配，请从商品列表选择')
+          return
+        }
+        matches = exactReceivingMatches(items, code)
+        resultsMayBeTruncated = false
+      } catch (failure) {
+        if (version === scanVersion.current) {
+          setManualLookupError(failure instanceof Error ? failure.message : '查询商品失败，请重试或从商品列表选择')
+        }
+        return
+      } finally {
+        if (version === scanVersion.current) setLookingUpBarcode(false)
+      }
+    }
+    if (matches.length === 1 && !resultsMayBeTruncated) {
+      selectedByManualLookup.current = true
+      setScannedItem(matches[0])
+      setProductId(matches[0].productId)
+    } else if (matches.length > 0) {
+      // A full snapshot may omit other exact matches, so don't auto-select a visible hit.
+      setManualMatches(matches)
+    } else {
+      setManualLookupError('未找到完全匹配的条码或 SKU')
+    }
+  }
+
   const handleCameraError = useCallback((reason: string) => {
     closeScanner()
     setScanError(reason)
@@ -134,6 +216,7 @@ export default function InventoryPage() {
     if (scannerSession !== scanVersion.current) return
     const version = ++scanVersion.current
     setScannerSession(null)
+    selectedByManualLookup.current = false
     setProductId('')
     setScannedItem(null)
     const code = barcode.trim()
@@ -225,14 +308,22 @@ export default function InventoryPage() {
         }),
       }, DEV_CTX)
       if (!response.ok) throw new Error(await inventoryProfitError(response))
-      const body = await response.json() as { data: { duplicate: boolean } }
+      const body = await response.json() as { ok?: boolean; data?: { duplicate?: boolean } }
+      if (body?.ok !== true || typeof body.data?.duplicate !== 'boolean') {
+        throw new Error('暂时无法确认入账结果，请保留表单并重试同一请求')
+      }
       setMessage(body.data.duplicate ? '该进货请求已记录，未重复入账' : '进货已记录')
       setQuantity('')
       setUnitCost('')
       setRequestKey(newRequestKey())
-      if (extraScanOption) setProductId('')
+      selectedByManualLookup.current = false
+      setProductId('')
+      setManualCode('')
+      setManualMatches([])
+      setManualLookupError('')
       setScannedItem(null)
       setCanContinueScanning(true)
+      focusManualCodeAfterReceiving.current = true
       await load()
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '数据暂时无法更新')
@@ -343,11 +434,55 @@ export default function InventoryPage() {
           <form onSubmit={submitReceiving}>
             <div className={styles.formRow}>
               <label className={styles.field}>
+                条码 / SKU
+                <input
+                  ref={manualCodeInput}
+                  className={styles.input}
+                  type="text"
+                  autoComplete="off"
+                  value={manualCode}
+                  disabled={!snapshot || loading || saving}
+                  onChange={(event) => {
+                    clearLookupFeedback()
+                    if (selectedByManualLookup.current) {
+                      selectedByManualLookup.current = false
+                      setProductId('')
+                      setScannedItem(null)
+                    }
+                    setManualCode(event.target.value)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    if (!event.nativeEvent.isComposing && !event.repeat) void lookupReceivingProduct()
+                  }}
+                />
+              </label>
+              <button type="button" className={styles.secondary} disabled={!snapshot || loading || saving} onClick={() => void lookupReceivingProduct()}>查找</button>
+            </div>
+            {manualLookupError ? <p className={styles.error} role="alert">{manualLookupError}</p> : null}
+            {manualMatches.length > 0 ? (
+              <label className={styles.field}>
+                {manualMatches.length > 1 ? '找到多个匹配商品，请选择' : '商品列表已达上限，请确认匹配商品'}
+                <select className={styles.select} value="" disabled={saving} onChange={(event) => {
+                  const item = manualMatches.find((match) => match.productId === event.target.value)
+                  if (!item) return
+                  clearLookupFeedback()
+                  selectedByManualLookup.current = true
+                  setScannedItem(item)
+                  setProductId(item.productId)
+                }}>
+                  <option value="">请选择匹配商品</option>
+                  {manualMatches.map((item) => <option key={item.productId} value={item.productId}>{item.name} · SKU：{item.sku || '—'} · 条码：{item.barcode || '—'}</option>)}
+                </select>
+              </label>
+            ) : null}
+            <div className={styles.formRow}>
+              <label className={styles.field}>
                 商品
                 <select className={styles.select} required value={selectedItem ? selectedItem.productId : ''} onChange={(event) => {
-                  closeScanner()
-                  setLookingUpBarcode(false)
-                  setScanError('')
+                  clearLookupFeedback()
+                  selectedByManualLookup.current = false
                   setProductId(event.target.value)
                 }}>
                   <option value="">请选择</option>
