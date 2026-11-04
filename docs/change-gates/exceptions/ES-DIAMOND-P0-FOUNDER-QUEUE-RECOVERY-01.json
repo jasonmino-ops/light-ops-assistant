@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "taskId": "ES-DIAMOND-P0-FOUNDER-QUEUE-RECOVERY-01",
+  "featureBranch": "codex/es-diamond-p0-founder-recovery",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "c9508d180d6ea16595f966685eb70e54cb3e48b4",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "createdAt": "2026-11-04T03:36:08.000Z",
+  "approvedAt": "2026-11-04T04:20:11.000Z",
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "One-time, exact Diamond Founder/SUPER_ADMIN emergency V3 FRONT queue recovery after original TTL; preserves two-Ops path, full fail-closed checks and all other stores. Frozen Cashier successor admits only the sealed service and focused test bytes. No release, field or database mutation authority.",
+  "authorizedPaths": [
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts",
+    "docs/freezes/ES-DIAMOND-P0-FOUNDER-QUEUE-RECOVERY-01.md",
+    "tests/cashier-realtime-integration.test.ts",
+    "tests/v3-print-control-plane-service.test.ts"
+  ],
+  "authorizedPathSha256": {
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts": "1f681d7445258f166f9f532a0c43ff39588112b50f0bd2abf2737685db9cfa44",
+    "docs/freezes/ES-DIAMOND-P0-FOUNDER-QUEUE-RECOVERY-01.md": "90bfc15019dc296096d77afabdc2fa2abd3a33c0fa1c98b5a152d0bcd0b4a4e0",
+    "tests/cashier-realtime-integration.test.ts": "0e311651ec35967d6997381121404d54fce6757fb4086624facd8dab999f9d14",
+    "tests/v3-print-control-plane-service.test.ts": "96f219964ca09520d64cf6f9960df95b08fff132279fcb8b2a97140a10521d57"
+  },
+  "additionalAuthorizations": []
+}
