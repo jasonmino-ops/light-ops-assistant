@@ -26,7 +26,7 @@
     "app/products/page.tsx": "8e5965c4c4e0e7e83f7e309f81fdc93e13b4152b19e99fbbc8efd1ca0076a88c",
     "app/sale/page.tsx": "6818f8b63ba25031a2501947baa0ca9a8e03959ee5d47a245ddad13f3a00980f",
     "lib/cashier-offline-db.ts": "c4571d19dd6765e39bb39422dc718820627e93713462b8f3696ef06ac8e81f3c",
-    "tests/cashier-realtime-integration.test.ts": "789affe65717699e19dc55ba9e1fce41a7d6c83e39d267143eb90965f0c1785e",
+    "tests/cashier-realtime-integration.test.ts": "9a316818c67a39283eca68e44a5ae53f4ef28b2b787b93c5e017139d6aeb2463",
     "tests/es-tray-device-print-contract.test.ts": "563b06d5f9cc8e325c6c9b98ade5178dca2197d5af0c8851e1a77a8b3e0cec33",
     "tests/product-sku-search.test.ts": "ab5db72e60a4053a022ac8bbaca290f3ee846aba2935de6ccba213af2a0fc781",
     "tests/v3-reprint-recovery.test.ts": "d403c6200677499541b91c66db2ce8583b8cf942b45dada40df3600a75ae3a28"
@@ -38,7 +38,7 @@
     "source": "ES-PRODUCT-COUNT-LIMIT-01 task conversation, 2026-11-04, Founder Decision APPROVED",
     "statement": "批准最终十文件候选对应的正式冻结后继，以及 ACTIVE 路径例外登记内容。",
     "timestampBasis": "Local registration timestamp after the Founder decision",
-    "candidatePatchSha256": "705441c63394ccb931494a002dc82f19ae0e4d7029b2d3d51b438fb5d8915477",
+    "candidatePatchSha256": "dfcda0d2789dcf31d24a866ffabdbc52e9e265901d0cb5d0b9651c36b6647b25",
     "evidenceSha256": {
       "final-approval-packet.md": "748b5848ba4f0ca9b0b7caee1929e0e114f5303b7dc5b34d03fe5946186625f8",
       "candidate-manifest.json": "375e6e2ee42f85166c3cf15305d62c22f43c26b27a60e25dab2f3c6352140cbc",
@@ -46,7 +46,11 @@
       "claude-context-review.md": "a0685f8ec6a66cde9d3be9c9fb9dece9c9b68789ed045da1c1b4f6f00940ee3b",
       "claude-final-delta-review.md": "6f11ed23cae0cd45cab29152df75883ae6f5f143c035c210b9eb4b270f9ab0fc",
       "claude-boundary-review.md": "65038fb17657657d00a9b9779e6dd30d1df4365e4aeaf4efe4f80b092e62c89c"
-    }
+    },
+    "priorCandidatePatchSha256": "705441c63394ccb931494a002dc82f19ae0e4d7029b2d3d51b438fb5d8915477",
+    "compatibilityPreparation": "Founder approved limited Core compatibility revision on 2026-11-04",
+    "finalCompatibilityApproval": "PENDING_EXACT_CONTENT_APPROVAL",
+    "freezeSuccessorSha256": "0f5de62bda26a816d6a8e53c5275827b53fe7995570ae7e0f455db1c7e56d856"
   },
   "closeAfter": "FEATURE_MERGE",
   "reason": "Exact catalogue-only candidate covering paged reads, count, selection, lookup, atomic offline cache and exact regression seals. Preserves transaction, authorization, Local First and printing behavior."

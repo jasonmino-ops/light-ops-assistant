@@ -1,11 +1,13 @@
 # ES-PRODUCT-COUNT-LIMIT-01 Frozen Successor Registration
 
-The Founder approved the exact ten-file candidate and this successor registration on 2026-11-04. The companion exception takes effect when it reaches trusted main. The task is OPEN.
+The Founder approved the earlier ten-file candidate and authorized the limited compatibility revision. The revised seal is pending exact-content approval. The task is OPEN.
 
-The approved starting main is `c9508d180d6ea16595f966685eb70e54cb3e48b4`. The sealed candidate patch SHA-256 is `705441c63394ccb931494a002dc82f19ae0e4d7029b2d3d51b438fb5d8915477`. The [companion registration](../change-gates/exceptions/ES-PRODUCT-COUNT-LIMIT-01.json) binds the exact feature branch, ten file hashes, and approval evidence.
+Trusted starting main: c9508d180d6ea16595f966685eb70e54cb3e48b4. Revised sealed patch SHA-256: dfcda0d2789dcf31d24a866ffabdbc52e9e265901d0cb5d0b9651c36b6647b25.
 
-The prior Cashier SHA-256 is `f9bbafc2ef156d0ad49b31f3003a607a2a05ca69dd334f65c950082942a1b683`. Both approved printing test assertions bind the successor Cashier SHA-256 `8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6`. The approved cashier realtime test adds a branch for the catalogue task and verifies the trusted authorization, exact paths, and working, staged, and committed content. The historical Diamond and fallback checks and the existing Records and printing assertions are preserved.
+This governance commit installs the compatibility test at SHA-256 9a316818c67a39283eca68e44a5ae53f4ef28b2b787b93c5e017139d6aeb2463 and adds the two governance records. The product branch then applies the nine remaining files, at patch SHA-256 ff40c5719723f588308348339e9aaaa91a2de769387b2cd08479daf6b768b3f4. The companion exception continues to bind all ten file hashes, including the installed test.
 
-The full candidate, scanner delta, and frozen successor delta each passed independent Claude review. The offline fixture with a synthetic registration demonstrated the expected approved branch behavior. The actual candidate must pass Scope Guard, Core, TypeScript, and Release Lineage under the trusted registration before product integration.
+The compatibility test uses a distinct registration branch, checks its exact three-path commit and pins the previously approved nine hashes. It verifies the hash of this record through the companion exception and invokes the original Scope Guard for the governance files. Product validation requires the approved exception on trusted main and still uses the original task-scoped Scope Guard.
 
-This registration records the Founder decision for the exact successor and exception contents. Integration into trusted main, product integration, Production release, and field acceptance follow their separate authorization gates.
+The Cashier successor digest remains 8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6 in both printing assertions. The historical Diamond, fallback, Records and printing assertions retain their protection.
+
+Revised exact-content approval, governance integration, product integration, Production release and field acceptance are separate decisions. The registration branch provides no active product grant.
