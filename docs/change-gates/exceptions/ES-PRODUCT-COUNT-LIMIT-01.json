@@ -6,7 +6,7 @@
   "baseOriginMainSha": "c9508d180d6ea16595f966685eb70e54cb3e48b4",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "DRAFT_NOT_ACTIVE",
+  "status": "ACTIVE",
   "authorizedPaths": [
     "app/api/cashier/store/route.ts",
     "app/api/products/route.ts",
@@ -32,12 +32,12 @@
     "tests/v3-reprint-recovery.test.ts": "d403c6200677499541b91c66db2ce8583b8cf942b45dada40df3600a75ae3a28"
   },
   "createdAt": "2026-11-04T04:29:54.813Z",
-  "approvedAt": "2026-11-04T04:29:54.813Z",
+  "approvedAt": "2026-11-04T04:42:24.221Z",
   "approvedBy": "Founder",
   "approvalSource": {
     "candidatePatchSha256": "4884968b15e3a5e05ba0ef79b27cb710f318898d48a035b157ceba913817bab7",
     "compatibilityPreparation": "Founder approved limited Core compatibility revision on 2026-11-04",
-    "finalCompatibilityApproval": "PENDING_EXACT_CONTENT_APPROVAL",
+    "finalCompatibilityApproval": "APPROVED",
     "freezeSuccessorSha256": "a23bad306a2cb1e9451e36601ab91004bb3ea88507fa40a06e28b99094f0ae85",
     "compatibilityEvidenceSha256": {
       "candidate-manifest.json": "042a40b22518d0379af1a628ff7f6ea66bf56a6f10fb454ea903127a1d467567",
@@ -57,6 +57,17 @@
         "claude-context-review.md": "a0685f8ec6a66cde9d3be9c9fb9dece9c9b68789ed045da1c1b4f6f00940ee3b",
         "claude-final-delta-review.md": "6f11ed23cae0cd45cab29152df75883ae6f5f143c035c210b9eb4b270f9ab0fc",
         "claude-boundary-review.md": "65038fb17657657d00a9b9779e6dd30d1df4365e4aeaf4efe4f80b092e62c89c"
+      }
+    },
+    "finalCompatibilityDecision": {
+      "source": "ES-PRODUCT-COUNT-LIMIT-01 task conversation, 2026-11-04, Founder Decision APPROVED",
+      "statement": "批准更新后的精确封存内容，以及将本任务对应的治理登记状态由 DRAFT_NOT_ACTIVE 更新为 ACTIVE。",
+      "recordedAt": "2026-11-04T04:42:24.221Z",
+      "approvedDraftCommit": "bb49c083cc84eccb60c474b3a84d711c499d7270",
+      "evidenceSha256": {
+        "compat-final-seal.json": "a47552b6c0ac6b2dd55997eecfc33d3361ecfe8718e344ab85a14bed135f80d1",
+        "compat-approval-packet.md": "27e697a689f960cb6706db81dfe4327c00c096bc47319acd0d138a49f211d80f",
+        "claude-compat-sealed-review.md": "f4e341b4c206b4256ac5d3e5c6f08163522afcb7b2bd9080a4e66719409198d1"
       }
     }
   },
