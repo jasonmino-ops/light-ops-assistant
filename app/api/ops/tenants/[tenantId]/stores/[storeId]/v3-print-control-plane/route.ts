@@ -3,9 +3,11 @@ import { getFkBackedOpsAdminIdentity } from '@/lib/ops-auth'
 import { prisma } from '@/lib/prisma'
 import {
   parseOpsPrintModeCommand,
+  parseOpsV3QueueRecoveryCommand,
   readOpsPrintModeState,
   resolveOpsPrintStoreAccess,
   runOpsPrintModeAction,
+  runOpsV3QueueRecovery,
   validateOpsPrintMutationRequest,
   type OpsPrintControlDb,
 } from './service'
@@ -83,7 +85,17 @@ export async function POST(
   try {
     const auth = await authorizeStore(req, params)
     if (!auth.ok) return auth.response
-    const command = parseOpsPrintModeCommand(await req.json().catch(() => null))
+    const body: unknown = await req.json().catch(() => null)
+    const recovery = parseOpsV3QueueRecoveryCommand(body)
+    if (recovery) {
+      if (!recovery.ok) return noStoreJson(recovery, { status: 400 })
+      const result = await runOpsV3QueueRecovery(prisma, {
+        tenantId: auth.store.tenantId,
+        storeId: auth.store.id,
+      }, auth.operator, recovery.value)
+      return noStoreJson(result, { status: result.ok ? 200 : result.code === 'QUEUE_RECOVERY_FORBIDDEN' ? 403 : 409 })
+    }
+    const command = parseOpsPrintModeCommand(body)
     if (!command.ok) return noStoreJson({ ok: false, error: command.code }, { status: 400 })
     const result = await runOpsPrintModeAction(db, {
       tenantId: auth.store.tenantId,

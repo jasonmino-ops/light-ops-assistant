@@ -834,14 +834,16 @@ async function main() {
     // Historical source-routing hash: fba07fb078115b29428ddd5383bb9f27adc32b1afcdeeca04e0885be34a931a9.
     // Prior ES-H5-THREE-TICKET-FULFILLMENT-01 bytes: a3770bb1805b15bba52868bd072e5f144dc27da580b85c2b5993a58c8f25e1d6.
     // Cashier successor: ES-DINE-IN-01 exact-path package (one entry button and one read-only eligibility fetch).
-    // Records remains on its original frozen bytes and expectation.
+    // Historical Dine-in Cashier SHA-256: 621fce631a93b986d86f71a8de868de5872055acf9d79e385bb2ce113ca27e94.
+    // Historical Records SHA-256: 48efc97f9b77dd63bed22fb0e3b69e44bf13ababbad3a8956cf39a6426912a22.
+    // ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01: exact ES-RETAIL-MULTI-UNIT-01 bytes.
     assert.equal(
       createHash('sha256').update(readFileSync('app/cashier/page.tsx')).digest('hex'),
-      '621fce631a93b986d86f71a8de868de5872055acf9d79e385bb2ce113ca27e94',
+      'f9bbafc2ef156d0ad49b31f3003a607a2a05ca69dd334f65c950082942a1b683',
     )
     assert.equal(
       createHash('sha256').update(readFileSync('app/records/page.tsx')).digest('hex'),
-      '48efc97f9b77dd63bed22fb0e3b69e44bf13ababbad3a8956cf39a6426912a22',
+      'ea5d384ef42d51668e4641a2f6be5e0dfd17f0a8c6f407f420bc9390b9ed664a',
     )
   })
 
