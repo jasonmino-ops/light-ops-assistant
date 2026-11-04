@@ -427,6 +427,21 @@ async function main() {
   const diamondWorktree = gitPaths('diff', '--no-renames', '--name-only', 'origin/main')
   const diamondChanged = [...new Set([...changed, ...diamondWorktree, ...diamondStaged, ...diamondCommitted])]
   const isDiamond = diamondChanged.some(path => diamondContent.has(path))
+  // ES-DIAMOND-P0-FOUNDER-QUEUE-RECOVERY-01: a separate exact-content
+  // successor for the one-time Founder queue recovery. Existing Diamond and
+  // all other task predicates below remain unchanged.
+  const founderP0Base = 'c9508d180d6ea16595f966685eb70e54cb3e48b4'
+  const founderP0Registry = 'docs/change-gates/exceptions/ES-DIAMOND-P0-FOUNDER-QUEUE-RECOVERY-01.json'
+  const founderP0Record = 'docs/freezes/ES-DIAMOND-P0-FOUNDER-QUEUE-RECOVERY-01.md'
+  const founderP0Service = 'app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts'
+  const founderP0Test = 'tests/v3-print-control-plane-service.test.ts'
+  const founderP0Content = new Map([
+    [founderP0Service, '1f681d7445258f166f9f532a0c43ff39588112b50f0bd2abf2737685db9cfa44'],
+    [founderP0Test, '96f219964ca09520d64cf6f9960df95b08fff132279fcb8b2a97140a10521d57'],
+    [founderP0Record, '90bfc15019dc296096d77afabdc2fa2abd3a33c0fa1c98b5a152d0bcd0b4a4e0'],
+  ])
+  const isFounderP0 = gitPaths('branch', '--show-current')[0] === 'codex/es-diamond-p0-founder-recovery-catalogue'
+    && diamondChanged.some(path => path === founderP0Service || path === founderP0Test)
   const isM2 = gitPaths('rev-parse', 'origin/main')[0] === m2ApprovedBase
     && changed.some(path => m2Paths.includes(path))
   const isM3 = gitPaths('rev-parse', 'origin/main')[0] === m3ApprovedBase
@@ -612,6 +627,102 @@ async function main() {
     assert.ok(gitIsAncestor(storeNameApprovedBase, storeNameCandidate), 'Store.name candidate must descend from its trusted baseline')
     assert.ok(storeNamePaths.every(path => changed.includes(path)), 'Store.name candidate requires all four exact paths')
     assertBoundary(changed, new Set([...storeNamePaths, 'tests/cashier-realtime-integration.test.ts']))
+  } else if (isFounderP0) {
+    const [trustedMain] = gitPaths('rev-parse', 'origin/main')
+    assert.ok(gitIsAncestor(founderP0Base, trustedMain), 'Founder P0 main must descend from approved base')
+    const founderP0GovernanceMain = 'cdeb8acb573b9707b5ea041a5c69c390085af32b'
+    const catalogueMain = '5211e38dd2d3c1636f76673ab3dd2816a9657b12'
+    const catalogueRegistry = 'docs/change-gates/exceptions/ES-PRODUCT-COUNT-LIMIT-01.json'
+    const catalogueRecord = 'docs/freezes/ES-PRODUCT-COUNT-LIMIT-01-FROZEN-SUCCESSOR.md'
+    assert.ok(gitIsAncestor(catalogueMain, trustedMain), 'Founder P0 main must descend from the reviewed catalogue merge')
+    assert.deepEqual(gitPaths('diff', '--no-renames', '--name-only', catalogueMain, trustedMain),
+      [founderP0Registry], 'Founder P0 successor admission may change only its exact registry')
+    assert.ok(gitIsAncestor(founderP0GovernanceMain, trustedMain), 'Founder P0 governance must precede catalogue')
+    assert.deepEqual(gitPaths('diff', '--no-renames', '--name-only', founderP0Base, founderP0GovernanceMain),
+      [founderP0Registry, founderP0Record].sort(), 'Founder P0 governance admission changed')
+    const catalogueRegistryBytes = execFileSync('git', ['show', `origin/main:${catalogueRegistry}`], { cwd: root })
+    assert.equal(createHash('sha256').update(catalogueRegistryBytes).digest('hex'),
+      'a3be6061e888edac4f4569b1e5cac3f0b6e7f8d3fb7648c84f6a898b87d72fb4',
+      'Catalogue ACTIVE registry changed')
+    const catalogue = JSON.parse(catalogueRegistryBytes.toString('utf8'))
+    assert.equal(catalogue.taskId, 'ES-PRODUCT-COUNT-LIMIT-01')
+    assert.equal(catalogue.status, 'ACTIVE')
+    assert.equal(catalogue.approvedBy, 'Founder')
+    assert.equal(catalogue.featureBranch, 'codex/es-product-count-limit-01')
+    assert.deepEqual(catalogue.additionalAuthorizations ?? [], [])
+    const cataloguePaths = [...catalogue.authorizedPaths].sort()
+    assert.deepEqual(cataloguePaths, [
+      'app/api/cashier/store/route.ts',
+      'app/api/products/route.ts',
+      'app/cashier/page.tsx',
+      'app/products/page.tsx',
+      'app/sale/page.tsx',
+      'lib/cashier-offline-db.ts',
+      'tests/cashier-realtime-integration.test.ts',
+      'tests/es-tray-device-print-contract.test.ts',
+      'tests/product-sku-search.test.ts',
+      'tests/v3-reprint-recovery.test.ts',
+    ])
+    assert.deepEqual(Object.keys(catalogue.authorizedPathSha256).sort(), cataloguePaths)
+    assert.deepEqual(gitPaths('diff', '--no-renames', '--name-only', founderP0GovernanceMain, catalogueMain),
+      [...cataloguePaths, catalogueRegistry, catalogueRecord].sort(),
+      'Founder P0 main permits only the exact catalogue admission and product release')
+    for (const path of cataloguePaths) {
+      const content = execFileSync('git', ['show', `origin/main:${path}`], { cwd: root })
+      assert.equal(createHash('sha256').update(content).digest('hex'), catalogue.authorizedPathSha256[path],
+        `Catalogue main content changed: ${path}`)
+    }
+    const grant = JSON.parse(execFileSync('git', ['show', `origin/main:${founderP0Registry}`], { cwd: root, encoding: 'utf8' }))
+    const originalGrant = JSON.parse(execFileSync('git',
+      ['show', `${founderP0GovernanceMain}:${founderP0Registry}`], { cwd: root, encoding: 'utf8' }))
+    const { additionalAuthorizations: originalAdditions, ...originalPrimary } = originalGrant
+    const { additionalAuthorizations: currentAdditions, ...currentPrimary } = grant
+    assert.deepEqual(originalAdditions, [], 'Founder P0 original grant contained no successor')
+    assert.deepEqual(currentPrimary, originalPrimary, 'Founder P0 primary grant changed')
+    assert.equal(grant.taskId, 'ES-DIAMOND-P0-FOUNDER-QUEUE-RECOVERY-01')
+    assert.equal(grant.status, 'ACTIVE')
+    assert.equal(grant.authorizationType, 'FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION')
+    assert.equal(grant.approvedBy, 'Founder')
+    assert.equal(grant.trustedRef, 'origin/main')
+    assert.equal(grant.lineageMode, 'PRE_COMMIT_CONTENT_SHA256')
+    assert.equal(grant.baseOriginMainSha, founderP0Base)
+    assert.equal(grant.featureBranch, 'codex/es-diamond-p0-founder-recovery')
+    assert.equal(currentAdditions.length, 1, 'Founder P0 requires one exact catalogue successor')
+    const successor = currentAdditions[0]
+    assert.equal(successor.authorizationId, 'CATALOGUE-MAIN-SUCCESSOR')
+    assert.equal(successor.featureBranch, 'codex/es-diamond-p0-founder-recovery-catalogue')
+    assert.equal(successor.baseOriginMainSha, catalogueMain)
+    assert.equal(successor.lineageMode, 'PRE_COMMIT_CONTENT_SHA256')
+    assert.equal(successor.status, 'ACTIVE')
+    assert.equal(successor.approvedBy, 'Founder')
+    const founderAllowed = [founderP0Service, founderP0Test, 'tests/cashier-realtime-integration.test.ts']
+    assert.deepEqual(grant.authorizedPaths, [...founderAllowed, founderP0Record].sort())
+    assert.deepEqual(Object.keys(grant.authorizedPathSha256).sort(), [...founderAllowed, founderP0Record].sort())
+    assert.equal(grant.authorizedPathSha256['tests/cashier-realtime-integration.test.ts'],
+      '0e311651ec35967d6997381121404d54fce6757fb4086624facd8dab999f9d14',
+      'Founder P0 original Cashier grant changed')
+    assert.deepEqual(successor.authorizedPaths, [...founderAllowed, founderP0Record].sort())
+    assert.deepEqual(Object.keys(successor.authorizedPathSha256).sort(), [...founderAllowed, founderP0Record].sort())
+    for (const [path, digest] of founderP0Content) {
+      assert.equal(grant.authorizedPathSha256[path], digest, `Founder P0 original grant changed: ${path}`)
+      assert.equal(successor.authorizedPathSha256[path], digest, `Founder P0 successor source changed: ${path}`)
+    }
+    assertBoundary(diamondChanged, new Set(founderAllowed))
+    assert.deepEqual([...diamondChanged].sort(), founderAllowed.sort(), 'Founder P0 requires exactly three changed paths')
+    const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
+    for (const path of [...founderAllowed, founderP0Record]) {
+      const digest = successor.authorizedPathSha256[path]
+      assert.match(digest, /^[0-9a-f]{64}$/)
+      assert.equal(sha256(readFileSync(resolve(root, path))), digest, `Founder P0 worktree content changed: ${path}`)
+      if (diamondStaged.includes(path)) {
+        assert.equal(sha256(execFileSync('git', ['show', `:${path}`], { cwd: root })), digest,
+          `Founder P0 staged content changed: ${path}`)
+      }
+      if (diamondCommitted.includes(path)) {
+        assert.equal(sha256(execFileSync('git', ['show', `HEAD:${path}`], { cwd: root })), digest,
+          `Founder P0 committed content changed: ${path}`)
+      }
+    }
   } else if (isDiamond) {
     const diamondRegistration = 'docs/change-gates/exceptions/ES-DIAMOND-CASHIER-EXACT-BOUNDARY-01.json'
     const [diamondTrustedMain] = gitPaths('rev-parse', 'origin/main')
