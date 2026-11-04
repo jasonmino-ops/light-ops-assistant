@@ -449,6 +449,16 @@ export async function runOpsPrintModeAction(
 
 const REVIEW_EVIDENCE = 'REVIEW_EXPIRED_V3_FRONT_EVIDENCE'
 const EXPIRE_JOBS = 'EXPIRE_UNEXECUTED_V3_FRONT'
+const FOUNDER_REVIEW_EVIDENCE = 'FOUNDER_REVIEW_DIAMOND_EXPIRED_FRONT'
+const FOUNDER_EXPIRE_JOBS = 'FOUNDER_EXPIRE_DIAMOND_UNEXECUTED_FRONT'
+const FOUNDER_STORE_ID = 'cmvulpn8r000106jvpo58kye4'
+const FOUNDER_STORE_CODE = 'ST883DC00C'
+const FOUNDER_DEVICE_ID = 'cmvyx1jes000208l14t5vf9ur'
+const FOUNDER_JOB_IDS = [
+  'cmw0jlsme000v08kzgyiybcqg',
+  'cmw0k7dgw001c08kz5xirfxzv',
+  'cmw0kwwta001v08jv6q6rl2f4',
+] as const
 const RECOVERY_REASON = 'EXPIRED_UNEXECUTED_FRONT_RECOVERY'
 const RECOVERY_RESULT_CODE = 'V3_OPS_EXPIRED_UNEXECUTED'
 const EVIDENCE_MAX_AGE_MS = 5 * 60_000
@@ -477,9 +487,15 @@ type EvidenceCapture = {
   outboxSha256: string
   verifiedNoLocalExecution: true
 }
-type EvidenceCommand = QueueRecoveryBase & { action: typeof REVIEW_EVIDENCE; capture: EvidenceCapture; installationId: string }
-type ExpireCommand = QueueRecoveryBase & { action: typeof EXPIRE_JOBS; evidenceId: string }
+type EvidenceCommand = QueueRecoveryBase & { action: typeof REVIEW_EVIDENCE | typeof FOUNDER_REVIEW_EVIDENCE; capture: EvidenceCapture; installationId: string }
+type ExpireCommand = QueueRecoveryBase & { action: typeof EXPIRE_JOBS | typeof FOUNDER_EXPIRE_JOBS; evidenceId: string }
 type QueueRecoveryCommand = EvidenceCommand | ExpireCommand
+function isEvidenceCommand(command: QueueRecoveryCommand): command is EvidenceCommand {
+  return command.action === REVIEW_EVIDENCE || command.action === FOUNDER_REVIEW_EVIDENCE
+}
+function founderRecovery(action: QueueRecoveryCommand['action']) {
+  return action === FOUNDER_REVIEW_EVIDENCE || action === FOUNDER_EXPIRE_JOBS
+}
 type ReviewedJob = {
   id: string
   key: string
@@ -545,10 +561,11 @@ function parseEvidenceCapture(value: unknown): EvidenceCapture | null {
 export function parseOpsV3QueueRecoveryCommand(value: unknown):
   { ok: true; value: QueueRecoveryCommand } | { ok: false; code: 'INVALID_QUEUE_RECOVERY_COMMAND' } | null {
   const row = object(value)
-  if (!row || (row.action !== REVIEW_EVIDENCE && row.action !== EXPIRE_JOBS)) return null
+  if (!row || (row.action !== REVIEW_EVIDENCE && row.action !== EXPIRE_JOBS
+    && row.action !== FOUNDER_REVIEW_EVIDENCE && row.action !== FOUNDER_EXPIRE_JOBS)) return null
   const invalid = { ok: false, code: 'INVALID_QUEUE_RECOVERY_COMMAND' } as const
   if (!exactKeys(row, ['action', 'confirmed', 'requestId', 'expectedStateVersion', 'jobIds', 'reason',
-    ...(row.action === REVIEW_EVIDENCE ? ['capture', 'installationId'] : ['evidenceId'])])
+    ...(row.action === REVIEW_EVIDENCE || row.action === FOUNDER_REVIEW_EVIDENCE ? ['capture', 'installationId'] : ['evidenceId'])])
     || row.confirmed !== true || !id(row.requestId) || typeof row.expectedStateVersion !== 'number'
     || !Number.isSafeInteger(row.expectedStateVersion) || row.expectedStateVersion < 1
     || !Array.isArray(row.jobIds) || row.jobIds.length < 1 || row.jobIds.length > 3
@@ -558,12 +575,12 @@ export function parseOpsV3QueueRecoveryCommand(value: unknown):
     requestId: row.requestId, expectedStateVersion: row.expectedStateVersion,
     jobIds: [...row.jobIds].sort(), reason: RECOVERY_REASON,
   }
-  if (row.action === EXPIRE_JOBS) {
-    return id(row.evidenceId) ? { ok: true, value: { ...base, action: EXPIRE_JOBS, evidenceId: row.evidenceId } } : invalid
+  if (row.action === EXPIRE_JOBS || row.action === FOUNDER_EXPIRE_JOBS) {
+    return id(row.evidenceId) ? { ok: true, value: { ...base, action: row.action, evidenceId: row.evidenceId } } : invalid
   }
   const capture = parseEvidenceCapture(row.capture)
   return capture && id(row.installationId) && digest(capture.jobs.map(job => job.id)) === digest(base.jobIds)
-    ? { ok: true, value: { ...base, action: REVIEW_EVIDENCE, capture, installationId: row.installationId } }
+    ? { ok: true, value: { ...base, action: row.action, capture, installationId: row.installationId } }
     : invalid
 }
 
@@ -687,13 +704,28 @@ export async function runOpsV3QueueRecovery(
   command: QueueRecoveryCommand,
   clock: () => Date = () => new Date(),
 ): Promise<{ ok: true; requestId: string; evidenceId: string; jobIds: string[] } | { ok: false; code: string }> {
-  if (actor.role !== 'OPS_ADMIN') return { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' }
+  const emergency = founderRecovery(command.action)
+  const requiredRole = emergency ? 'SUPER_ADMIN' : 'OPS_ADMIN'
+  if (actor.role !== requiredRole) return { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' }
   try {
     return await db.$transaction(async tx => {
-      const activeOps = (adminId: string) => tx.opsAdmin.findFirst({
-        where: { id: adminId, role: 'OPS_ADMIN', status: 'ACTIVE' }, select: { id: true },
+      const activeOperator = (adminId: string, role: 'OPS_ADMIN' | 'SUPER_ADMIN') => tx.opsAdmin.findFirst({
+        where: { id: adminId, role, status: 'ACTIVE' }, select: { id: true },
       })
-      requireRecovery(await activeOps(actor.id), 'QUEUE_RECOVERY_FORBIDDEN')
+      requireRecovery(await activeOperator(actor.id, requiredRole), 'QUEUE_RECOVERY_FORBIDDEN')
+      if (emergency) {
+        requireRecovery(scope.storeId === FOUNDER_STORE_ID
+          && command.jobIds.length === FOUNDER_JOB_IDS.length
+          && command.jobIds.every((jobId, index) => jobId === FOUNDER_JOB_IDS[index]), 'QUEUE_RECOVERY_FORBIDDEN')
+        const store = await tx.store.findFirst({
+          where: { id: scope.storeId, tenantId: scope.tenantId, code: FOUNDER_STORE_CODE, status: 'ACTIVE' },
+          select: { id: true },
+        })
+        requireRecovery(store, 'QUEUE_RECOVERY_FORBIDDEN')
+        if (isEvidenceCommand(command)) {
+          requireRecovery(command.capture.deviceId === FOUNDER_DEVICE_ID, 'QUEUE_RECOVERY_FORBIDDEN')
+        }
+      }
       const planeIds = await tx.$queryRaw<{ id: string }[]>`
         SELECT "id" FROM "V3PrintControlPlane"
         WHERE "tenantId" = ${scope.tenantId} AND "storeId" = ${scope.storeId} FOR UPDATE
@@ -702,7 +734,8 @@ export async function runOpsV3QueueRecovery(
       const target = { ...scope, targetType: 'V3PrintControlPlane', targetId: planeIds[0].id }
       const commandDigest = digest([actor.id, command])
       const prior = await tx.operationLog.findFirst({
-        where: { ...target, requestId: command.requestId, actionType: { in: [REVIEW_EVIDENCE, EXPIRE_JOBS] } },
+        where: { ...target, requestId: command.requestId,
+          actionType: { in: [REVIEW_EVIDENCE, EXPIRE_JOBS, FOUNDER_REVIEW_EVIDENCE, FOUNDER_EXPIRE_JOBS] } },
         select: { id: true, actionType: true, payloadSnapshot: true },
       })
       if (prior) {
@@ -710,7 +743,8 @@ export async function runOpsV3QueueRecovery(
         requireRecovery(prior.actionType === command.action && saved?.commandDigest === commandDigest, 'QUEUE_REQUEST_CONFLICT')
         return {
           ok: true, requestId: command.requestId,
-          evidenceId: command.action === REVIEW_EVIDENCE ? prior.id : command.evidenceId, jobIds: command.jobIds,
+          evidenceId: isEvidenceCommand(command)
+            ? prior.id : command.evidenceId, jobIds: command.jobIds,
         }
       }
 
@@ -728,14 +762,23 @@ export async function runOpsV3QueueRecovery(
       const fence = { stateVersion: plane.stateVersion, ownerEpoch: plane.ownerEpoch, releasedAt: releasedAt.toISOString() }
       const auditBase = { ...target, status: 'SUCCESS' as const, requestId: command.requestId, message: command.reason, createdAt: now }
 
-      if (command.action === REVIEW_EVIDENCE) {
+      if (isEvidenceCommand(command)) {
+        if (emergency) {
+          // The Founder grant is one-time. A failed or expired grant requires a
+          // new, separately authorized recovery rather than a re-dated capture.
+          const priorFounderGrant = await tx.operationLog.findFirst({
+            where: { ...target, actionType: FOUNDER_REVIEW_EVIDENCE, status: 'SUCCESS' },
+            select: { id: true },
+          })
+          requireRecovery(!priorFounderGrant, 'FOUNDER_RECOVERY_ALREADY_AUTHORIZED')
+        }
         requireRecovery(captureFresh(command.capture, now, now, releasedAt), 'QUEUE_EVIDENCE_STALE')
         const captureKey = digest([
           command.capture.deviceId, command.capture.capturedAt, command.capture.ledgerSha256, command.capture.outboxSha256,
         ])
         const priorCapture = await tx.operationLog.findFirst({
           where: {
-            ...target, actionType: REVIEW_EVIDENCE,
+            ...target, actionType: { in: [REVIEW_EVIDENCE, FOUNDER_REVIEW_EVIDENCE] },
             OR: [
               { payloadSnapshot: { path: ['captureKey'], equals: captureKey } },
               { payloadSnapshot: { path: ['capture', 'captureId'], equals: command.capture.captureId } },
@@ -744,16 +787,18 @@ export async function runOpsV3QueueRecovery(
           select: { id: true },
         })
         requireRecovery(!priorCapture, 'QUEUE_EVIDENCE_CAPTURE_REUSED')
-        // A real Ops reviewer attests the trusted Windows capture. The server does not
-        // read Windows itself. The capture ID prevents re-dating the same collection.
+        // A real Ops reviewer, or the one authorized Founder, attests the
+        // Windows capture. The server validates its binding and age but does
+        // not independently read or authenticate Windows ledger bytes.
         // Verify the installation from the captured Windows profile without storing its raw ID.
         const installationIdHash = hashInstallationId(command.installationId)
         const jobs = await reviewQueueRows(tx, scope, { ...plane, handoffRequestedAt: releasedAt },
           command, command.capture, installationIdHash, now)
         const evidence = await tx.operationLog.create({
           data: {
-            ...auditBase, actionType: REVIEW_EVIDENCE,
-            payloadSnapshot: { commandDigest, captureKey, capture: command.capture, installationIdHash, reviewerId: actor.id, fence, jobs, reason: command.reason },
+            ...auditBase, actionType: command.action,
+            payloadSnapshot: { commandDigest, captureKey, capture: command.capture, installationIdHash,
+              reviewerId: actor.id, founderEmergency: emergency, fence, jobs, reason: command.reason },
           },
           select: { id: true },
         })
@@ -761,21 +806,27 @@ export async function runOpsV3QueueRecovery(
       }
 
       const evidence = await tx.operationLog.findFirst({
-        where: { ...target, id: command.evidenceId, actionType: REVIEW_EVIDENCE, status: 'SUCCESS' },
+        where: { ...target, id: command.evidenceId,
+          actionType: emergency ? FOUNDER_REVIEW_EVIDENCE : REVIEW_EVIDENCE, status: 'SUCCESS' },
         select: { createdAt: true, payloadSnapshot: true },
       })
       const review = object(evidence?.payloadSnapshot)
       const capture = parseEvidenceCapture(review?.capture)
       requireRecovery(evidence && review && capture && id(review.reviewerId) && sha256(review.installationIdHash), 'QUEUE_EVIDENCE_REQUIRED')
       const reviewerId = review.reviewerId
-      requireRecovery(reviewerId !== actor.id, 'QUEUE_EVIDENCE_INDEPENDENCE_REQUIRED')
-      requireRecovery(await activeOps(reviewerId), 'QUEUE_REVIEWER_NOT_ACTIVE')
+      requireRecovery(emergency ? reviewerId === actor.id && review.founderEmergency === true
+        : reviewerId !== actor.id && review.founderEmergency !== true, 'QUEUE_EVIDENCE_INDEPENDENCE_REQUIRED')
+      requireRecovery(await activeOperator(reviewerId, requiredRole), 'QUEUE_REVIEWER_NOT_ACTIVE')
+      if (emergency) {
+        requireRecovery(capture.deviceId === FOUNDER_DEVICE_ID, 'QUEUE_RECOVERY_FORBIDDEN')
+      }
       requireRecovery(captureFresh(capture, now, evidence.createdAt, releasedAt), 'QUEUE_EVIDENCE_STALE')
       const reviewedFence = object(review.fence)
       requireRecovery(reviewedFence?.stateVersion === fence.stateVersion && reviewedFence?.ownerEpoch === fence.ownerEpoch
         && reviewedFence?.releasedAt === fence.releasedAt && review.reason === command.reason, 'QUEUE_EVIDENCE_FENCE_MISMATCH')
       const consumed = await tx.operationLog.findFirst({
-        where: { ...target, actionType: EXPIRE_JOBS, payloadSnapshot: { path: ['evidenceId'], equals: command.evidenceId } },
+        where: { ...target, actionType: { in: [EXPIRE_JOBS, FOUNDER_EXPIRE_JOBS] },
+          payloadSnapshot: { path: ['evidenceId'], equals: command.evidenceId } },
         select: { id: true },
       })
       requireRecovery(!consumed, 'QUEUE_EVIDENCE_CONSUMED')
@@ -808,10 +859,10 @@ export async function runOpsV3QueueRecovery(
       requireRecovery(captureFresh(capture, clock(), evidence.createdAt, releasedAt), 'QUEUE_EVIDENCE_STALE')
       await tx.operationLog.create({
         data: {
-          ...auditBase, actionType: EXPIRE_JOBS,
+          ...auditBase, actionType: command.action,
           payloadSnapshot: {
             commandDigest, evidenceId: command.evidenceId, reviewerId, executorId: actor.id,
-            reason: command.reason, fence,
+            reason: command.reason, founderEmergency: emergency, fence,
             jobs: jobs.map(job => ({
               ...job, before: { status: 'PENDING', attemptCount: 0, claimAttempt: 0, effectBoundary: null },
               after: { ...disposition, completedAt: now.toISOString() },
