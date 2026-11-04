@@ -35,22 +35,30 @@
   "approvedAt": "2026-11-04T04:29:54.813Z",
   "approvedBy": "Founder",
   "approvalSource": {
-    "source": "ES-PRODUCT-COUNT-LIMIT-01 task conversation, 2026-11-04, Founder Decision APPROVED",
-    "statement": "批准最终十文件候选对应的正式冻结后继，以及 ACTIVE 路径例外登记内容。",
-    "timestampBasis": "Local registration timestamp after the Founder decision",
     "candidatePatchSha256": "dfcda0d2789dcf31d24a866ffabdbc52e9e265901d0cb5d0b9651c36b6647b25",
-    "evidenceSha256": {
-      "final-approval-packet.md": "748b5848ba4f0ca9b0b7caee1929e0e114f5303b7dc5b34d03fe5946186625f8",
-      "candidate-manifest.json": "375e6e2ee42f85166c3cf15305d62c22f43c26b27a60e25dab2f3c6352140cbc",
-      "active-registration-draft.json": "2445d29df3050d30b2149e2ac527201b72247736cfd875d016afc7e826121dd0",
-      "claude-context-review.md": "a0685f8ec6a66cde9d3be9c9fb9dece9c9b68789ed045da1c1b4f6f00940ee3b",
-      "claude-final-delta-review.md": "6f11ed23cae0cd45cab29152df75883ae6f5f143c035c210b9eb4b270f9ab0fc",
-      "claude-boundary-review.md": "65038fb17657657d00a9b9779e6dd30d1df4365e4aeaf4efe4f80b092e62c89c"
-    },
-    "priorCandidatePatchSha256": "705441c63394ccb931494a002dc82f19ae0e4d7029b2d3d51b438fb5d8915477",
     "compatibilityPreparation": "Founder approved limited Core compatibility revision on 2026-11-04",
     "finalCompatibilityApproval": "PENDING_EXACT_CONTENT_APPROVAL",
-    "freezeSuccessorSha256": "0f5de62bda26a816d6a8e53c5275827b53fe7995570ae7e0f455db1c7e56d856"
+    "freezeSuccessorSha256": "0f5de62bda26a816d6a8e53c5275827b53fe7995570ae7e0f455db1c7e56d856",
+    "compatibilityEvidenceSha256": {
+      "candidate-manifest.json": "6b34c430f9fd2026fbb8727ff1d4c4e3937f6d089a7de39d5bf58246c5bfb584",
+      "active-registration-draft.json": "b631472f1ce16396c5f8abe56057019d29e5efcbe2b629dd6084b3e9c2481f16",
+      "sealed-candidate-current.patch": "dfcda0d2789dcf31d24a866ffabdbc52e9e265901d0cb5d0b9651c36b6647b25",
+      "post-registration-product.patch": "ff40c5719723f588308348339e9aaaa91a2de769387b2cd08479daf6b768b3f4"
+    },
+    "priorExactContentApproval": {
+      "source": "ES-PRODUCT-COUNT-LIMIT-01 task conversation, 2026-11-04, Founder Decision APPROVED",
+      "statement": "批准最终十文件候选对应的正式冻结后继，以及 ACTIVE 路径例外登记内容。",
+      "timestampBasis": "Local registration timestamp after the Founder decision",
+      "candidatePatchSha256": "705441c63394ccb931494a002dc82f19ae0e4d7029b2d3d51b438fb5d8915477",
+      "evidenceSha256": {
+        "final-approval-packet.md": "748b5848ba4f0ca9b0b7caee1929e0e114f5303b7dc5b34d03fe5946186625f8",
+        "candidate-manifest-before-compatibility.json": "375e6e2ee42f85166c3cf15305d62c22f43c26b27a60e25dab2f3c6352140cbc",
+        "active-registration-before-compatibility.json": "2445d29df3050d30b2149e2ac527201b72247736cfd875d016afc7e826121dd0",
+        "claude-context-review.md": "a0685f8ec6a66cde9d3be9c9fb9dece9c9b68789ed045da1c1b4f6f00940ee3b",
+        "claude-final-delta-review.md": "6f11ed23cae0cd45cab29152df75883ae6f5f143c035c210b9eb4b270f9ab0fc",
+        "claude-boundary-review.md": "65038fb17657657d00a9b9779e6dd30d1df4365e4aeaf4efe4f80b092e62c89c"
+      }
+    }
   },
   "closeAfter": "FEATURE_MERGE",
   "reason": "Exact catalogue-only candidate covering paged reads, count, selection, lookup, atomic offline cache and exact regression seals. Preserves transaction, authorization, Local First and printing behavior."
