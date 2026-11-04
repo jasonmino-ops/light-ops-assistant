@@ -6,7 +6,7 @@
   "baseOriginMainSha": "c9508d180d6ea16595f966685eb70e54cb3e48b4",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "DRAFT_NOT_ACTIVE",
+  "status": "ACTIVE",
   "authorizedPaths": [
     "app/api/cashier/store/route.ts",
     "app/api/products/route.ts",
@@ -32,12 +32,12 @@
     "tests/v3-reprint-recovery.test.ts": "d403c6200677499541b91c66db2ce8583b8cf942b45dada40df3600a75ae3a28"
   },
   "createdAt": "2026-11-04T04:29:54.813Z",
-  "approvedAt": "2026-11-04T04:42:24.221Z",
+  "approvedAt": "2026-11-04T05:03:44.790Z",
   "approvedBy": "Founder",
   "approvalSource": {
     "candidatePatchSha256": "67ef14ea6cc98e71c079962a6f6cab9d0568b9091bc8b3ec20cfed13df0a3a1c",
     "compatibilityPreparation": "Founder approved the limited registration baseline compatibility revision on 2026-11-04",
-    "finalCompatibilityApproval": "PENDING_EXACT_CONTENT_APPROVAL",
+    "finalCompatibilityApproval": "APPROVED",
     "freezeSuccessorSha256": "377307b54dff794bf038d3bcd4fcbc9e7b83a3b05580c14ebae7faea5e939c09",
     "compatibilityEvidenceSha256": {
       "baseline-candidate-manifest.json": "d45674ec5cea7e7a580e134b50df136fa3c193e41528d2de3a07e2bb1d6a3b13",
@@ -79,6 +79,17 @@
           "compat-approval-packet.md": "27e697a689f960cb6706db81dfe4327c00c096bc47319acd0d138a49f211d80f",
           "claude-compat-sealed-review.md": "f4e341b4c206b4256ac5d3e5c6f08163522afcb7b2bd9080a4e66719409198d1"
         }
+      }
+    },
+    "finalCompatibilityDecision": {
+      "source": "ES-PRODUCT-COUNT-LIMIT-01 task conversation, 2026-11-04, Founder Decision APPROVED",
+      "statement": "批准本轮更新后的精确封存内容，并授权将对应治理登记补录为 ACTIVE。",
+      "recordedAt": "2026-11-04T05:03:44.790Z",
+      "approvedDraftCommit": "78095620af87a261f9cd194a047ca01f42e6edf4",
+      "evidenceSha256": {
+        "baseline-final-seal.json": "87d3a9e6b0646e0a5aa2cbab9e6ae6c813142c6e346fcca4498092c69501d77e",
+        "baseline-approval-packet.md": "f0d96f9b75439b1bf04d1448715eaa028912a9bd89e39b5af48f03e1fc5c0992",
+        "claude-baseline-complete-review.md": "7e1a31aa4dd0df700c4a5d723cc340ac754f146cb3f92cfd161ef146c56a13cf"
       }
     }
   },
