@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
+import { Fragment, useState, useEffect, useLayoutEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import type { NetworkMode, NetworkRole } from '@/e-shop-tray/src/networkContract'
 import QRCode from 'react-qr-code'
@@ -56,14 +56,15 @@ import {
   CASHIER_CACHE_VERSION,
   cacheCashierProducts,
   countPendingOfflineOrders,
-  getCachedCashierProducts,
+  getCashierProductCache,
   getCashierDeviceId,
-  getCashierProductCacheMeta,
   getPendingOfflineOrders,
   markOfflineOrdersSyncFailed,
   markOfflineOrdersSyncing,
   saveOfflineCashierOrder,
   updateOfflineOrderSyncResult,
+  verifyCashierCatalog,
+  type CashierCatalogProof,
   type CashierProductCacheMeta,
 } from '@/lib/cashier-offline-db'
 import {
@@ -115,6 +116,19 @@ type Product = {
 }
 
 type Category = { id: string; name: string; parentId: string | null }
+
+type CashierCatalogPage = {
+  tenantId: string
+  storeId: string
+  storeCode?: string
+  storeName?: string
+  currencyCode?: string
+  printKitchenTicket?: boolean
+  products: Product[]
+  categories: Category[]
+  nextCursor?: string | null
+  proof?: CashierCatalogProof
+}
 
 type CartLine = {
   productId: string | null; barcode: string; name: string; spec: string | null
@@ -1457,9 +1471,10 @@ export default function CashierPage() {
   const [isRestoringCashierStore, setIsRestoringCashierStore] = useState(true)
   const [isOnline,      setIsOnline]      = useState(true)
   const [cacheMeta,     setCacheMeta]     = useState<CashierProductCacheMeta | null>(null)
-  const [cacheStatus,   setCacheStatus]   = useState<'idle' | 'saving' | 'ready' | 'failed' | 'empty'>('idle')
+  const [cacheStatus,   setCacheStatus]   = useState<'idle' | 'saving' | 'ready' | 'failed' | 'empty' | 'legacy'>('idle')
   const [cacheError,    setCacheError]    = useState('')
   const [productsSource,setProductsSource]= useState<'online' | 'cache' | 'none'>('none')
+  const catalogStore = useRef('')
   const [offlinePendingCount, setOfflinePendingCount] = useState(0)
   const [offlineSyncing, setOfflineSyncing] = useState(false)
   const [offlineSyncSummary, setOfflineSyncSummary] = useState('')
@@ -1841,89 +1856,145 @@ export default function CashierPage() {
         setPosAccountAccess('login_required')
         setPosAccountAccessMessage('请确认你已使用本店老板或员工账号登录。')
       })
-    getCashierProductCacheMeta(sc)
-      .then((meta) => {
-        if (meta) {
-          setCacheMeta(meta)
-          setCacheStatus(meta.productCount > 0 ? 'ready' : 'empty')
-        }
-      })
-      .catch((e) => console.warn('[cashier:offline-cache] read meta failed', e))
-    countPendingOfflineOrders(sc)
-      .then(setOfflinePendingCount)
-      .catch((e) => console.warn('[cashier:offline-order] count failed', e))
-
-    fetch(`/api/cashier/store?storeCode=${encodeURIComponent(sc)}`)
-      .then(r => r.json())
-      .then(d => {
-        const nextProducts = Array.isArray(d.products) ? d.products : []
-        const nextCategories = Array.isArray(d.categories) ? d.categories : []
-        setProducts(nextProducts)
-        setCategories(nextCategories)
-        setProductsSource('online')
-        setStoreName(d.storeName ?? '')
-        setStoreId(typeof d.storeId === 'string' ? d.storeId : '')
-        setCurrencyCode(typeof d.currencyCode === 'string' ? d.currencyCode : 'USD')
-        setIsKitchenTicketEnabled(d.printKitchenTicket === true)
-        if (d.storeId && d.tenantId) {
-          setCacheStatus('saving')
-          const catNameById = new Map(nextCategories.map((c: Category) => [c.id, c.name]))
-          cacheCashierProducts({
-            tenantId: d.tenantId,
-            storeId: d.storeId,
-            storeCode: sc,
-            products: nextProducts.map((p: Product) => ({
-              ...p,
-              categoryName: p.categoryId ? catNameById.get(p.categoryId) ?? null : null,
-            })),
-          })
-            .then((meta) => {
-              setCacheMeta(meta)
-              setCacheStatus(meta.productCount > 0 ? 'ready' : 'empty')
-              setCacheError('')
-            })
-            .catch((e) => {
-              console.warn('[cashier:offline-cache] product cache failed', e)
-              setCacheStatus('failed')
-              setCacheError('商品缓存失败，断网模式暂不可用')
-            })
-        } else {
-          setCacheStatus('failed')
-          setCacheError('商品缓存失败，缺少门店缓存信息')
-        }
-      })
-      .catch(async (e) => {
-        console.warn('[cashier:store] load failed', e)
-        try {
-          const cached = await getCachedCashierProducts(sc)
-          if (cached.length > 0) {
-            setProducts(cached.map((p) => ({
-              id: p.productId,
-              barcode: p.barcode,
-              sku: p.sku,
-              name: p.name,
-              spec: p.spec,
-              sellPrice: p.price,
-              categoryId: p.categoryId,
-              imageUrl: p.imageUrl,
-              status: p.status,
-              updatedAt: p.updatedAt,
-              mainUnitName: p.mainUnitName,
-              auxUnitName: p.auxUnitName,
-              auxBarcode: p.auxBarcode,
-              auxConversionFactor: p.auxConversionFactor,
-              auxSellPrice: p.auxSellPrice,
-              auxEnabled: p.auxEnabled,
-            })))
-            setCategories([])
-            setProductsSource('cache')
-          }
-        } catch (cacheReadError) {
-          console.warn('[cashier:offline-cache] read products failed', cacheReadError)
-        }
-      })
-      .finally(() => setLoading(false))
   }, [router])
+
+  useEffect(() => {
+    if (!storeCode) return
+    const request = new AbortController()
+    const { signal } = request
+    const sc = storeCode
+    if (catalogStore.current !== sc) {
+      catalogStore.current = sc
+      setProducts([])
+      setCategories([])
+      setProductsSource('none')
+      setCacheMeta(null)
+      setCacheStatus('idle')
+    }
+
+    async function restoreCatalog() {
+      const cached = await getCashierProductCache(sc)
+      if (signal.aborted) return
+      if (!cached) {
+        setCacheMeta(null)
+        setCacheStatus('empty')
+        setProducts([])
+        setCategories([])
+        setProductsSource('none')
+        return
+      }
+      const { meta, products } = cached
+      setCacheMeta(meta)
+      setCacheStatus(!meta.catalogProof ? 'legacy' : meta.productCount > 0 ? 'ready' : 'empty')
+      setProducts(products.map(p => ({
+        id: p.productId,
+        barcode: p.barcode,
+        sku: p.sku,
+        name: p.name,
+        spec: p.spec,
+        sellPrice: p.price,
+        categoryId: p.categoryId,
+        imageUrl: p.imageUrl,
+        status: p.status,
+        updatedAt: p.updatedAt,
+        mainUnitName: p.mainUnitName,
+        auxUnitName: p.auxUnitName,
+        auxBarcode: p.auxBarcode,
+        auxConversionFactor: p.auxConversionFactor,
+        auxSellPrice: p.auxSellPrice,
+        auxEnabled: p.auxEnabled,
+      })).sort((a, b) => a.name.localeCompare(b.name)))
+      setCategories(meta.categories ?? [])
+      setProductsSource('cache')
+    }
+
+    async function loadCatalog() {
+      if (!isOnline) {
+        await restoreCatalog()
+        return
+      }
+      const catalog: Product[] = []
+      let identity: { tenantId: string; storeId: string } | undefined
+      let after: string | null = null
+      let d: CashierCatalogPage
+      do {
+        const params = new URLSearchParams({ storeCode: sc, catalog: '1' })
+        if (after) params.set('after', after)
+        const res = await fetch(`/api/cashier/store?${params}`, { signal, cache: 'no-store' })
+        if (!res.ok) throw new Error('CASHIER_CATALOG_LOAD_FAILED')
+        d = await res.json()
+        if (!Array.isArray(d.products) || !Array.isArray(d.categories) ||
+            !d.tenantId || !d.storeId ||
+            (d.nextCursor !== undefined && d.storeCode !== sc) ||
+            (identity && (d.tenantId !== identity.tenantId || d.storeId !== identity.storeId))) {
+          throw new Error('INVALID_CASHIER_CATALOG_PAGE')
+        }
+        identity ??= { tenantId: d.tenantId, storeId: d.storeId }
+        if (d.nextCursor === undefined && after) throw new Error('INCOMPLETE_CASHIER_CATALOG')
+        if (d.nextCursor && d.nextCursor === after) throw new Error('INVALID_CASHIER_CATALOG_CURSOR')
+        catalog.push(...d.products)
+        after = d.nextCursor ?? null
+      } while (after)
+      const { proof, categories } = d
+      // During a client/server version mismatch, the legacy response can
+      // still be used online. It carries no proof and never replaces a cache.
+      if (d.nextCursor !== undefined && (!proof || !await verifyCashierCatalog(catalog, proof))) {
+        throw new Error('INCOMPLETE_CASHIER_CATALOG')
+      }
+      if (signal.aborted) return
+      setProducts(catalog.sort((a, b) => a.name.localeCompare(b.name)))
+      setCategories(categories)
+      setProductsSource('online')
+      setStoreName(d.storeName ?? '')
+      setStoreId(d.storeId)
+      setCurrencyCode(d.currencyCode ?? 'USD')
+      setIsKitchenTicketEnabled(d.printKitchenTicket === true)
+      setLoading(false)
+      if (!proof || d.nextCursor === undefined) return
+
+      const catNameById = new Map(categories.map(c => [c.id, c.name]))
+      setCacheStatus('saving')
+      try {
+        const meta = await cacheCashierProducts({
+          ...identity,
+          storeCode: sc,
+          products: catalog.map(p => ({
+            ...p,
+            categoryName: p.categoryId ? catNameById.get(p.categoryId) ?? null : null,
+          })),
+          categories,
+          proof,
+          signal,
+        })
+        if (signal.aborted) return
+        setCacheMeta(meta)
+        setCacheStatus(meta.productCount > 0 ? 'ready' : 'empty')
+        setCacheError('')
+      } catch (error) {
+        if (signal.aborted) return
+        console.warn('[cashier:offline-cache] product cache failed', error)
+        setCacheStatus('failed')
+        setCacheError('商品缓存刷新失败')
+      }
+    }
+
+    void loadCatalog().catch(async error => {
+      if (signal.aborted) return
+      console.warn('[cashier:store] load failed', error)
+      try {
+        await restoreCatalog()
+      } catch (cacheReadError) {
+        if (signal.aborted) return
+        console.warn('[cashier:offline-cache] read products failed', cacheReadError)
+        setCacheMeta(null)
+        setCacheStatus('failed')
+        setProducts([])
+        setCategories([])
+        setProductsSource('none')
+      }
+    }).finally(() => { if (!signal.aborted) setLoading(false) })
+    return () => request.abort()
+  }, [storeCode, isOnline])
 
   // ── Browser online/offline signal for Offline status only ─────────────────
   useEffect(() => {
@@ -1988,6 +2059,22 @@ export default function CashierPage() {
   }, [])
 
   const cashierAuthorized = Boolean(storeCode && posAccountAccess === 'authorized')
+  const catalogScanRequest = useRef<AbortController | null>(null)
+  const catalogScanCartVersion = useRef(0)
+  const cartIsEmpty = cart.length === 0
+  useLayoutEffect(() => {
+    if (cartIsEmpty) catalogScanCartVersion.current += 1
+  }, [cartIsEmpty])
+  useLayoutEffect(() => {
+    if (!cashierAuthorized || !isOnline || submitting || checkoutStep !== 'SELECT_ITEMS') return
+    const request = new AbortController()
+    catalogScanRequest.current = request
+    return () => {
+      request.abort()
+      catalogScanRequest.current = null
+    }
+  }, [cashierAuthorized, isOnline, storeCode, submitting, checkoutStep])
+
   cashierPosNeedAuthRef.current = posAuthCopy().needAuth
 
   const pullCashierOrders = useCallback((): Promise<boolean> => {
@@ -4081,12 +4168,12 @@ export default function CashierPage() {
       scannerInputDebounceRef.current = null
       const currentValue = scannerInputRef.current?.value ?? rawValue
       if (cleanSearchText(currentValue).length >= SCANNER_MIN_CODE_LENGTH) {
-        completeScannerInput(currentValue)
+        void completeScannerInput(currentValue)
       }
     }, 220)
   }
 
-  function completeScannerInput(rawValue: string) {
+  async function completeScannerInput(rawValue: string) {
     if (scannerInputDebounceRef.current !== null) {
       window.clearTimeout(scannerInputDebounceRef.current)
       scannerInputDebounceRef.current = null
@@ -4108,7 +4195,27 @@ export default function CashierPage() {
       return
     }
 
-    const matches = products.filter(p => productMatchesExactCode(p, rawCode))
+    let matches = products.filter(p => productMatchesExactCode(p, rawCode))
+    if (matches.length === 0 && isOnline && storeCode && catalogScanRequest.current) {
+      const { signal } = catalogScanRequest.current
+      const cartVersion = catalogScanCartVersion.current
+      try {
+        const params = new URLSearchParams({ storeCode, catalog: '1', lookup: rawCode })
+        const res = await fetch(`/api/cashier/store?${params}`, { signal, cache: 'no-store' })
+        if (!res.ok) throw new Error('CASHIER_PRODUCT_LOOKUP_FAILED')
+        const result: { storeCode: string; products: Product[] } = await res.json()
+        if (signal.aborted || cartVersion !== catalogScanCartVersion.current) return
+        if (result.storeCode !== storeCode || !Array.isArray(result.products)) {
+          throw new Error('INVALID_CASHIER_PRODUCT_LOOKUP')
+        }
+        matches = result.products.filter(p => p.status === 'ACTIVE' && productMatchesExactCode(p, rawCode))
+      } catch {
+        if (signal.aborted || cartVersion !== catalogScanCartVersion.current) return
+        setDebugResult({ matchCount: 0, addToCartCalled: false, lastError: '商品查询失败' })
+        showToast('商品查询失败，请重试')
+        return
+      }
+    }
     if (matches.length === 0) {
       setDebugResult({ matchCount: 0, addToCartCalled: false, lastError: '未找到商品' })
       showToast(`未找到商品：${rawCode}`)
@@ -4418,6 +4525,8 @@ export default function CashierPage() {
     cacheStatus === 'saving' ? d.cacheSaving :
     cacheStatus === 'ready' && cacheMeta ? d.cacheReady(cacheMeta.productCount, fmtCacheTime(cacheMeta.lastProductCacheAt)) :
     cacheStatus === 'empty' ? d.cacheEmpty :
+    cacheStatus === 'legacy' ? (lang === 'en' ? 'Legacy cache: completeness unverified' :
+      lang === 'km' ? 'ឃ្លាំងសម្ងាត់ចាស់៖ មិនទាន់ផ្ទៀងផ្ទាត់ភាពពេញលេញ' : '旧版商品缓存：完整性未验证') :
     cacheStatus === 'failed' ? (cacheError || d.cacheFailed) :
     (lang === 'en' ? 'Cache: not cached yet' : lang === 'km' ? 'Cache: មិនទាន់មានទេ' : '商品缓存：未缓存')
   const canOfflineCashier = !isOnline && productsSource === 'cache' && products.length > 0 && !!cacheMeta

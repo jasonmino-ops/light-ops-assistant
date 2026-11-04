@@ -115,6 +115,8 @@ export async function GET(req: NextRequest) {
   // ── List mode ──────────────────────────────────────────────────────────────
   if (!barcode) {
     const all = req.nextUrl.searchParams.get('all') === 'true'
+    const paged = req.nextUrl.searchParams.get('catalog') === '1'
+    const after = paged ? req.nextUrl.searchParams.get('after') : null
 
     // all=true is OWNER-only; returns DISABLED products too (for delete management)
     if (all && ctx.role !== 'OWNER') {
@@ -126,21 +128,23 @@ export async function GET(req: NextRequest) {
       ...(all ? {} : { status: 'ACTIVE' as const }),
     }
 
+    const pageSize = 200
+    const listOptions = {
+      where: { ...where, ...(after ? { id: { gt: after } } : {}) },
+      orderBy: paged ? { id: 'asc' as const } : { name: 'asc' as const },
+      take: paged ? pageSize + 1 : 500,
+    }
     let products: Array<Prisma.ProductGetPayload<{ select: typeof PRODUCT_SELECT }>>
     try {
       products = await prisma.product.findMany({
-        where,
+        ...listOptions,
         select: PRODUCT_SELECT,
-        orderBy: { name: 'asc' },
-        take: 500,
       })
     } catch (e) {
       if (!isMissingImageGalleryColumn(e)) throw e
       const legacyProducts = await prisma.product.findMany({
-        where,
+        ...listOptions,
         select: PRODUCT_LEGACY_SELECT,
-        orderBy: { name: 'asc' },
-        take: 500,
       })
       products = legacyProducts.map((p) => ({
         ...p,
@@ -153,30 +157,36 @@ export async function GET(req: NextRequest) {
         auxEnabled: false,
       }))
     }
-    return NextResponse.json(
-      products.map((p) => ({
-        id: p.id,
-        sku: p.sku,
-        barcode: p.barcode,
-        name: p.name,
-        spec: p.spec,
-        sellPrice: p.sellPrice.toNumber(),
-        discountPrice: p.discountPrice?.toNumber() ?? null,
-        discountEnabled: p.discountEnabled,
-        isRecommended: p.isRecommended,
-        printKitchenTicket: p.printKitchenTicket,
-        status: p.status,
-        categoryId: p.categoryId,
-        imageUrl: p.imageUrl,
-        imageUrls: parseImageUrls(p.imageUrls, p.imageUrl),
-        ...(multiUnitEligible ? multiUnitFields(p) : {}),
-      })),
-    )
+    const hasMore = paged && products.length > pageSize
+    const items = (hasMore ? products.slice(0, pageSize) : products).map((p) => ({
+      id: p.id,
+      sku: p.sku,
+      barcode: p.barcode,
+      name: p.name,
+      spec: p.spec,
+      sellPrice: p.sellPrice.toNumber(),
+      discountPrice: p.discountPrice?.toNumber() ?? null,
+      discountEnabled: p.discountEnabled,
+      isRecommended: p.isRecommended,
+      printKitchenTicket: p.printKitchenTicket,
+      status: p.status,
+      categoryId: p.categoryId,
+      imageUrl: p.imageUrl,
+      imageUrls: parseImageUrls(p.imageUrls, p.imageUrl),
+      ...(multiUnitEligible ? multiUnitFields(p) : {}),
+    }))
+    if (!paged) return NextResponse.json(items)
+    return NextResponse.json({
+      items,
+      nextCursor: hasMore ? items[items.length - 1].id : null,
+      ...(after ? {} : { totalCount: await prisma.product.count({ where }) }),
+    })
   }
 
   // ── Single lookup ──────────────────────────────────────────────────────────
   // OWNER can see disabled products (to re-enable them in the products page)
-  const statusFilter = ctx.role === 'OWNER' ? undefined : ('ACTIVE' as const)
+  const activeOnly = req.nextUrl.searchParams.get('active') === 'true'
+  const statusFilter = ctx.role === 'OWNER' && !activeOnly ? undefined : ('ACTIVE' as const)
   const where = {
     tenantId: ctx.tenantId,
     OR: [

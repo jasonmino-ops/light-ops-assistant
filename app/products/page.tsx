@@ -389,6 +389,8 @@ export default function ProductsPage() {
   // Product list + delete
   const [listOpen, setListOpen] = useState(false)
   const [productList, setProductList] = useState<Product[]>([])
+  const [catalogTotal, setCatalogTotal] = useState<number | null>(null)
+  const catalogRequest = useRef<AbortController | null>(null)
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [listSearch, setListSearch] = useState('')
@@ -568,37 +570,60 @@ export default function ProductsPage() {
 
   // ── Product list ──────────────────────────────────────────────────────────
 
-  async function loadProductList() {
+  async function loadProductList(refreshMarketing = true) {
+    catalogRequest.current?.abort()
+    const request = new AbortController()
+    catalogRequest.current = request
+    const { signal } = request
     setListLoading(true)
-    setDeleteMsg(null)
+    if (refreshMarketing) setDeleteMsg(null)
     setListError(null)
+    if (refreshMarketing) {
+      void apiFetch('/api/marketing-product-pages', { signal }, OWNER_CTX)
+        .then(async (res) => {
+          if (!res.ok) return
+          const body = await res.json()
+          if (signal.aborted) return
+          const pages = Array.isArray(body.pages) ? body.pages as MarketingProductPage[] : []
+          setMarketingPages(Object.fromEntries(pages.map((p) => [p.productId, p])))
+        })
+        .catch(() => {})
+    }
     try {
-      const [res, mpRes] = await Promise.all([
-        apiFetch('/api/products?all=true', undefined, OWNER_CTX),
-        apiFetch('/api/marketing-product-pages', undefined, OWNER_CTX),
-      ])
-      if (res.ok) {
-        const list: Product[] = await res.json()
-        setProductList(list)
-        setSelectedIds(new Set())
-      } else {
-        const body = await res.json().catch(() => ({}))
-        setListError(body.message ?? body.error ?? t('products.loadFailed'))
-      }
-      if (mpRes.ok) {
-        const body = await mpRes.json()
-        const pages = Array.isArray(body.pages) ? body.pages as MarketingProductPage[] : []
-        setMarketingPages(Object.fromEntries(pages.map((p) => [p.productId, p])))
-      }
+      const list: Product[] = []
+      let totalCount: number | null = null
+      let after: string | null = null
+      do {
+        const params = new URLSearchParams({ all: 'true', catalog: '1' })
+        if (after) params.set('after', after)
+        const res = await apiFetch(`/api/products?${params}`, { signal, cache: 'no-store' }, OWNER_CTX)
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          if (!signal.aborted) setListError(body.message ?? body.error ?? t('products.loadFailed'))
+          return
+        }
+        const page: { items: Product[]; nextCursor: string | null; totalCount?: number } = await res.json()
+        if (!Array.isArray(page.items) || (page.nextCursor !== null && (!page.nextCursor || page.nextCursor === after))) {
+          throw new Error('INVALID_PRODUCT_CATALOG_PAGE')
+        }
+        if (!after && typeof page.totalCount === 'number') totalCount = page.totalCount
+        list.push(...page.items)
+        after = page.nextCursor
+      } while (after)
+      if (signal.aborted) return
+      setProductList(list.sort((a, b) => a.name.localeCompare(b.name)))
+      setCatalogTotal(totalCount)
+      if (refreshMarketing) setSelectedIds(new Set())
     } catch {
-      setListError(t('common.networkError'))
+      if (!signal.aborted) setListError(t('common.networkError'))
     } finally {
-      setListLoading(false)
+      if (!signal.aborted) setListLoading(false)
     }
   }
 
   useEffect(() => {
-    loadProductList()
+    void loadProductList()
+    return () => catalogRequest.current?.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -647,7 +672,7 @@ export default function ProductsPage() {
   todayStart.setHours(0, 0, 0, 0)
   const todayNewCount = productList.filter((p) => p.createdAt && new Date(p.createdAt) >= todayStart).length
   const stats = [
-    { label: t('products.statsTotalProducts'), value: productList.length },
+    { label: t('products.statsTotalProducts'), value: catalogTotal ?? '…' },
     { label: t('products.statsCategories'), value: categories.length },
     { label: t('products.statsTodayNew'), value: todayNewCount },
     { label: t('products.statsStockWarning'), value: 0 },
@@ -1103,6 +1128,7 @@ export default function ProductsPage() {
           setProductList((prev) => prev.filter((p) => p.id !== deleteConfirm.id))
           setSelectedIds((prev) => { const next = new Set(prev); next.delete(deleteConfirm.id); return next })
           setDeleteConfirm(null)
+          void loadProductList(false)
         } else if (body.error === 'PRODUCT_HAS_SALES') {
           setDeleteMsg(t('products.hasSalesHint'))
           setDeleteConfirm(null)
@@ -1122,6 +1148,7 @@ export default function ProductsPage() {
           setProductList((prev) => prev.filter((p) => !deletedSet.has(p.id)))
           setSelectedIds(new Set())
           setDeleteConfirm(null)
+          void loadProductList(false)
           const skippedCount: number = body.skipped?.length ?? 0
           if (skippedCount > 0) {
             setDeleteMsg(
@@ -1202,6 +1229,7 @@ export default function ProductsPage() {
       if (res.ok) {
         setAiResult(body)
         setAiStep('done')
+        void loadProductList(false)
       } else {
         setAiError(body.message ?? body.error ?? '导入失败')
         setAiStep('preview')
@@ -1823,6 +1851,7 @@ export default function ProductsPage() {
         setEditBarcode(body.barcode)
         loadMultiUnitEdit(body)
         setMode('saved')
+        void loadProductList(false)
       } else {
         setError(body.message ?? t('products.saveFailed'))
       }
@@ -1906,6 +1935,7 @@ export default function ProductsPage() {
           setPhotoCreateOpen(false)
         }
         setMode('saved')
+        void loadProductList(false)
       } else {
         setError(body.message ?? t('products.createFailed'))
       }
@@ -2253,7 +2283,7 @@ export default function ProductsPage() {
         <div ref={importPanelRef} style={{ ...s.importSection, order: 3 }}>
           <button
             style={s.importToggle}
-            onClick={() => setImportOpen((v) => !v)}
+            onClick={() => { setImportOpen(false); void loadProductList(false) }}
           >
             <span style={s.importToggleText}>{t('products.bulkImportAction')}</span>
             <span style={s.importToggleArrow}>{importOpen ? '▲' : '▼'}</span>

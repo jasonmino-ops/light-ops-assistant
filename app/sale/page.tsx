@@ -287,6 +287,7 @@ export default function SalePage() {
 
   // ── 商品列表（自动补全 + 下拉）─────────────────────────────────────────────
   const [allProducts, setAllProducts] = useState<Product[]>([])
+  const barcodeRequest = useRef<AbortController | null>(null)
   const [suggestions, setSuggestions] = useState<Product[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [dropOpen, setDropOpen] = useState(false)
@@ -310,10 +311,27 @@ export default function SalePage() {
   }, [])
 
   useEffect(() => {
-    apiFetch('/api/products')
-      .then((r) => (r.ok ? r.json() : []))
-      .then((list: Product[]) => setAllProducts(list))
-      .catch(() => {})
+    const request = new AbortController()
+    const { signal } = request
+    async function loadCatalog() {
+      const products: Product[] = []
+      let after: string | null = null
+      do {
+        const params = new URLSearchParams({ catalog: '1' })
+        if (after) params.set('after', after)
+        const res = await apiFetch(`/api/products?${params}`, { signal, cache: 'no-store' })
+        if (!res.ok) throw new Error('PRODUCT_CATALOG_LOAD_FAILED')
+        const page: { items: Product[]; nextCursor: string | null } = await res.json()
+        if (!Array.isArray(page.items) || (page.nextCursor !== null && (!page.nextCursor || page.nextCursor === after))) {
+          throw new Error('INVALID_PRODUCT_CATALOG_PAGE')
+        }
+        products.push(...page.items)
+        after = page.nextCursor
+      } while (after)
+      if (!signal.aborted) setAllProducts(products.sort((a, b) => a.name.localeCompare(b.name)))
+    }
+    void loadCatalog().catch(() => {})
+    return () => { request.abort(); barcodeRequest.current?.abort() }
   }, [])
 
   useEffect(() => {
@@ -410,6 +428,8 @@ export default function SalePage() {
     : allProducts
 
   function selectProduct(p: Product) {
+    barcodeRequest.current?.abort()
+    setStatus(previous => previous === 'querying' ? 'idle' : previous)
     rememberProduct(p)
     setProduct(p)
     setBarcodeInput(p.barcode)
@@ -439,29 +459,36 @@ export default function SalePage() {
 
   // ── 按商品编码或条码查询 ────────────────────────────────────────────────────
 
-  async function queryProductByBarcode(barcode: string) {
+  async function queryProductByBarcode(barcode: string): Promise<Product | null | undefined> {
     if (!barcode) return
+    barcodeRequest.current?.abort()
+    const request = new AbortController()
+    barcodeRequest.current = request
+    const { signal } = request
     setQueryError(null)
     setProduct(null)
     setStatus('querying')
     try {
-      const res = await apiFetch(`/api/products?barcode=${encodeURIComponent(barcode)}`)
+      const res = await apiFetch(`/api/products?barcode=${encodeURIComponent(barcode)}&active=true`, { signal })
+      const body = await res.json()
+      if (signal.aborted) return
       if (res.ok) {
-        setProduct(await res.json())
+        setProduct(body)
         setQty(1)
         setHidFailCount(0) // reset on success
-      } else {
-        const body = await res.json().catch(() => ({}))
-        setQueryError(body.error === 'PRODUCT_NOT_FOUND' ? t('sale.notFound') : t('sale.queryFailed'))
-        if (body.error === 'PRODUCT_NOT_FOUND' && isHidTier) {
-          setHidFailCount((c) => Math.min(c + 1, 5))
-        }
+        return body
+      }
+      setQueryError(body.error === 'PRODUCT_NOT_FOUND' ? t('sale.notFound') : t('sale.queryFailed'))
+      if (body.error === 'PRODUCT_NOT_FOUND' && isHidTier) {
+        setHidFailCount((c) => Math.min(c + 1, 5))
       }
     } catch {
+      if (signal.aborted) return
       setQueryError(t('common.networkError'))
     } finally {
-      setStatus('idle')
+      if (!signal.aborted) setStatus('idle')
     }
+    return null
   }
 
   function queryProduct() {
@@ -472,7 +499,7 @@ export default function SalePage() {
     const localProduct = allProducts.find((p) => p.sku?.toLowerCase() === ql) ??
       allProducts.find((p) => p.barcode === query || (p.auxEnabled && p.auxBarcode === query))
     if (localProduct) {
-      queryProductByBarcode(query)
+      queryProductByBarcode(localProduct.barcode === query || localProduct.auxBarcode === query ? query : localProduct.barcode)
       return
     }
     queryProductByBarcode(query)
@@ -493,8 +520,13 @@ export default function SalePage() {
       setScannerMsg({ type: 'ok', text: t('sale.scanSelected').replace('{name}', hit.name) })
       setTimeout(() => setScannerMsg(null), 2500)
     } else {
-      queryProductByBarcode(clean)
-      setScannerMsg({ type: 'fail', text: t('sale.scanNotFound').replace('{code}', clean) })
+      void queryProductByBarcode(clean).then(found => {
+        if (found === undefined) return
+        setScannerMsg(found
+          ? { type: 'ok', text: t('sale.scanSelected').replace('{name}', found.name) }
+          : { type: 'fail', text: t('sale.scanNotFound').replace('{code}', clean) })
+        if (found) setTimeout(() => setScannerMsg(null), 2500)
+      })
     }
   }, [allProducts]) // eslint-disable-line react-hooks/exhaustive-deps
   useHidScanner(handleHidScan)
