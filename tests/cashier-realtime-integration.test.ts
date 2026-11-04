@@ -476,6 +476,16 @@ async function main() {
     assert.equal(registration.featureBranch, catalogueBranch)
     assert.equal(registration.lineageMode, 'PRE_COMMIT_CONTENT_SHA256')
     assert.equal(registration.baseOriginMainSha, 'c9508d180d6ea16595f966685eb70e54cb3e48b4')
+    assert.ok(gitIsAncestor(registration.baseOriginMainSha, trustedMain),
+      'Catalogue approved base must be an ancestor of trusted main')
+    const guardPaths = ['scripts/guards/check-change-scope.js', 'docs/change-gates/gate-config.json']
+    const registrationRecords = isRegistration ? [registrationPath, successorPath] : []
+    assert.deepEqual(
+      gitPaths('diff', '--no-renames', '--name-only', registration.baseOriginMainSha, trustedMain, '--',
+        ...guardPaths, ...paths, ...registrationRecords),
+      isRegistration ? [] : [catalogueTest],
+      'Catalogue trusted main must preserve the sealed paths and Scope Guard bytes',
+    )
     assert.deepEqual(registration.additionalAuthorizations ?? [], [])
     assert.deepEqual([...registration.authorizedPaths].sort(), paths, 'Catalogue grant must name exactly the sealed paths')
     const productDelta = paths.filter(path => path !== catalogueTest)
@@ -490,7 +500,6 @@ async function main() {
 
     if (isRegistration) {
       // This branch validates the governance commit without activating its product grant.
-      assert.equal(trustedMain, registration.baseOriginMainSha)
       assert.equal(isDiamond, false, 'Catalogue registration cannot claim any Diamond path')
       assert.deepEqual(gitPaths('status', '--porcelain', '--untracked-files=all'), [],
         'Catalogue registration must be a clean commit')
@@ -512,12 +521,6 @@ async function main() {
         'Catalogue compatibility bytes require a final exact-content decision')
       assert.deepEqual([...diamondChanged].sort(), productDelta,
         'Catalogue feature delta must contain exactly the nine remaining sealed paths')
-      assert.deepEqual(
-        gitPaths('diff', '--no-renames', '--name-only', registration.baseOriginMainSha, trustedMain, '--',
-          'docs/change-gates/gate-config.json', ...paths),
-        [catalogueTest],
-        'Only the exact compatibility test may already be installed on trusted main',
-      )
 
       // Use the real guard for trusted record, branch, lineage and worktree checks.
       // Only the task's registered branch can reach this case; old Diamond checks
