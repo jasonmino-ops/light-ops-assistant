@@ -867,6 +867,20 @@ test('queue recovery envelope rejects duplicates, untrusted scope/actor override
   assert.equal(parseOpsV3QueueRecoveryCommand({ action: 'FINALIZE_V3_ACTIVE' }), null)
 })
 
+test('Founder emergency commands remain distinct from the two-Ops commands', () => {
+  const review = { ...recoveryBase, action: 'FOUNDER_REVIEW_DIAMOND_EXPIRED_FRONT',
+    installationId: testInstallationId, capture: recoveryCapture }
+  assert.equal(recoveryCommand(review).action, review.action)
+  assert.equal(recoveryCommand({ ...recoveryBase, action: 'FOUNDER_EXPIRE_DIAMOND_UNEXECUTED_FRONT',
+    evidenceId: 'review-evidence-01' }).action, 'FOUNDER_EXPIRE_DIAMOND_UNEXECUTED_FRONT')
+  for (const body of [
+    { ...review, founderOverride: true },
+    { ...review, confirmed: false },
+    { ...review, capture: { ...recoveryCapture, verifiedNoLocalExecution: false } },
+    { ...recoveryBase, action: 'FOUNDER_EXPIRE_DIAMOND_UNEXECUTED_FRONT' },
+  ]) assert.deepEqual(parseOpsV3QueueRecoveryCommand(body), { ok: false, code: 'INVALID_QUEUE_RECOVERY_COMMAND' })
+})
+
 const recoverySocket = process.env.DIAMOND_QUEUE_TEST_SOCKET
 
 test('queue recovery serializable guards and claim race in isolated PostgreSQL', {
@@ -908,10 +922,12 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
   await pool.query(`CREATE SCHEMA "${fixtureSchema}"`)
   await pool.query(`
     CREATE TYPE "DesktopDeviceStatus" AS ENUM ('ACTIVE', 'REVOKED');
+    CREATE TYPE "StoreStatus" AS ENUM ('ACTIVE', 'DISABLED');
     CREATE TYPE "RecordStatus" AS ENUM ('PENDING_PAYMENT', 'COMPLETED', 'CANCELLED');
     CREATE TYPE "SaleType" AS ENUM ('SALE', 'REFUND');
     CREATE TYPE "LogStatus" AS ENUM ('SUCCESS', 'FAILED');
     CREATE TYPE "EshopTrayPrintJobStatus" AS ENUM ('PENDING', 'CLAIMED', 'EXECUTING', 'SUCCEEDED', 'FAILED', 'EXPIRED');
+    CREATE TABLE "Store" ("id" text PRIMARY KEY, "tenantId" text NOT NULL, "code" text NOT NULL, "status" "StoreStatus" NOT NULL);
     CREATE TABLE "OpsAdmin" ("id" text PRIMARY KEY, "status" text NOT NULL, "role" text NOT NULL);
     CREATE TABLE "DesktopDevice" ("id" text PRIMARY KEY, "tenantId" text NOT NULL, "storeId" text NOT NULL, "status" "DesktopDeviceStatus" NOT NULL, "installationIdHash" char(64) NOT NULL);
     CREATE TABLE "SaleRecord" ("id" text PRIMARY KEY, "tenantId" text NOT NULL, "storeId" text NOT NULL, "orderNo" text NOT NULL, "recordNo" text NOT NULL, "status" "RecordStatus" NOT NULL, "saleType" "SaleType" NOT NULL, "createdAt" timestamp(3) NOT NULL);
@@ -947,7 +963,8 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
 
   async function reset() {
     await pool.query(`
-      TRUNCATE "OpsAdmin", "DesktopDevice", "SaleRecord", "V3PrintControlPlane", "V3PrintExecutionBatch", "EshopTrayPrintJob", "OperationLog";
+      TRUNCATE "Store", "OpsAdmin", "DesktopDevice", "SaleRecord", "V3PrintControlPlane", "V3PrintExecutionBatch", "EshopTrayPrintJob", "OperationLog";
+      INSERT INTO "Store" VALUES ('test-store','test-tenant','TEST','ACTIVE');
       INSERT INTO "OpsAdmin" VALUES ('test-ops-reviewer','ACTIVE','OPS_ADMIN'), ('test-ops-executor','ACTIVE','OPS_ADMIN');
     `)
     await pool.query(`INSERT INTO "DesktopDevice" VALUES ('test-device-01','test-tenant','test-store','ACTIVE',$1)`,
@@ -1231,6 +1248,91 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
     } })
     assert.deepEqual(await deliverV3PrintIntent(prisma as unknown as Parameters<typeof deliverV3PrintIntent>[0], {
       ...scope, batchId: 'test-new-batch', deviceId: recoveryCapture.deviceId, role: 'FRONT',
+    }, startedAt), { ok: true, job: null })
+  })
+
+  await t.test('exact Diamond Founder authority is single-use, scoped, audited and preserves the two-Ops path', async () => {
+    await reset()
+    const founderScope = { tenantId: scope.tenantId, storeId: 'cmvulpn8r000106jvpo58kye4' }
+    const founderDeviceId = 'cmvyx1jes000208l14t5vf9ur'
+    const founderIds = [
+      'cmw0jlsme000v08kzgyiybcqg', 'cmw0k7dgw001c08kz5xirfxzv', 'cmw0kwwta001v08jv6q6rl2f4',
+    ]
+    const founder = { id: 'real-founder-admin', role: 'SUPER_ADMIN' }
+    await pool.query(`INSERT INTO "OpsAdmin" VALUES ($1,'ACTIVE','SUPER_ADMIN')`, [founder.id])
+    await pool.query('UPDATE "Store" SET "id"=$1, "code"=$2', [founderScope.storeId, 'ST883DC00C'])
+    await prisma.v3PrintControlPlane.updateMany({ data: { storeId: founderScope.storeId } })
+    await pool.query('UPDATE "DesktopDevice" SET "id"=$1, "storeId"=$2', [founderDeviceId, founderScope.storeId])
+    await prisma.v3PrintExecutionBatch.updateMany({ data: { storeId: founderScope.storeId, ownerDeviceId: founderDeviceId } })
+    await prisma.eshopTrayPrintJob.deleteMany()
+    await pool.query('DELETE FROM "SaleRecord"')
+    for (const id of founderIds) {
+      const orderNo = 'order-' + id
+      const key = keyForFixture(id)
+      await pool.query('INSERT INTO "SaleRecord" VALUES ($1,$2,$3,$4,$4,\'COMPLETED\',\'SALE\',$5)', [
+        id, founderScope.tenantId, founderScope.storeId, orderNo, receiptTime.toISOString().slice(0, -1),
+      ])
+      await prisma.eshopTrayPrintJob.create({ data: {
+        ...founderScope, id, idempotencyKey: key, requestHash: 'f'.repeat(64), schemaVersion: 3, maxAttempts: 1,
+        payload: { schemaVersion: 3, source: 'LOCAL_DESKTOP', role: 'FRONT', payloadKind: 'RAW_BYTES',
+          orderNo, printJobId: key, rendererVersion: 'network-1', ...raw },
+        expiresAt: originalExpiry, nextAttemptAt: receiptTime, createdAt: receiptTime, updatedAt: receiptTime,
+      } })
+    }
+    const capture = { ...recoveryCapture, verifiedNoLocalExecution: true as const, deviceId: founderDeviceId,
+      jobs: founderIds.map(id => ({ id, key: keyForFixture(id), requestHash: 'f'.repeat(64),
+        updatedAt: receiptTime.toISOString() })) }
+    const review = recoveryCommand({ ...recoveryBase, action: 'FOUNDER_REVIEW_DIAMOND_EXPIRED_FRONT',
+      jobIds: founderIds, capture, installationId: testInstallationId, requestId: 'founder-review-01' })
+    const founderRun = (command: ReturnType<typeof recoveryCommand>, actor = founder, at = startedAt, useScope = founderScope) =>
+      runOpsV3QueueRecovery(prisma, useScope, actor, command, () => at)
+    assert.deepEqual(await founderRun(review, reviewer), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    assert.deepEqual(await founderRun(review, founder, startedAt, scope), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    await pool.query('UPDATE "Store" SET "code"=$1', ['OTHER-STORE'])
+    assert.deepEqual(await founderRun(review), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    await pool.query('UPDATE "Store" SET "code"=$1', ['ST883DC00C'])
+    await pool.query('UPDATE "OpsAdmin" SET "status"=$1 WHERE "id"=$2', ['DISABLED', founder.id])
+    assert.deepEqual(await founderRun(review), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    await pool.query('UPDATE "OpsAdmin" SET "status"=$1 WHERE "id"=$2', ['ACTIVE', founder.id])
+    assert.deepEqual(await founderRun({ ...review, jobIds: founderIds.slice(0, 2) }),
+      { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    assert.deepEqual(await founderRun(recoveryCommand({ ...recoveryBase,
+      action: 'FOUNDER_REVIEW_DIAMOND_EXPIRED_FRONT', jobIds: founderIds,
+      requestId: 'founder-wrong-device', installationId: testInstallationId,
+      capture: { ...capture, deviceId: 'test-device-01' },
+    })),
+      { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    const approved = await founderRun(review)
+    assert.ok(approved.ok, JSON.stringify(approved))
+    assert.deepEqual(await founderRun({ ...review, requestId: 'founder-second-review' }),
+      { ok: false, code: 'FOUNDER_RECOVERY_ALREADY_AUTHORIZED' })
+    const expiry = recoveryCommand({ ...recoveryBase, action: 'FOUNDER_EXPIRE_DIAMOND_UNEXECUTED_FRONT',
+      jobIds: founderIds, evidenceId: approved.evidenceId, requestId: 'founder-expire-01' })
+    assert.deepEqual(await founderRun(expiry, executor), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    assert.deepEqual(await founderRun(expiry, founder, new Date(startedAt.getTime() + 301_000)),
+      { ok: false, code: 'QUEUE_EVIDENCE_STALE' })
+    const completed = await founderRun(expiry)
+    assert.ok(completed.ok, JSON.stringify(completed))
+    assert.equal(await prisma.eshopTrayPrintJob.count({ where: { status: 'EXPIRED', effectBoundary: 'NOT_CROSSED' } }), 3)
+    const audit = await prisma.operationLog.findFirstOrThrow({ where: { actionType: 'FOUNDER_EXPIRE_DIAMOND_UNEXECUTED_FRONT' } })
+    assert.equal((audit.payloadSnapshot as Record<string, unknown>).founderEmergency, true)
+    assert.equal((audit.payloadSnapshot as Record<string, unknown>).executorId, founder.id)
+    assert.deepEqual(await founderRun(expiry), completed)
+    assert.deepEqual(await founderRun({ ...expiry, requestId: 'founder-expire-again' }),
+      { ok: false, code: 'QUEUE_EVIDENCE_CONSUMED' })
+    assert.equal(await prisma.operationLog.count({ where: { actionType: 'FOUNDER_EXPIRE_DIAMOND_UNEXECUTED_FRONT' } }), 1)
+    const nextBatchExpiry = new Date(startedAt.getTime() + 60_000)
+    await prisma.v3PrintControlPlane.updateMany({ data: {
+      mode: 'V3_ACTIVE', ownerDeviceId: founderDeviceId, ownerEpoch: 5,
+      stateVersion: 11, leaseId: 'founder-new-lease', leaseExpiresAt: nextBatchExpiry,
+    } })
+    await prisma.v3PrintExecutionBatch.create({ data: {
+      ...founderScope, id: 'founder-new-batch', controlPlaneId: 'test-plane-01', ownerDeviceId: founderDeviceId,
+      ownerEpoch: 5, stateVersion: 11, leaseId: 'founder-new-lease', mode: 'V3_ACTIVE',
+      expiresAt: nextBatchExpiry, createdAt: startedAt,
+    } })
+    assert.deepEqual(await deliverV3PrintIntent(prisma as unknown as Parameters<typeof deliverV3PrintIntent>[0], {
+      ...founderScope, batchId: 'founder-new-batch', deviceId: founderDeviceId, role: 'FRONT',
     }, startedAt), { ok: true, job: null })
   })
 })
