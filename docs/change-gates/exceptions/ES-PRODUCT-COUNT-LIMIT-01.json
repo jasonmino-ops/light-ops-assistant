@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "taskId": "ES-PRODUCT-COUNT-LIMIT-01",
+  "featureBranch": "codex/es-product-count-limit-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "c9508d180d6ea16595f966685eb70e54cb3e48b4",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/api/cashier/store/route.ts",
+    "app/api/products/route.ts",
+    "app/cashier/page.tsx",
+    "app/products/page.tsx",
+    "app/sale/page.tsx",
+    "lib/cashier-offline-db.ts",
+    "tests/cashier-realtime-integration.test.ts",
+    "tests/es-tray-device-print-contract.test.ts",
+    "tests/product-sku-search.test.ts",
+    "tests/v3-reprint-recovery.test.ts"
+  ],
+  "authorizedPathSha256": {
+    "app/api/cashier/store/route.ts": "66cd7ac95acacd918156022744684a81e105a99dfcd8d2cab90bd2f43f8eb17d",
+    "app/api/products/route.ts": "feb96107690a9cb84ef1c2012773e023dcc4b91ee6b5f6518f4e684e0f6f409a",
+    "app/cashier/page.tsx": "8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6",
+    "app/products/page.tsx": "8e5965c4c4e0e7e83f7e309f81fdc93e13b4152b19e99fbbc8efd1ca0076a88c",
+    "app/sale/page.tsx": "6818f8b63ba25031a2501947baa0ca9a8e03959ee5d47a245ddad13f3a00980f",
+    "lib/cashier-offline-db.ts": "c4571d19dd6765e39bb39422dc718820627e93713462b8f3696ef06ac8e81f3c",
+    "tests/cashier-realtime-integration.test.ts": "6a9a8d08cae60544f465ef34ceaf3ab5f49f299579237fc3d189ffcaec056d3f",
+    "tests/es-tray-device-print-contract.test.ts": "563b06d5f9cc8e325c6c9b98ade5178dca2197d5af0c8851e1a77a8b3e0cec33",
+    "tests/product-sku-search.test.ts": "ab5db72e60a4053a022ac8bbaca290f3ee846aba2935de6ccba213af2a0fc781",
+    "tests/v3-reprint-recovery.test.ts": "d403c6200677499541b91c66db2ce8583b8cf942b45dada40df3600a75ae3a28"
+  },
+  "createdAt": "2026-11-04T04:29:54.813Z",
+  "approvedAt": "2026-11-04T05:03:44.790Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "candidatePatchSha256": "67ef14ea6cc98e71c079962a6f6cab9d0568b9091bc8b3ec20cfed13df0a3a1c",
+    "compatibilityPreparation": "Founder approved the limited registration baseline compatibility revision on 2026-11-04",
+    "finalCompatibilityApproval": "APPROVED",
+    "freezeSuccessorSha256": "377307b54dff794bf038d3bcd4fcbc9e7b83a3b05580c14ebae7faea5e939c09",
+    "compatibilityEvidenceSha256": {
+      "baseline-candidate-manifest.json": "d45674ec5cea7e7a580e134b50df136fa3c193e41528d2de3a07e2bb1d6a3b13",
+      "baseline-sealed-candidate.patch": "67ef14ea6cc98e71c079962a6f6cab9d0568b9091bc8b3ec20cfed13df0a3a1c",
+      "post-registration-product.patch": "ff40c5719723f588308348339e9aaaa91a2de769387b2cd08479daf6b768b3f4"
+    },
+    "priorCompatibilitySeal": {
+      "candidatePatchSha256": "4884968b15e3a5e05ba0ef79b27cb710f318898d48a035b157ceba913817bab7",
+      "compatibilityPreparation": "Founder approved limited Core compatibility revision on 2026-11-04",
+      "finalCompatibilityApproval": "APPROVED",
+      "freezeSuccessorSha256": "a23bad306a2cb1e9451e36601ab91004bb3ea88507fa40a06e28b99094f0ae85",
+      "compatibilityEvidenceSha256": {
+        "candidate-manifest.json": "042a40b22518d0379af1a628ff7f6ea66bf56a6f10fb454ea903127a1d467567",
+        "active-registration-draft.json": "a963d259bb8c28db432f2120c01a59a2f1cf7ce4fec78d00e445e42c37b8e7c5",
+        "sealed-candidate-current.patch": "4884968b15e3a5e05ba0ef79b27cb710f318898d48a035b157ceba913817bab7",
+        "post-registration-product.patch": "ff40c5719723f588308348339e9aaaa91a2de769387b2cd08479daf6b768b3f4"
+      },
+      "priorExactContentApproval": {
+        "source": "ES-PRODUCT-COUNT-LIMIT-01 task conversation, 2026-11-04, Founder Decision APPROVED",
+        "statement": "批准最终十文件候选对应的正式冻结后继，以及 ACTIVE 路径例外登记内容。",
+        "timestampBasis": "Local registration timestamp after the Founder decision",
+        "candidatePatchSha256": "705441c63394ccb931494a002dc82f19ae0e4d7029b2d3d51b438fb5d8915477",
+        "evidenceSha256": {
+          "final-approval-packet.md": "748b5848ba4f0ca9b0b7caee1929e0e114f5303b7dc5b34d03fe5946186625f8",
+          "candidate-manifest-before-compatibility.json": "375e6e2ee42f85166c3cf15305d62c22f43c26b27a60e25dab2f3c6352140cbc",
+          "active-registration-before-compatibility.json": "2445d29df3050d30b2149e2ac527201b72247736cfd875d016afc7e826121dd0",
+          "claude-context-review.md": "a0685f8ec6a66cde9d3be9c9fb9dece9c9b68789ed045da1c1b4f6f00940ee3b",
+          "claude-final-delta-review.md": "6f11ed23cae0cd45cab29152df75883ae6f5f143c035c210b9eb4b270f9ab0fc",
+          "claude-boundary-review.md": "65038fb17657657d00a9b9779e6dd30d1df4365e4aeaf4efe4f80b092e62c89c"
+        }
+      },
+      "finalCompatibilityDecision": {
+        "source": "ES-PRODUCT-COUNT-LIMIT-01 task conversation, 2026-11-04, Founder Decision APPROVED",
+        "statement": "批准更新后的精确封存内容，以及将本任务对应的治理登记状态由 DRAFT_NOT_ACTIVE 更新为 ACTIVE。",
+        "recordedAt": "2026-11-04T04:42:24.221Z",
+        "approvedDraftCommit": "bb49c083cc84eccb60c474b3a84d711c499d7270",
+        "evidenceSha256": {
+          "compat-final-seal.json": "a47552b6c0ac6b2dd55997eecfc33d3361ecfe8718e344ab85a14bed135f80d1",
+          "compat-approval-packet.md": "27e697a689f960cb6706db81dfe4327c00c096bc47319acd0d138a49f211d80f",
+          "claude-compat-sealed-review.md": "f4e341b4c206b4256ac5d3e5c6f08163522afcb7b2bd9080a4e66719409198d1"
+        }
+      }
+    },
+    "finalCompatibilityDecision": {
+      "source": "ES-PRODUCT-COUNT-LIMIT-01 task conversation, 2026-11-04, Founder Decision APPROVED",
+      "statement": "批准本轮更新后的精确封存内容，并授权将对应治理登记补录为 ACTIVE。",
+      "recordedAt": "2026-11-04T05:03:44.790Z",
+      "approvedDraftCommit": "78095620af87a261f9cd194a047ca01f42e6edf4",
+      "evidenceSha256": {
+        "baseline-final-seal.json": "87d3a9e6b0646e0a5aa2cbab9e6ae6c813142c6e346fcca4498092c69501d77e",
+        "baseline-approval-packet.md": "f0d96f9b75439b1bf04d1448715eaa028912a9bd89e39b5af48f03e1fc5c0992",
+        "claude-baseline-complete-review.md": "7e1a31aa4dd0df700c4a5d723cc340ac754f146cb3f92cfd161ef146c56a13cf"
+      }
+    }
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Exact catalogue-only candidate covering paged reads, count, selection, lookup, atomic offline cache and exact regression seals. Preserves transaction, authorization, Local First and printing behavior."
+}

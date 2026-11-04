@@ -445,7 +445,101 @@ async function main() {
   // path edits still enter this branch and fail without that exact grant.
   const isM1 = !isM4 && (unmergedCommits.includes(productCandidate) || changed.some(path => productPaths.includes(path)))
   const isCombinedCorrective = isM1 && unmergedCommits.includes(correctiveCandidate)
-  if (isM2) {
+  const catalogueTask = 'ES-PRODUCT-COUNT-LIMIT-01'
+  const catalogueBranch = 'codex/es-product-count-limit-01'
+  const registrationBranch = `${catalogueBranch}-registration`
+  const currentBranch = gitPaths('branch', '--show-current')[0]
+  if (currentBranch === registrationBranch || currentBranch === catalogueBranch) {
+    const catalogueTest = 'tests/cashier-realtime-integration.test.ts'
+    const paths = [
+      'app/api/cashier/store/route.ts',
+      'app/api/products/route.ts',
+      'app/cashier/page.tsx',
+      'app/products/page.tsx',
+      'app/sale/page.tsx',
+      'lib/cashier-offline-db.ts',
+      catalogueTest,
+      'tests/es-tray-device-print-contract.test.ts',
+      'tests/product-sku-search.test.ts',
+      'tests/v3-reprint-recovery.test.ts',
+    ]
+    const registrationPath = `docs/change-gates/exceptions/${catalogueTask}.json`
+    const successorPath = 'docs/freezes/ES-PRODUCT-COUNT-LIMIT-01-FROZEN-SUCCESSOR.md'
+    const trustedMain = gitPaths('rev-parse', 'origin/main')[0]
+    const isRegistration = currentBranch === registrationBranch
+    const recordRef = isRegistration ? 'HEAD' : 'origin/main'
+    const blobSha = (ref: string, path: string) => createHash('sha256')
+      .update(execFileSync('git', ['show', `${ref}:${path}`], { cwd: root })).digest('hex')
+    assert.ok(gitIsAncestor(trustedMain, 'HEAD'), 'Catalogue HEAD must descend from trusted main')
+    const registration = JSON.parse(gitPaths('show', `${recordRef}:${registrationPath}`).join('\n'))
+    assert.equal(registration.taskId, catalogueTask)
+    assert.equal(registration.featureBranch, catalogueBranch)
+    assert.equal(registration.lineageMode, 'PRE_COMMIT_CONTENT_SHA256')
+    assert.equal(registration.baseOriginMainSha, 'c9508d180d6ea16595f966685eb70e54cb3e48b4')
+    assert.ok(gitIsAncestor(registration.baseOriginMainSha, trustedMain),
+      'Catalogue approved base must be an ancestor of trusted main')
+    const guardPaths = ['scripts/guards/check-change-scope.js', 'docs/change-gates/gate-config.json']
+    const registrationRecords = isRegistration ? [registrationPath, successorPath] : []
+    assert.deepEqual(
+      gitPaths('diff', '--no-renames', '--name-only', registration.baseOriginMainSha, trustedMain, '--',
+        ...guardPaths, ...paths, ...registrationRecords),
+      isRegistration ? [] : [catalogueTest],
+      'Catalogue trusted main must preserve the sealed paths and Scope Guard bytes',
+    )
+    assert.deepEqual(registration.additionalAuthorizations ?? [], [])
+    assert.deepEqual([...registration.authorizedPaths].sort(), paths, 'Catalogue grant must name exactly the sealed paths')
+    const productDelta = paths.filter(path => path !== catalogueTest)
+    const unchangedHashes = productDelta.map(path => [path, registration.authorizedPathSha256[path]])
+    assert.equal(createHash('sha256').update(JSON.stringify(unchangedHashes)).digest('hex'),
+      'b3346df890ca382043bd6ce1583dd9d02dd677f5d67205b9cd08c233cb3a906f',
+      'The nine previously approved catalogue file hashes must remain exact')
+    assert.equal(blobSha(recordRef, catalogueTest), registration.authorizedPathSha256[catalogueTest],
+      'The installed compatibility test must match the sealed SHA-256')
+    assert.equal(blobSha(recordRef, successorPath), registration.approvalSource?.freezeSuccessorSha256,
+      'The freeze successor must match the registration SHA-256')
+
+    if (isRegistration) {
+      // This branch validates the governance commit without activating its product grant.
+      assert.equal(isDiamond, false, 'Catalogue registration cannot claim any Diamond path')
+      assert.deepEqual(gitPaths('status', '--porcelain', '--untracked-files=all'), [],
+        'Catalogue registration must be a clean commit')
+      const bootstrapPaths = [registrationPath, successorPath, catalogueTest].sort()
+      assert.deepEqual([...diamondCommitted].sort(), bootstrapPaths,
+        'Catalogue registration commit must contain only the two records and compatibility test')
+      const { validateException } = require('../scripts/guards/check-change-scope.js')
+      const approved = registration.approvalSource?.finalCompatibilityApproval === 'APPROVED'
+      assert.equal(registration.status, approved ? 'ACTIVE' : 'DRAFT_NOT_ACTIVE',
+        'Only the final exact-content decision can produce an ACTIVE registration')
+      // Check the prospective record schema; the committed draft remains invalid to Scope Guard.
+      validateException({ ...registration, status: 'ACTIVE' }, root)
+      execFileSync(process.execPath, [
+        'scripts/guards/check-change-scope.js', '--files', bootstrapPaths.join(','),
+      ], { cwd: root, stdio: 'inherit' })
+      console.log('Catalogue registration boundary checks passed')
+    } else {
+      assert.equal(registration.approvalSource?.finalCompatibilityApproval, 'APPROVED',
+        'Catalogue compatibility bytes require a final exact-content decision')
+      assert.deepEqual([...diamondChanged].sort(), productDelta,
+        'Catalogue feature delta must contain exactly the nine remaining sealed paths')
+
+      // Use the real guard for trusted record, branch, lineage and worktree checks.
+      // Only the task's registered branch can reach this case; old Diamond checks
+      // remain the authority on every branch that would have used them before.
+      execFileSync(process.execPath, [
+        'scripts/guards/check-change-scope.js', '--task-id', catalogueTask, '--files', paths.join(','),
+      ], { cwd: root, stdio: 'inherit' })
+
+      // A valid working file must not conceal different staged or committed bytes.
+      const staged = gitPaths('diff', '--cached', '--no-renames', '--name-only', 'HEAD')
+      for (const [revision, files] of [['', staged], ['HEAD', diamondCommitted]] as const) {
+        for (const path of files) {
+          const content = execFileSync('git', ['show', `${revision}:${path}`], { cwd: root })
+          assert.equal(createHash('sha256').update(content).digest('hex'), registration.authorizedPathSha256[path],
+            `Catalogue ${revision || 'index'} SHA-256 mismatch: ${path}`)
+        }
+      }
+    }
+  } else if (isM2) {
     assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [m2ApprovedBase], 'M2 requires the authorized trusted baseline')
     assert.ok(m2Paths.every(path => changed.includes(path)), 'M2 complete sealed 14-path package required')
     assertBoundary(changed, new Set([...m2Paths, m2SuccessorPath]))
