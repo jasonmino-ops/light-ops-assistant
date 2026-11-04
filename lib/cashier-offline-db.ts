@@ -55,12 +55,18 @@ export type CashierCachedProduct = {
   auxEnabled: boolean
 }
 
+type CatalogCategory = { id: string; name: string; parentId: string | null }
+
+export type CashierCatalogProof = { totalCount: number; digest: string; verifiedAt: number }
+
 export type CashierProductCacheMeta = {
   storeCode: string
   storeId: string
   tenantId: string
   lastProductCacheAt: string
   productCount: number
+  catalogProof?: CashierCatalogProof
+  categories?: CatalogCategory[]
   appVersion: string
   cacheVersion: string
   deviceId: string
@@ -181,22 +187,42 @@ export function generateOfflineOrderId(storeCode: string, deviceId: string): str
   return `OFFLINE-${storeCode}-${deviceShort}-${ts}-${rand}`
 }
 
+export async function verifyCashierCatalog(
+  products: ReadonlyArray<Pick<CashierCachedProductInput, 'id' | 'updatedAt'>>,
+  proof: CashierCatalogProof,
+): Promise<boolean> {
+  if (!proof || !Number.isSafeInteger(proof.verifiedAt) || proof.verifiedAt <= 0 ||
+      proof.totalCount !== products.length || !/^[a-f0-9]{64}$/.test(proof.digest)) return false
+  const ids = new Set<string>()
+  const revisions: string[] = []
+  for (const { id, updatedAt } of products) {
+    if (!id || !updatedAt || ids.has(id)) return false
+    ids.add(id)
+    revisions.push(JSON.stringify([id, updatedAt]))
+  }
+  const bytes = new TextEncoder().encode(revisions.sort().join('\n'))
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  return proof.digest === hex
+}
+
 export async function cacheCashierProducts(input: {
   tenantId: string
   storeId: string
   storeCode: string
   products: CashierCachedProductInput[]
+  categories: CatalogCategory[]
+  proof: CashierCatalogProof
+  signal?: AbortSignal
   appVersion?: string
 }): Promise<CashierProductCacheMeta> {
-  const db = await openCashierDb()
+  if (!await verifyCashierCatalog(input.products, input.proof)) {
+    throw new Error('INCOMPLETE_CASHIER_CATALOG')
+  }
   const now = new Date().toISOString()
   const deviceId = getCashierDeviceId()
-  const tx = db.transaction([PRODUCT_STORE, META_STORE], 'readwrite')
-  const productStore = tx.objectStore(PRODUCT_STORE)
-  const metaStore = tx.objectStore(META_STORE)
-
-  for (const product of input.products) {
-    const row: CashierCachedProduct = {
+  const rows = input.products.map((product): CashierCachedProduct => {
+    return {
       cacheKey: `${input.storeCode}:${product.id}`,
       tenantId: input.tenantId,
       storeId: input.storeId,
@@ -221,55 +247,86 @@ export async function cacheCashierProducts(input: {
       auxSellPrice: product.auxSellPrice ?? null,
       auxEnabled: product.auxEnabled === true,
     }
-    productStore.put(row)
-  }
-
+  })
   const meta: CashierProductCacheMeta = {
     storeCode: input.storeCode,
     storeId: input.storeId,
     tenantId: input.tenantId,
     lastProductCacheAt: now,
-    productCount: input.products.length,
+    productCount: rows.length,
+    catalogProof: input.proof,
+    categories: input.categories,
     appVersion: input.appVersion ?? 'web',
     cacheVersion: CASHIER_CACHE_VERSION,
     deviceId,
   }
-  metaStore.put(meta)
-  await txDone(tx)
-  db.close()
-  return meta
+
+  const db = await openCashierDb()
+  try {
+    input.signal?.throwIfAborted()
+    const tx = db.transaction([PRODUCT_STORE, META_STORE], 'readwrite')
+    const productStore = tx.objectStore(PRODUCT_STORE)
+    const metaStore = tx.objectStore(META_STORE)
+    const existing = metaStore.get(input.storeCode)
+    let saved = meta
+    existing.onsuccess = () => {
+      const previous = existing.result as CashierProductCacheMeta | undefined
+      if (previous?.tenantId === input.tenantId && previous.storeId === input.storeId &&
+          previous.catalogProof && previous.catalogProof.verifiedAt >= input.proof.verifiedAt) {
+        saved = previous
+        return
+      }
+      // Remove only this store's old rows. Deletion, replacement and metadata
+      // commit together, so a failed refresh leaves the previous snapshot intact.
+      const cursor = productStore.index('storeCode').openKeyCursor(input.storeCode)
+      cursor.onsuccess = () => {
+        const key = cursor.result
+        if (key) {
+          productStore.delete(key.primaryKey)
+          key.continue()
+          return
+        }
+        for (const row of rows) productStore.put(row)
+        metaStore.put(meta)
+      }
+    }
+    const abort = () => { try { tx.abort() } catch {} }
+    input.signal?.addEventListener('abort', abort, { once: true })
+    try {
+      await txDone(tx)
+      return saved
+    } finally {
+      input.signal?.removeEventListener('abort', abort)
+    }
+  } finally {
+    db.close()
+  }
 }
 
-export async function getCashierProductCacheMeta(storeCode: string): Promise<CashierProductCacheMeta | null> {
+export async function getCashierProductCache(storeCode: string): Promise<{
+  meta: CashierProductCacheMeta
+  products: CashierCachedProduct[]
+} | null> {
   const db = await openCashierDb()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(META_STORE, 'readonly')
-    const req = tx.objectStore(META_STORE).get(storeCode)
-    req.onsuccess = () => {
-      db.close()
-      resolve((req.result as CashierProductCacheMeta | undefined) ?? null)
-    }
-    req.onerror = () => {
-      db.close()
-      reject(req.error ?? new Error('INDEXEDDB_READ_FAILED'))
-    }
-  })
-}
-
-export async function getCachedCashierProducts(storeCode: string): Promise<CashierCachedProduct[]> {
-  const db = await openCashierDb()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(PRODUCT_STORE, 'readonly')
-    const req = tx.objectStore(PRODUCT_STORE).index('storeCode').getAll(storeCode)
-    req.onsuccess = () => {
-      db.close()
-      resolve((Array.isArray(req.result) ? req.result : []) as CashierCachedProduct[])
-    }
-    req.onerror = () => {
-      db.close()
-      reject(req.error ?? new Error('INDEXEDDB_READ_PRODUCTS_FAILED'))
-    }
-  })
+  let meta: CashierProductCacheMeta | undefined
+  let products: CashierCachedProduct[]
+  try {
+    const tx = db.transaction([PRODUCT_STORE, META_STORE], 'readonly')
+    const metaRequest = tx.objectStore(META_STORE).get(storeCode)
+    const productRequest = tx.objectStore(PRODUCT_STORE).index('storeCode').getAll(storeCode)
+    await txDone(tx)
+    meta = metaRequest.result
+    products = productRequest.result
+  } finally {
+    db.close()
+  }
+  if (!meta || meta.storeCode !== storeCode) return null
+  const { storeId, tenantId, catalogProof } = meta
+  if (products.some(p => p.storeId !== storeId || p.tenantId !== tenantId)) return null
+  if (catalogProof && (meta.productCount !== products.length || !await verifyCashierCatalog(
+    products.map(p => ({ id: p.productId, updatedAt: p.updatedAt })), catalogProof,
+  ))) return null
+  return { meta, products }
 }
 
 export async function saveOfflineCashierOrder(order: Omit<CashierOfflineOrder, 'offlineOrderId'> & { offlineOrderId?: string }): Promise<CashierOfflineOrder> {

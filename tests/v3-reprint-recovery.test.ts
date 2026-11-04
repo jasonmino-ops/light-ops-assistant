@@ -836,10 +836,11 @@ async function main() {
     // Cashier successor: ES-DINE-IN-01 exact-path package (one entry button and one read-only eligibility fetch).
     // Historical Dine-in Cashier SHA-256: 621fce631a93b986d86f71a8de868de5872055acf9d79e385bb2ce113ca27e94.
     // Historical Records SHA-256: 48efc97f9b77dd63bed22fb0e3b69e44bf13ababbad3a8956cf39a6426912a22.
-    // ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01: exact ES-RETAIL-MULTI-UNIT-01 bytes.
+    // Prior ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01: exact ES-RETAIL-MULTI-UNIT-01 bytes.
+    // Successor candidate: ES-PRODUCT-COUNT-LIMIT-01 (catalogue-only).
     assert.equal(
       createHash('sha256').update(readFileSync('app/cashier/page.tsx')).digest('hex'),
-      'f9bbafc2ef156d0ad49b31f3003a607a2a05ca69dd334f65c950082942a1b683',
+      '8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6',
     )
     assert.equal(
       createHash('sha256').update(readFileSync('app/records/page.tsx')).digest('hex'),

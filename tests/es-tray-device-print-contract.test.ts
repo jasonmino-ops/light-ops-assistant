@@ -464,10 +464,11 @@ async function main() {
     // Prior CLOSED wiring successor: 14bd645733d4cf98ee32ae09e4cc3c91ea498ad7fc1948b1db9037509ec30102.
     // Prior ES-H5-THREE-TICKET-FULFILLMENT-01 bytes: a3770bb1805b15bba52868bd072e5f144dc27da580b85c2b5993a58c8f25e1d6.
     // Historical ES-DINE-IN-01 Cashier SHA-256: 621fce631a93b986d86f71a8de868de5872055acf9d79e385bb2ce113ca27e94.
-    // ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01: exact ES-RETAIL-MULTI-UNIT-01 bytes.
+    // Prior ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01: exact ES-RETAIL-MULTI-UNIT-01 bytes.
+    // Successor candidate: ES-PRODUCT-COUNT-LIMIT-01 (catalogue-only).
     assert.equal(
       createHash('sha256').update(cashier).digest('hex'),
-      'f9bbafc2ef156d0ad49b31f3003a607a2a05ca69dd334f65c950082942a1b683',
+      '8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6',
     )
   })
 
