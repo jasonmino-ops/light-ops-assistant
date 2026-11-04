@@ -6,7 +6,7 @@
   "baseOriginMainSha": "c9508d180d6ea16595f966685eb70e54cb3e48b4",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "DRAFT_NOT_ACTIVE",
   "authorizedPaths": [
     "app/api/cashier/store/route.ts",
     "app/api/products/route.ts",
@@ -26,7 +26,7 @@
     "app/products/page.tsx": "8e5965c4c4e0e7e83f7e309f81fdc93e13b4152b19e99fbbc8efd1ca0076a88c",
     "app/sale/page.tsx": "6818f8b63ba25031a2501947baa0ca9a8e03959ee5d47a245ddad13f3a00980f",
     "lib/cashier-offline-db.ts": "c4571d19dd6765e39bb39422dc718820627e93713462b8f3696ef06ac8e81f3c",
-    "tests/cashier-realtime-integration.test.ts": "9a316818c67a39283eca68e44a5ae53f4ef28b2b787b93c5e017139d6aeb2463",
+    "tests/cashier-realtime-integration.test.ts": "78f73db253dd0862422eb2ffdce5fbd21cd597ffe3aeaa60b052005d9406d8a7",
     "tests/es-tray-device-print-contract.test.ts": "563b06d5f9cc8e325c6c9b98ade5178dca2197d5af0c8851e1a77a8b3e0cec33",
     "tests/product-sku-search.test.ts": "ab5db72e60a4053a022ac8bbaca290f3ee846aba2935de6ccba213af2a0fc781",
     "tests/v3-reprint-recovery.test.ts": "d403c6200677499541b91c66db2ce8583b8cf942b45dada40df3600a75ae3a28"
@@ -35,14 +35,14 @@
   "approvedAt": "2026-11-04T04:29:54.813Z",
   "approvedBy": "Founder",
   "approvalSource": {
-    "candidatePatchSha256": "dfcda0d2789dcf31d24a866ffabdbc52e9e265901d0cb5d0b9651c36b6647b25",
+    "candidatePatchSha256": "4884968b15e3a5e05ba0ef79b27cb710f318898d48a035b157ceba913817bab7",
     "compatibilityPreparation": "Founder approved limited Core compatibility revision on 2026-11-04",
     "finalCompatibilityApproval": "PENDING_EXACT_CONTENT_APPROVAL",
-    "freezeSuccessorSha256": "0f5de62bda26a816d6a8e53c5275827b53fe7995570ae7e0f455db1c7e56d856",
+    "freezeSuccessorSha256": "a23bad306a2cb1e9451e36601ab91004bb3ea88507fa40a06e28b99094f0ae85",
     "compatibilityEvidenceSha256": {
-      "candidate-manifest.json": "6b34c430f9fd2026fbb8727ff1d4c4e3937f6d089a7de39d5bf58246c5bfb584",
-      "active-registration-draft.json": "b631472f1ce16396c5f8abe56057019d29e5efcbe2b629dd6084b3e9c2481f16",
-      "sealed-candidate-current.patch": "dfcda0d2789dcf31d24a866ffabdbc52e9e265901d0cb5d0b9651c36b6647b25",
+      "candidate-manifest.json": "042a40b22518d0379af1a628ff7f6ea66bf56a6f10fb454ea903127a1d467567",
+      "active-registration-draft.json": "a963d259bb8c28db432f2120c01a59a2f1cf7ce4fec78d00e445e42c37b8e7c5",
+      "sealed-candidate-current.patch": "4884968b15e3a5e05ba0ef79b27cb710f318898d48a035b157ceba913817bab7",
       "post-registration-product.patch": "ff40c5719723f588308348339e9aaaa91a2de769387b2cd08479daf6b768b3f4"
     },
     "priorExactContentApproval": {

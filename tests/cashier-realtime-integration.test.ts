@@ -491,46 +491,49 @@ async function main() {
     if (isRegistration) {
       // This branch validates the governance commit without activating its product grant.
       assert.equal(trustedMain, registration.baseOriginMainSha)
+      assert.equal(isDiamond, false, 'Catalogue registration cannot claim any Diamond path')
       assert.deepEqual(gitPaths('status', '--porcelain', '--untracked-files=all'), [],
         'Catalogue registration must be a clean commit')
       const bootstrapPaths = [registrationPath, successorPath, catalogueTest].sort()
       assert.deepEqual([...diamondCommitted].sort(), bootstrapPaths,
         'Catalogue registration commit must contain only the two records and compatibility test')
       const { validateException } = require('../scripts/guards/check-change-scope.js')
-      validateException(registration, root)
-      assert.equal(registration.status, 'ACTIVE', 'Catalogue registration must use the activation schema')
+      const approved = registration.approvalSource?.finalCompatibilityApproval === 'APPROVED'
+      assert.equal(registration.status, approved ? 'ACTIVE' : 'DRAFT_NOT_ACTIVE',
+        'Only the final exact-content decision can produce an ACTIVE registration')
+      // Check the prospective record schema; the committed draft remains invalid to Scope Guard.
+      validateException({ ...registration, status: 'ACTIVE' }, root)
       execFileSync(process.execPath, [
         'scripts/guards/check-change-scope.js', '--files', bootstrapPaths.join(','),
       ], { cwd: root, stdio: 'inherit' })
       console.log('Catalogue registration boundary checks passed')
-      return
-    }
+    } else {
+      assert.equal(registration.approvalSource?.finalCompatibilityApproval, 'APPROVED',
+        'Catalogue compatibility bytes require a final exact-content decision')
+      assert.deepEqual([...diamondChanged].sort(), productDelta,
+        'Catalogue feature delta must contain exactly the nine remaining sealed paths')
+      assert.deepEqual(
+        gitPaths('diff', '--no-renames', '--name-only', registration.baseOriginMainSha, trustedMain, '--',
+          'docs/change-gates/gate-config.json', ...paths),
+        [catalogueTest],
+        'Only the exact compatibility test may already be installed on trusted main',
+      )
 
-    assert.equal(registration.approvalSource?.finalCompatibilityApproval, 'APPROVED',
-      'Catalogue compatibility bytes require a final exact-content decision')
-    assert.deepEqual([...diamondChanged].sort(), productDelta,
-      'Catalogue feature delta must contain exactly the nine remaining sealed paths')
-    assert.deepEqual(
-      gitPaths('diff', '--no-renames', '--name-only', registration.baseOriginMainSha, trustedMain, '--',
-        'docs/change-gates/gate-config.json', ...paths),
-      [catalogueTest],
-      'Only the exact compatibility test may already be installed on trusted main',
-    )
+      // Use the real guard for trusted record, branch, lineage and worktree checks.
+      // Only the task's registered branch can reach this case; old Diamond checks
+      // remain the authority on every branch that would have used them before.
+      execFileSync(process.execPath, [
+        'scripts/guards/check-change-scope.js', '--task-id', catalogueTask, '--files', paths.join(','),
+      ], { cwd: root, stdio: 'inherit' })
 
-    // Use the real guard for trusted record, branch, lineage and worktree checks.
-    // Only the task's registered branch can reach this case; old Diamond checks
-    // remain the authority on every branch that would have used them before.
-    execFileSync(process.execPath, [
-      'scripts/guards/check-change-scope.js', '--task-id', catalogueTask, '--files', paths.join(','),
-    ], { cwd: root, stdio: 'inherit' })
-
-    // A valid working file must not conceal different staged or committed bytes.
-    const staged = gitPaths('diff', '--cached', '--no-renames', '--name-only', 'HEAD')
-    for (const [revision, files] of [['', staged], ['HEAD', diamondCommitted]] as const) {
-      for (const path of files) {
-        const content = execFileSync('git', ['show', `${revision}:${path}`], { cwd: root })
-        assert.equal(createHash('sha256').update(content).digest('hex'), registration.authorizedPathSha256[path],
-          `Catalogue ${revision || 'index'} SHA-256 mismatch: ${path}`)
+      // A valid working file must not conceal different staged or committed bytes.
+      const staged = gitPaths('diff', '--cached', '--no-renames', '--name-only', 'HEAD')
+      for (const [revision, files] of [['', staged], ['HEAD', diamondCommitted]] as const) {
+        for (const path of files) {
+          const content = execFileSync('git', ['show', `${revision}:${path}`], { cwd: root })
+          assert.equal(createHash('sha256').update(content).digest('hex'), registration.authorizedPathSha256[path],
+            `Catalogue ${revision || 'index'} SHA-256 mismatch: ${path}`)
+        }
       }
     }
   } else if (isM2) {
