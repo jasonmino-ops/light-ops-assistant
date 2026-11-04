@@ -29,12 +29,14 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const crypto = require('node:crypto')
 
+// ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01：仅绑定 M4 授权的 relay device opt-in。
 const EXTENSION_POINTS = [
   {
     file: "lib/es-tray-relay/auth.ts",
-    sha256: "9080daf8b5c30e608829e859bbdaea85dc155e9d3e7a47cee364752728aabf5f",
+    sha256: "9659a161f4c1426c066bf6027bc288d1c77d0ce986ce94196f4f18b9d842a24d",
     predicates: [
       "schemaVersion: 1 | 2",
+      "const auth = await authenticateAgent(req, 'device', { allowManagedPrintChild: true })",
       "const schemaVersion = profile === NETWORK_PROFILE ? 2 : 1",
       "|| (schemaVersion === 2",
       "context: { binding, tenantId: store.tenantId, storeId: store.id, storeCode: store.code, schemaVersion },",
@@ -132,4 +134,4 @@ for (const { file, sha256, reason, mustDelegateTo } of NON_EXTENSION_INVARIANTS)
 
 console.log(
   `I-3 PASS：${EXTENSION_POINTS.length} 个共享分发点的既有 v2 判定行完整且顺序不变；` +
-  `${NON_EXTENSION_INVARIANTS.length} 个非分发点仍保持零版本判定（基线 5a2c4dcb30de）`)
+  `${NON_EXTENSION_INVARIANTS.length} 个非分发点仍保持零版本判定（原 G1 5a2c4dcb30de + ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01）`)

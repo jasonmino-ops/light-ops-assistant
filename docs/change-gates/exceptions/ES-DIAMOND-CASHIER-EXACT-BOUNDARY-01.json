@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "taskId": "ES-DIAMOND-CASHIER-EXACT-BOUNDARY-01",
+  "featureBranch": "codex/es-diamond-v3-print-frozen-successor-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "67338b57bf2d872e2b0755c76820036f6f0743f4",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "createdAt": "2026-11-03T18:05:10.266Z",
+  "approvedAt": "2026-11-03T18:05:10.266Z",
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Exact successor to the Cashier authorization recorded by PR #14. Register only the Diamond boundary test. Its trusted main checks admit the separately approved H5 and ES Tray baseline bytes and the recorded H5 closure. Other grants are separate.",
+  "authorizedPaths": [
+    "tests/cashier-realtime-integration.test.ts"
+  ],
+  "authorizedPathSha256": {
+    "tests/cashier-realtime-integration.test.ts": "c18dda3aa8756333170117ba35cb67946aa22123f747d20de0748a9a2efa72a6"
+  }
+}

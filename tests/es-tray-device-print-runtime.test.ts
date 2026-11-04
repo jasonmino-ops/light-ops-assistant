@@ -185,6 +185,10 @@ async function main() {
     assert.deepEqual(await body(response), {
       fieldOnly: true,
       productionContract: true,
+      principal: 'BROWSER_POS_DEVICE',
+      browserDeviceId: seed.browserDeviceId,
+      storeCode: seed.store.code,
+      managedAddonContext: false,
       enabled: true,
     })
   })

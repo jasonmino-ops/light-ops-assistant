@@ -361,6 +361,35 @@ async function createJobForSealedIntent(db: FulfillmentDb, intentId: string, run
   }
 }
 
+// A scoped durable job without its seal cannot be safely associated or rerendered.
+async function reviewUnsealedIntentWithJob(
+  db: FulfillmentDb,
+  intent: { id: string; tenantId: string; storeId: string; orderNo: string; purpose: CustomerOrderTicketPurpose; role: IntentRole; idempotencyKey: string; revision: number },
+  now: Date,
+): Promise<CustomerOrderPrintResult | null> {
+  const where = { tenantId_storeId_idempotencyKey: {
+    tenantId: intent.tenantId, storeId: intent.storeId, idempotencyKey: intent.idempotencyKey,
+  } }
+  const select = { id: true }
+  if (!await db.eshopTrayPrintJob?.findUnique({ where, select })) return null
+  if (!db.$transaction) return { status: 'FAILED', created: false, printJobId: null, error: 'CUSTOMER_ORDER_TRANSACTION_UNAVAILABLE' }
+  return db.$transaction(async (tx): Promise<CustomerOrderPrintResult | null> => {
+    await lockCustomerOrder(tx, intent)
+    if (!await tx.eshopTrayPrintJob.findUnique({ where, select })) return null
+    const reason = 'CUSTOMER_ORDER_EXISTING_JOB_IDENTITY_MISMATCH'
+    const changed = await intentModel(tx).updateMany({ where: {
+      id: intent.id, tenantId: intent.tenantId, storeId: intent.storeId, orderNo: intent.orderNo,
+      purpose: intent.purpose, role: intent.role, source: CUSTOMER_ORDER_SOURCE, idempotencyKey: intent.idempotencyKey,
+      revision: intent.revision, state: { in: pendingJobStates }, printJobId: null, sealedAt: null,
+    }, data: {
+      ...clearCustomerOrderRenderLease, state: 'MANUAL_REVIEW', manualReviewReason: reason,
+      lastErrorCode: reason, lastErrorAt: now, revision: { increment: 1 },
+    } })
+    if (changed.count !== 1) return customerOrderPrintReceipt(tx, intent, intent.role)
+    return { status: 'MANUAL_REVIEW', created: false, printJobId: null, error: reason }
+  })
+}
+
 /** Metadata/sealed-job recovery only. No browser or text renderer can run here. */
 export async function processCustomerOrderFulfillmentIntent(db: FulfillmentDb, intentId: string, now = new Date(), runtime?: CustomerOrderFulfillmentRuntimeOptions): Promise<CustomerOrderPrintResult> {
   const model = intentModel(db)
@@ -369,6 +398,10 @@ export async function processCustomerOrderFulfillmentIntent(db: FulfillmentDb, i
   if (intent.printJobId) return { status: 'ALREADY_PRESENT', created: false, printJobId: intent.printJobId }
   if (['CANCELLED', 'EXPIRED', 'MANUAL_REVIEW', 'NOT_REQUIRED'].includes(intent.state)) {
     return { status: intent.state === 'EXPIRED' ? 'EXPIRED' : intent.state === 'NOT_REQUIRED' ? 'NOT_REQUIRED' : 'MANUAL_REVIEW', created: false, printJobId: intent.printJobId, error: intent.cancelResultCode ?? intent.manualReviewReason }
+  }
+  if (intent.source === CUSTOMER_ORDER_SOURCE && !intent.sealedAt && pendingJobStates.includes(intent.state)) {
+    const review = await reviewUnsealedIntentWithJob(db, intent, now)
+    if (review) return review
   }
   if (intent.deadlineAt <= now && !intent.printJobId) {
     const changed = await model.updateMany({ where: { id: intent.id, printJobId: null, revision: intent.revision, state: { in: pendingJobStates } }, data: { ...clearCustomerOrderRenderLease, state: 'EXPIRED', lastErrorCode: 'CUSTOMER_ORDER_FULFILLMENT_DEADLINE_EXPIRED', lastErrorAt: now, lastRecoverySweepAt: now, revision: { increment: 1 } } })

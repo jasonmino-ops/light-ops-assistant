@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "taskId": "ES-DIAMOND-STORE-OPERATIONAL-RECOVERY-01-STAGE-1",
+  "featureBranch": "codex/es-diamond-store-operational-recovery-stage-1",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "172b14507609c34c78cc5de3d9e33afdf10b0a6e",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "createdAt": "2026-11-03T16:28:52.408Z",
+  "approvedAt": "2026-11-03T16:28:52.408Z",
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Stage 1 exact test-baseline successor: register the existing managed print-child lifecycle CORE test and preserve coverage, and encode only Products!B2 of the generated Product Import rollback fixture as equal decimal text. No Diamond product, runtime, schema, migration, deployment or FIELD authorization.",
+  "authorizedPaths": [
+    "scripts/test/manifests/root-core-tests.json",
+    "tests/product-bulk-import-integration.test.ts"
+  ],
+  "authorizedPathSha256": {
+    "scripts/test/manifests/root-core-tests.json": "7067fbbe1e3805f7e0056038f01dee550078c987c00efae08eae81b6535f731f",
+    "tests/product-bulk-import-integration.test.ts": "eca5e58c3109e64b52c08cf3e2a5c696b013f92d37d255bdf90628fb4785d118"
+  },
+  "additionalAuthorizations": [
+    {
+      "authorizationId": "STAGE-1-TYPESCRIPT-CORRECTION",
+      "featureBranch": "codex/es-diamond-store-operational-recovery-stage-1-typescript",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "5c32bd6d4b49776b466a4409955c320a85fe14b9",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-11-03T17:00:37.161Z",
+      "approvedAt": "2026-11-03T17:00:37.161Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Bind the Stage 1 manifest already approved and the Product Import rollback fixture with six batch presence assertions. Preserve the PRIMARY approval and its original hashes. No additional source paths.",
+      "authorizedPaths": [
+        "scripts/test/manifests/root-core-tests.json",
+        "tests/product-bulk-import-integration.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "scripts/test/manifests/root-core-tests.json": "7067fbbe1e3805f7e0056038f01dee550078c987c00efae08eae81b6535f731f",
+        "tests/product-bulk-import-integration.test.ts": "10b55c836b9ecffcc320183436c53e84d898d10fb410fac3833afae984b76829"
+      }
+    }
+  ]
+}

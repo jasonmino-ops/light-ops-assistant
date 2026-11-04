@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict'
+import { createHash, randomUUID } from 'node:crypto'
+import { PrismaClient, type Prisma } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
+import pg from 'pg'
+import { classifyV3OperatorPrintJob, issueV3OperatorRecoveryProofWithDb } from '../lib/v3-print-operator-status'
+import { hashInstallationId } from '../lib/desktop-activation/crypto'
+import { deliverV3PrintIntent, reportV3Execution } from '../lib/v3-print-job-adapter'
 import test from 'node:test'
 import {
   acquireV3Authority, controlledV3OwnerHandoff, issueV3ExecutionBatch,
   recoverExpiredSelfV3Authority, releaseV3Authority, renewV3Authority, transitionV3PrintMode, type V3ControlPlaneDb,
 } from '../lib/v3-print-control-plane'
 import {
-  parseOpsPrintModeCommand,
+  parseOpsPrintModeCommand, parseOpsV3QueueRecoveryCommand, runOpsV3QueueRecovery,
   readOpsPrintModeState,
   resolveOpsPrintStoreAccess,
   runOpsPrintModeAction,
@@ -805,4 +812,425 @@ test('Ops serializable conflict fails closed and reports current authoritative s
     assert.equal(result.controlPlane.stateVersion, 7)
   }
   assert.equal(state.audits.length, 0)
+})
+
+const recoveryBase = {
+  confirmed: true,
+  requestId: 'request-review-01',
+  expectedStateVersion: 9,
+  reason: 'EXPIRED_UNEXECUTED_FRONT_RECOVERY',
+  jobIds: ['test-job-002', 'test-job-001'],
+}
+const testInstallationId = 'test-diamond-installation'
+const fixtureJobIds = ['test-job-001', 'test-job-002']
+const keyForFixture = (id: string) => 'network:' + createHash('sha256')
+  .update('cashier-network-v2:order-' + id + ':FRONT').digest('hex')
+const recoveryCapture = {
+  captureId: 'windows-capture-001',
+  deviceId: 'test-device-01',
+  ownerEpoch: 4,
+  releasedAt: '2026-01-02T23:59:00.000Z',
+  releasedBatchId: 'test-old-batch',
+  jobs: fixtureJobIds.map(id => ({
+    id, key: keyForFixture(id), requestHash: 'f'.repeat(64), updatedAt: '2026-01-01T00:00:00.000Z',
+  })),
+  capturedAt: '2026-01-03T00:00:00.000Z',
+  deviceObservedAt: '2026-01-03T00:00:00.000Z',
+  historyVerifiedFrom: '2026-01-01T00:00:00.000Z',
+  ledgerSha256: 'a'.repeat(64),
+  outboxSha256: 'b'.repeat(64),
+  verifiedNoLocalExecution: true,
+}
+
+function recoveryCommand(body: unknown) {
+  const parsed = parseOpsV3QueueRecoveryCommand(body)
+  assert.ok(parsed?.ok)
+  return parsed.value
+}
+
+test('queue recovery envelope rejects duplicates, untrusted scope/actor overrides and missing evidence', () => {
+  const request = { ...recoveryBase, action: 'REVIEW_EXPIRED_V3_FRONT_EVIDENCE', installationId: testInstallationId, capture: recoveryCapture }
+  assert.deepEqual(recoveryCommand(request).jobIds, ['test-job-001', 'test-job-002'])
+  for (const input of [
+    { ...request, jobIds: ['test-job-001', 'test-job-001'] },
+    { ...request, jobIds: [] },
+    { ...request, confirmed: false },
+    { ...request, installationId: undefined },
+    { ...request, storeId: 'other-store' },
+    { ...request, reviewerId: 'other-admin' },
+    { ...request, capture: { ...recoveryCapture, verifiedNoLocalExecution: false } },
+    { ...request, capture: { ...recoveryCapture, ledgerSha256: 'invalid' } },
+    { ...recoveryBase, action: 'EXPIRE_UNEXECUTED_V3_FRONT' },
+  ]) {
+    assert.deepEqual(parseOpsV3QueueRecoveryCommand(input), { ok: false, code: 'INVALID_QUEUE_RECOVERY_COMMAND' })
+  }
+  assert.equal(parseOpsV3QueueRecoveryCommand({ action: 'FINALIZE_V3_ACTIVE' }), null)
+})
+
+const recoverySocket = process.env.DIAMOND_QUEUE_TEST_SOCKET
+
+test('queue recovery serializable guards and claim race in isolated PostgreSQL', {
+  skip: !recoverySocket && 'requires the dedicated DIAMOND_QUEUE_TEST_SOCKET fixture',
+}, async t => {
+  assert.match(recoverySocket!, /^\/private\/tmp\/diamond-v3-queue-pg\.[A-Za-z0-9]+$/)
+  const previousSecret = process.env.DESKTOP_DEVICE_TOKEN_SECRET
+  process.env.DESKTOP_DEVICE_TOKEN_SECRET = 'isolated-postgres-fixture-secret-never-production'
+  t.after(() => {
+    if (previousSecret === undefined) delete process.env.DESKTOP_DEVICE_TOKEN_SECRET
+    else process.env.DESKTOP_DEVICE_TOKEN_SECRET = previousSecret
+  })
+  const fixtureSchema = 'queue_test_' + randomUUID().replaceAll('-', '')
+  const pool = new pg.Pool({
+    host: recoverySocket, port: 55483, database: 'es_diamond_v3_queue_test',
+    max: 5, application_name: 'diamond-queue-recovery-test', options: '-c search_path=' + fixtureSchema,
+  })
+  const prisma = new PrismaClient({ adapter: new PrismaPg(pool, { schema: fixtureSchema }) })
+  t.after(async () => { await prisma.$disconnect(); await pool.end() })
+  const scope = { tenantId: 'test-tenant', storeId: 'test-store' }
+  const reviewer = { id: 'test-ops-reviewer', role: 'OPS_ADMIN' }
+  const executor = { id: 'test-ops-executor', role: 'OPS_ADMIN' }
+  const startedAt = new Date('2026-01-03T00:00:05.000Z')
+  const receiptTime = new Date(recoveryCapture.historyVerifiedFrom)
+  const originalExpiry = new Date('2026-01-02T00:00:00.000Z')
+  const releaseTime = new Date('2026-01-02T23:59:00.000Z')
+  const raw = { payloadBase64: 'AQ==', byteLength: 1, payloadHash: createHash('sha256').update(Buffer.from([1])).digest('hex') }
+  const originalKeys = new Map<string, string>()
+  const jobIds = fixtureJobIds
+  const reviewCommand = recoveryCommand({
+    ...recoveryBase, action: 'REVIEW_EXPIRED_V3_FRONT_EVIDENCE', installationId: testInstallationId, capture: recoveryCapture,
+  })
+  const run = (command: ReturnType<typeof recoveryCommand>, actor = executor, at = startedAt, useScope = scope) =>
+    runOpsV3QueueRecovery(prisma, useScope, actor, command, () => at)
+
+  // Disposable fixture schema only, never a migration or an existing database.
+  const identity = await pool.query('SELECT current_database() AS name, inet_server_addr() AS addr')
+  assert.deepEqual(identity.rows, [{ name: 'es_diamond_v3_queue_test', addr: null }])
+  await pool.query(`CREATE SCHEMA "${fixtureSchema}"`)
+  await pool.query(`
+    CREATE TYPE "DesktopDeviceStatus" AS ENUM ('ACTIVE', 'REVOKED');
+    CREATE TYPE "RecordStatus" AS ENUM ('PENDING_PAYMENT', 'COMPLETED', 'CANCELLED');
+    CREATE TYPE "SaleType" AS ENUM ('SALE', 'REFUND');
+    CREATE TYPE "LogStatus" AS ENUM ('SUCCESS', 'FAILED');
+    CREATE TYPE "EshopTrayPrintJobStatus" AS ENUM ('PENDING', 'CLAIMED', 'EXECUTING', 'SUCCEEDED', 'FAILED', 'EXPIRED');
+    CREATE TABLE "OpsAdmin" ("id" text PRIMARY KEY, "status" text NOT NULL, "role" text NOT NULL);
+    CREATE TABLE "DesktopDevice" ("id" text PRIMARY KEY, "tenantId" text NOT NULL, "storeId" text NOT NULL, "status" "DesktopDeviceStatus" NOT NULL, "installationIdHash" char(64) NOT NULL);
+    CREATE TABLE "SaleRecord" ("id" text PRIMARY KEY, "tenantId" text NOT NULL, "storeId" text NOT NULL, "orderNo" text NOT NULL, "recordNo" text NOT NULL, "status" "RecordStatus" NOT NULL, "saleType" "SaleType" NOT NULL, "createdAt" timestamp(3) NOT NULL);
+    CREATE TABLE "V3PrintControlPlane" (
+      "id" text PRIMARY KEY, "tenantId" text NOT NULL, "storeId" text UNIQUE NOT NULL, "ownerDeviceId" text,
+      "ownerEpoch" integer NOT NULL, "leaseId" text, "leaseExpiresAt" timestamp(3), "mode" text NOT NULL,
+      "stateVersion" integer NOT NULL, "handoffRequestedAt" timestamp(3), "handoffQuarantineUntil" timestamp(3),
+      "lastReconciledAt" timestamp(3), "createdAt" timestamp(3) NOT NULL, "updatedAt" timestamp(3) NOT NULL
+    );
+    CREATE TABLE "V3PrintExecutionBatch" (
+      "id" text PRIMARY KEY, "controlPlaneId" text NOT NULL, "tenantId" text NOT NULL, "storeId" text NOT NULL,
+      "ownerDeviceId" text NOT NULL, "ownerEpoch" integer NOT NULL, "stateVersion" integer NOT NULL,
+      "leaseId" text NOT NULL, "mode" text NOT NULL, "expiresAt" timestamp(3) NOT NULL,
+      "revokedAt" timestamp(3), "createdAt" timestamp(3) NOT NULL
+    );
+    CREATE TABLE "EshopTrayPrintJob" (
+      "id" text PRIMARY KEY, "tenantId" text NOT NULL, "storeId" text NOT NULL,
+      "idempotencyKey" text NOT NULL, "requestHash" char(64) NOT NULL, "schemaVersion" integer NOT NULL,
+      "payload" jsonb NOT NULL, "kitchenJobSuppressed" boolean DEFAULT false NOT NULL,
+      "status" "EshopTrayPrintJobStatus" NOT NULL, "claimedByComputerBindingId" text, "claimTokenHash" char(64),
+      "claimAttempt" integer DEFAULT 0 NOT NULL, "leaseExpiresAt" timestamp(3), "attemptCount" integer DEFAULT 0 NOT NULL,
+      "maxAttempts" integer DEFAULT 1 NOT NULL, "nextAttemptAt" timestamp(3) NOT NULL, "expiresAt" timestamp(3) NOT NULL,
+      "executingAt" timestamp(3), "completedAt" timestamp(3), "resultStatus" text, "resultCode" text, "resultMessage" text,
+      "effectBoundary" text, "physicalCompletionKnown" boolean DEFAULT false NOT NULL,
+      "createdAt" timestamp(3) NOT NULL, "updatedAt" timestamp(3) NOT NULL, UNIQUE ("tenantId", "storeId", "idempotencyKey")
+    );
+    CREATE TABLE "OperationLog" (
+      "id" text PRIMARY KEY, "tenantId" text NOT NULL, "storeId" text, "userId" text, "actionType" text NOT NULL,
+      "targetType" text NOT NULL, "targetId" text, "requestId" text, "status" "LogStatus" NOT NULL,
+      "message" text, "payloadSnapshot" jsonb, "createdAt" timestamp(3) DEFAULT now() NOT NULL, "saleRecordId" text
+    );
+  `)
+
+  async function reset() {
+    await pool.query(`
+      TRUNCATE "OpsAdmin", "DesktopDevice", "SaleRecord", "V3PrintControlPlane", "V3PrintExecutionBatch", "EshopTrayPrintJob", "OperationLog";
+      INSERT INTO "OpsAdmin" VALUES ('test-ops-reviewer','ACTIVE','OPS_ADMIN'), ('test-ops-executor','ACTIVE','OPS_ADMIN');
+    `)
+    await pool.query(`INSERT INTO "DesktopDevice" VALUES ('test-device-01','test-tenant','test-store','ACTIVE',$1)`,
+      [hashInstallationId(testInstallationId)])
+    await prisma.v3PrintControlPlane.create({ data: {
+      ...scope, id: 'test-plane-01', mode: 'BLOCKED_UNKNOWN', ownerEpoch: 4, stateVersion: 9,
+      handoffRequestedAt: releaseTime, createdAt: receiptTime, updatedAt: releaseTime,
+    } })
+    await prisma.v3PrintExecutionBatch.create({ data: {
+      ...scope, id: 'test-old-batch', controlPlaneId: 'test-plane-01', ownerDeviceId: recoveryCapture.deviceId,
+      ownerEpoch: 4, stateVersion: 8, leaseId: 'test-lease-01', mode: 'V3_ACTIVE',
+      expiresAt: startedAt, revokedAt: releaseTime, createdAt: receiptTime,
+    } })
+    for (const id of jobIds) {
+      const orderNo = 'order-' + id
+      const key = keyForFixture(id)
+      originalKeys.set(id, key)
+      await pool.query('INSERT INTO "SaleRecord" VALUES ($1,$2,$3,$4,$4,\'COMPLETED\',\'SALE\',$5)', [
+        id, scope.tenantId, scope.storeId, orderNo, receiptTime.toISOString().slice(0, -1),
+      ])
+      await prisma.eshopTrayPrintJob.create({ data: {
+        ...scope, id, idempotencyKey: key, requestHash: 'f'.repeat(64), schemaVersion: 3, maxAttempts: 1,
+        payload: { schemaVersion: 3, source: 'LOCAL_DESKTOP', role: 'FRONT', payloadKind: 'RAW_BYTES',
+          orderNo, printJobId: key, rendererVersion: 'network-1', ...raw },
+        expiresAt: originalExpiry, nextAttemptAt: receiptTime, createdAt: receiptTime, updatedAt: receiptTime,
+      } })
+    }
+  }
+
+  async function register() {
+    const result = await run(reviewCommand, reviewer)
+    assert.ok(result.ok, JSON.stringify(result))
+    return recoveryCommand({ ...recoveryBase, action: 'EXPIRE_UNEXECUTED_V3_FRONT',
+      evidenceId: result.evidenceId, requestId: 'request-expire-01' })
+  }
+
+  async function assertNoExpiry() {
+    assert.equal(await prisma.eshopTrayPrintJob.count({ where: { status: 'EXPIRED' } }), 0)
+    assert.equal(await prisma.operationLog.count({ where: { actionType: 'EXPIRE_UNEXECUTED_V3_FRONT' } }), 0)
+  }
+
+  await t.test('expiry and authenticated scoped fresh independent evidence are required', async () => {
+    await reset()
+    await prisma.v3PrintControlPlane.updateMany({ data: { handoffRequestedAt: receiptTime } })
+    const earlyTime = new Date(originalExpiry.getTime() - 5000)
+    const early = recoveryCommand({ ...recoveryBase, action: 'REVIEW_EXPIRED_V3_FRONT_EVIDENCE', installationId: testInstallationId, capture: {
+      ...recoveryCapture, releasedAt: receiptTime.toISOString(), capturedAt: earlyTime.toISOString(), deviceObservedAt: earlyTime.toISOString(),
+    } })
+    assert.deepEqual(await run(early, reviewer, earlyTime), { ok: false, code: 'QUEUE_JOB_NOT_EXPIRED' })
+    await reset()
+    assert.deepEqual(await run(reviewCommand, { ...reviewer, role: 'SUPER_ADMIN' }), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    assert.deepEqual(await run(recoveryCommand({ ...reviewCommand, installationId: 'wrong-installation', confirmed: true }), reviewer),
+      { ok: false, code: 'EVIDENCE_DEVICE_INVALID' })
+    const missing = recoveryCommand({ ...recoveryBase, action: 'EXPIRE_UNEXECUTED_V3_FRONT',
+      requestId: 'request-missing-01', evidenceId: 'fake-evidence-id' })
+    assert.deepEqual(await run(missing), { ok: false, code: 'QUEUE_EVIDENCE_REQUIRED' })
+    const action = await register()
+    assert.deepEqual(await run(action, reviewer), { ok: false, code: 'QUEUE_EVIDENCE_INDEPENDENCE_REQUIRED' })
+    assert.deepEqual(await run(action, executor, new Date(startedAt.getTime() + 301_000)), { ok: false, code: 'QUEUE_EVIDENCE_STALE' })
+    assert.deepEqual(await run(action, executor, startedAt, { ...scope, storeId: 'wrong-store' }), { ok: false, code: 'QUEUE_CONTROL_PLANE_UNAVAILABLE' })
+    assert.deepEqual(await run({ ...action, expectedStateVersion: 8 }), { ok: false, code: 'CONCURRENT_STATE_CHANGE' })
+    assert.deepEqual(await run({ ...action, jobIds: ['test-wrong-id'] }), { ok: false, code: 'QUEUE_JOB_SCOPE_MISMATCH' })
+    assert.deepEqual(await run({ ...action, jobIds: ['test-job-001'] }), { ok: false, code: 'QUEUE_EVIDENCE_JOB_MISMATCH' })
+    assert.deepEqual(await run({ ...reviewCommand, requestId: 'request-reused-capture' }, reviewer), { ok: false, code: 'QUEUE_EVIDENCE_CAPTURE_REUSED' })
+    assert.deepEqual(await run(recoveryCommand({
+      ...recoveryBase, requestId: 'request-redated-capture', action: 'REVIEW_EXPIRED_V3_FRONT_EVIDENCE',
+      installationId: testInstallationId, capture: {
+        ...recoveryCapture, capturedAt: startedAt.toISOString(), deviceObservedAt: startedAt.toISOString(),
+      },
+    }), reviewer), { ok: false, code: 'QUEUE_EVIDENCE_CAPTURE_REUSED' })
+    await assertNoExpiry()
+  })
+
+  await t.test('any claim, execution, ACK or crossing rejects the entire batch', async () => {
+    for (const flags of [
+      { claimAttempt: 1 }, { attemptCount: 1 }, { claimTokenHash: 'f'.repeat(64) },
+      { executingAt: startedAt }, { resultStatus: 'CROSSED' }, { effectBoundary: 'CROSSING_UNKNOWN' },
+      { completedAt: startedAt }, { resultMessage: 'V3_DURABLY_HELD' }, { physicalCompletionKnown: true },
+    ]) {
+      await reset()
+      const action = await register()
+      await prisma.eshopTrayPrintJob.update({ where: { id: jobIds[1] }, data: flags })
+      assert.deepEqual(await run(action), { ok: false, code: 'QUEUE_JOB_NOT_UNEXECUTED' })
+      await assertNoExpiry()
+    }
+  })
+
+  await t.test('original receipt and full host history bind evidence and no live batch is allowed', async () => {
+    await reset()
+    await prisma.eshopTrayPrintJob.update({ where: { id: jobIds[1] }, data: { expiresAt: receiptTime, updatedAt: receiptTime } })
+    assert.deepEqual(await run(reviewCommand, reviewer), { ok: false, code: 'QUEUE_RECEIPT_TTL_UNPROVEN' })
+    await reset()
+    assert.deepEqual(await run(recoveryCommand({
+      ...recoveryBase, action: 'REVIEW_EXPIRED_V3_FRONT_EVIDENCE', installationId: testInstallationId,
+      capture: { ...recoveryCapture, historyVerifiedFrom: originalExpiry.toISOString() },
+    }), reviewer), { ok: false, code: 'EVIDENCE_HISTORY_INCOMPLETE' })
+    await prisma.v3PrintExecutionBatch.update({ where: { id: 'test-old-batch' }, data: {
+      revokedAt: null, expiresAt: new Date(startedAt.getTime() + 10_000),
+    } })
+    assert.deepEqual(await run(reviewCommand, reviewer), { ok: false, code: 'ACTIVE_EXECUTION_BATCH' })
+    await assertNoExpiry()
+  })
+
+  await t.test('attestation rejects changed captured facts or another device with a cached batch', async () => {
+    await reset()
+    const review = (capture: typeof recoveryCapture) => run(recoveryCommand({
+      ...recoveryBase, action: 'REVIEW_EXPIRED_V3_FRONT_EVIDENCE', installationId: testInstallationId, capture,
+    }), reviewer)
+    assert.deepEqual(await review({ ...recoveryCapture, ownerEpoch: 3 }), { ok: false, code: 'QUEUE_EVIDENCE_FENCE_MISMATCH' })
+    assert.deepEqual(await review({ ...recoveryCapture, releasedBatchId: 'unknown-old-batch' }),
+      { ok: false, code: 'QUEUE_RELEASE_EVIDENCE_MISSING' })
+    assert.deepEqual(await review({
+      ...recoveryCapture, jobs: recoveryCapture.jobs.map(job => ({ ...job, requestHash: '0'.repeat(64) })),
+    }), { ok: false, code: 'QUEUE_EVIDENCE_JOB_MISMATCH' })
+    await prisma.v3PrintExecutionBatch.create({ data: {
+      ...scope, id: 'test-other-batch', controlPlaneId: 'test-plane-01', ownerDeviceId: 'test-old-device',
+      ownerEpoch: 3, stateVersion: 6, leaseId: 'test-other-lease', mode: 'V3_ACTIVE',
+      createdAt: new Date(receiptTime.getTime() - 120_000),
+      revokedAt: new Date(receiptTime.getTime() - 60_000), expiresAt: originalExpiry,
+    } })
+    assert.deepEqual(await review(recoveryCapture), { ok: false, code: 'EVIDENCE_OTHER_EXECUTOR' })
+    await assertNoExpiry()
+  })
+
+  await t.test('expiry of evidence during job updates rolls back the batch', async () => {
+    await reset()
+    const action = await register()
+    let reads = 0
+    const result = await runOpsV3QueueRecovery(prisma, scope, executor, action, () =>
+      ++reads <= 2 ? startedAt : new Date(startedAt.getTime() + 301_000))
+    assert.deepEqual(result, { ok: false, code: 'QUEUE_EVIDENCE_STALE' })
+    await assertNoExpiry()
+  })
+
+  await t.test('concurrent durable claim wins and a preceding job update rolls back', async () => {
+    await reset()
+    const action = await register()
+    const claimant = await pool.connect()
+    try {
+      await claimant.query('BEGIN')
+      await claimant.query('UPDATE "EshopTrayPrintJob" SET "claimAttempt"=1, "attemptCount"=1, "claimTokenHash"=$1 WHERE id=$2', ['d'.repeat(64), jobIds[1]])
+      const terminalize = run(action)
+      let waiting = false
+      for (let i = 0; i < 80 && !waiting; i++) {
+        const activity = await pool.query(`
+          SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name='diamond-queue-recovery-test'
+            AND wait_event_type='Lock' AND query LIKE 'UPDATE %"EshopTrayPrintJob"%'
+        `)
+        waiting = activity.rows[0].n > 0
+        if (!waiting) await new Promise(resolve => setTimeout(resolve, 15))
+      }
+      await claimant.query('COMMIT')
+      const result = await terminalize
+      assert.equal(waiting, true, 'terminalization must contend on the actual PostgreSQL job lock')
+      assert.deepEqual(result, { ok: false, code: 'CONCURRENT_STATE_CHANGE' })
+    } finally {
+      await claimant.query('ROLLBACK')
+      claimant.release()
+    }
+    await assertNoExpiry()
+    assert.equal((await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: jobIds[1] } })).claimAttempt, 1)
+  })
+
+  await t.test('a real delayed REPORT and terminalization cannot overwrite each other', async () => {
+    const report = (db: Parameters<typeof reportV3Execution>[0]) => reportV3Execution(db, {
+      ...scope, batchId: 'test-old-batch', deviceId: recoveryCapture.deviceId,
+    }, {
+      printJobId: keyForFixture(jobIds[1]), role: 'FRONT', source: 'LOCAL_DESKTOP',
+      executionId: 'test-late-execution', ownerEpoch: 4, reportVersion: 1, outcome: 'CROSSED',
+    }, startedAt)
+
+    for (const winner of ['report', 'expiry'] as const) {
+      await reset()
+      const action = await register()
+      let ready!: () => void
+      let release!: () => void
+      const readyToCommit = new Promise<void>(resolve => { ready = resolve })
+      const unblock = new Promise<void>(resolve => { release = resolve })
+      const holdCommit = async <T>(work: (tx: Prisma.TransactionClient) => Promise<T>, isolationLevel?: Prisma.TransactionIsolationLevel) =>
+        prisma.$transaction(async tx => {
+          const result = await work(tx)
+          ready()
+          await unblock
+          return result
+        }, { isolationLevel, timeout: 10_000 })
+      const expiryDb = {
+        $transaction: (<T>(work: (tx: Prisma.TransactionClient) => Promise<T>, options?: { isolationLevel?: Prisma.TransactionIsolationLevel }) =>
+          holdCommit(work, options?.isolationLevel)) as PrismaClient['$transaction'],
+      }
+      const first = winner === 'report'
+        ? holdCommit(tx => report(tx as unknown as Parameters<typeof reportV3Execution>[0]))
+        : runOpsV3QueueRecovery(expiryDb, scope, executor, action, () => startedAt)
+      let second: Promise<unknown> | undefined
+      try {
+        await Promise.race([readyToCommit, first.then(() => { throw new Error('winner exited before taking the job lock') })])
+        second = winner === 'report' ? run(action) : report(prisma as unknown as Parameters<typeof reportV3Execution>[0])
+        let waiting = false
+        for (let i = 0; i < 80 && !waiting; i++) {
+          const activity = await pool.query(`
+            SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name='diamond-queue-recovery-test'
+              AND wait_event_type='Lock' AND query LIKE 'UPDATE %"EshopTrayPrintJob"%'
+          `)
+          waiting = activity.rows[0].n > 0
+          if (!waiting) await new Promise(resolve => setTimeout(resolve, 15))
+        }
+        assert.equal(waiting, true)
+      } finally {
+        release()
+      }
+      assert.equal((await first).ok, true)
+      assert.deepEqual(await second, {
+        ok: false, code: winner === 'report' ? 'CONCURRENT_STATE_CHANGE' : 'V3_REPORT_RACE',
+      })
+      if (winner === 'report') {
+        await assertNoExpiry()
+        assert.equal((await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: jobIds[1] } })).effectBoundary, 'CROSSED')
+      } else {
+        assert.equal(await prisma.eshopTrayPrintJob.count({ where: { status: 'EXPIRED' } }), 2)
+      }
+    }
+  })
+
+  await t.test('audit failure rolls back both updates and preserves the one-use evidence', async () => {
+    await reset()
+    const action = await register()
+    await pool.query(`ALTER TABLE "OperationLog" ADD CONSTRAINT test_no_expiry_audit CHECK ("actionType" <> 'EXPIRE_UNEXECUTED_V3_FRONT')`)
+    try {
+      await assert.rejects(run(action))
+      await assertNoExpiry()
+    } finally {
+      await pool.query('ALTER TABLE "OperationLog" DROP CONSTRAINT test_no_expiry_audit')
+    }
+    assert.equal((await run(action)).ok, true)
+  })
+
+  await t.test('terminalization preserves immutable identities, fences late reports and cannot redeliver', async () => {
+    await reset()
+    const before = await prisma.eshopTrayPrintJob.findMany({ orderBy: { id: 'asc' } })
+    const action = await register()
+    const result = await run(action)
+    assert.ok(result.ok, JSON.stringify(result))
+    assert.deepEqual(await run(action, executor, new Date(startedAt.getTime() + 301_000)), result)
+    const jobs = await prisma.eshopTrayPrintJob.findMany({ orderBy: { id: 'asc' } })
+    for (const [i, job] of jobs.entries()) {
+      assert.equal(job.status, 'EXPIRED')
+      assert.equal(job.effectBoundary, 'NOT_CROSSED')
+      assert.equal(job.idempotencyKey, originalKeys.get(job.id))
+      assert.deepEqual(job.payload, before[i].payload)
+      assert.equal(job.requestHash, before[i].requestHash)
+      assert.equal(job.claimAttempt, 0)
+      assert.equal(job.attemptCount, 0)
+      assert.equal(job.physicalCompletionKnown, false)
+      assert.deepEqual(classifyV3OperatorPrintJob(job, job.idempotencyKey, recoveryCapture.deviceId), {
+        originalJobId: job.idempotencyKey, state: 'AMBIGUOUS', localProofEligible: false,
+      })
+      assert.equal(await issueV3OperatorRecoveryProofWithDb(prisma, {
+        ...scope, desktopDeviceId: recoveryCapture.deviceId,
+      }, {
+        orderNo: 'order-' + job.id, role: 'FRONT', originalJobId: job.idempotencyKey, localEvidence: 'LEDGER_ABSENT',
+      }, startedAt), null)
+      assert.deepEqual(await reportV3Execution(prisma as unknown as Parameters<typeof reportV3Execution>[0], {
+        ...scope, batchId: 'test-old-batch', deviceId: recoveryCapture.deviceId,
+      }, {
+        printJobId: job.idempotencyKey, role: 'FRONT', source: 'LOCAL_DESKTOP', executionId: 'late-execution',
+        ownerEpoch: 4, reportVersion: 1, outcome: 'CROSSED',
+      }, startedAt), { ok: false, code: 'V3_REPORT_CONFLICT' })
+    }
+    assert.equal((await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { storeId: scope.storeId } })).mode, 'BLOCKED_UNKNOWN')
+    assert.equal(await prisma.operationLog.count({ where: { actionType: 'EXPIRE_UNEXECUTED_V3_FRONT' } }), 1)
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM "SaleRecord"')).rows[0].n, 2)
+
+    // Move only the isolated synthetic fixture into the state a later Ops finalize/acquire would produce.
+    const expiresAt = new Date(startedAt.getTime() + 60_000)
+    await prisma.v3PrintControlPlane.updateMany({ data: {
+      mode: 'V3_ACTIVE', ownerDeviceId: recoveryCapture.deviceId, ownerEpoch: 5,
+      stateVersion: 11, leaseId: 'test-new-lease', leaseExpiresAt: expiresAt,
+    } })
+    await prisma.v3PrintExecutionBatch.create({ data: {
+      ...scope, id: 'test-new-batch', controlPlaneId: 'test-plane-01', ownerDeviceId: recoveryCapture.deviceId,
+      ownerEpoch: 5, stateVersion: 11, leaseId: 'test-new-lease', mode: 'V3_ACTIVE', expiresAt, createdAt: startedAt,
+    } })
+    assert.deepEqual(await deliverV3PrintIntent(prisma as unknown as Parameters<typeof deliverV3PrintIntent>[0], {
+      ...scope, batchId: 'test-new-batch', deviceId: recoveryCapture.deviceId, role: 'FRONT',
+    }, startedAt), { ok: true, job: null })
+  })
 })

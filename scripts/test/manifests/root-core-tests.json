@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "lane": "CORE",
-  "expectedCount": 101,
+  "expectedCount": 102,
   "tests": [
     { "file": "tests/inventory-profit-feed.test.ts", "lane": "CORE", "reason": "The read-only external feed route runs with in-process Prisma delegates and validates secret, fixed-store isolation, sale, CustomerOrder, refund quantity and PII exclusion.", "dependencyType": "NONE", "evidence": "tests/inventory-profit-feed.test.ts:1" },
     { "file": "tests/inventory-profit-provider-access.test.ts", "lane": "CORE", "reason": "Provider, access wrapper and inventory/profit routes run with in-process fetch and Prisma delegates, including Telegram presence, NULL cost, idempotency, stale/error behavior and CSV BOM.", "dependencyType": "NONE", "evidence": "tests/inventory-profit-provider-access.test.ts:1" },
@@ -32,6 +32,7 @@
     { "file": "tests/customer-display-session-current-static.test.ts", "lane": "CORE", "reason": "Repository source inspection only.", "dependencyType": "NONE", "evidence": "tests/customer-display-session-current-static.test.ts:1-4" },
     { "file": "tests/customer-landing-journey-static.test.ts", "lane": "CORE", "reason": "Repository source inspection only.", "dependencyType": "NONE", "evidence": "tests/customer-landing-journey-static.test.ts:1-2" },
     { "file": "tests/desktop-activation-concurrency-static.test.ts", "lane": "CORE", "reason": "Repository service, schema, and route source inspection only.", "dependencyType": "NONE", "evidence": "tests/desktop-activation-concurrency-static.test.ts:1-7" },
+    { "file": "tests/desktop-print-child-lifecycle.test.ts", "lane": "CORE", "reason": "In-process managed print-child lifecycle with a fake database and read-only source assertions.", "dependencyType": "NONE", "evidence": "tests/desktop-print-child-lifecycle.test.ts:17-91" },
     { "file": "tests/desktop-activation-crypto.test.ts", "lane": "CORE", "reason": "Crypto test supplies and restores its own test secrets.", "dependencyType": "NONE", "evidence": "tests/desktop-activation-crypto.test.ts:21-28" },
     { "file": "tests/desktop-activation-security-static.test.ts", "lane": "CORE", "reason": "Repository source inspection only.", "dependencyType": "NONE", "evidence": "tests/desktop-activation-security-static.test.ts:1-3" },
     { "file": "tests/desktop-activation-subscription.test.ts", "lane": "CORE", "reason": "In-process subscription helper and source assertions only.", "dependencyType": "NONE", "evidence": "tests/desktop-activation-subscription.test.ts:1-39" },
