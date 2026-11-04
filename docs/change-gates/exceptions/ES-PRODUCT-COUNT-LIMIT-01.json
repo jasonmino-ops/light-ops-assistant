@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "taskId": "ES-PRODUCT-COUNT-LIMIT-01",
+  "featureBranch": "codex/es-product-count-limit-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "c9508d180d6ea16595f966685eb70e54cb3e48b4",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/api/cashier/store/route.ts",
+    "app/api/products/route.ts",
+    "app/cashier/page.tsx",
+    "app/products/page.tsx",
+    "app/sale/page.tsx",
+    "lib/cashier-offline-db.ts",
+    "tests/cashier-realtime-integration.test.ts",
+    "tests/es-tray-device-print-contract.test.ts",
+    "tests/product-sku-search.test.ts",
+    "tests/v3-reprint-recovery.test.ts"
+  ],
+  "authorizedPathSha256": {
+    "app/api/cashier/store/route.ts": "66cd7ac95acacd918156022744684a81e105a99dfcd8d2cab90bd2f43f8eb17d",
+    "app/api/products/route.ts": "feb96107690a9cb84ef1c2012773e023dcc4b91ee6b5f6518f4e684e0f6f409a",
+    "app/cashier/page.tsx": "8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6",
+    "app/products/page.tsx": "8e5965c4c4e0e7e83f7e309f81fdc93e13b4152b19e99fbbc8efd1ca0076a88c",
+    "app/sale/page.tsx": "6818f8b63ba25031a2501947baa0ca9a8e03959ee5d47a245ddad13f3a00980f",
+    "lib/cashier-offline-db.ts": "c4571d19dd6765e39bb39422dc718820627e93713462b8f3696ef06ac8e81f3c",
+    "tests/cashier-realtime-integration.test.ts": "789affe65717699e19dc55ba9e1fce41a7d6c83e39d267143eb90965f0c1785e",
+    "tests/es-tray-device-print-contract.test.ts": "563b06d5f9cc8e325c6c9b98ade5178dca2197d5af0c8851e1a77a8b3e0cec33",
+    "tests/product-sku-search.test.ts": "ab5db72e60a4053a022ac8bbaca290f3ee846aba2935de6ccba213af2a0fc781",
+    "tests/v3-reprint-recovery.test.ts": "d403c6200677499541b91c66db2ce8583b8cf942b45dada40df3600a75ae3a28"
+  },
+  "createdAt": "2026-11-04T04:29:54.813Z",
+  "approvedAt": "2026-11-04T04:29:54.813Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "ES-PRODUCT-COUNT-LIMIT-01 task conversation, 2026-11-04, Founder Decision APPROVED",
+    "statement": "批准最终十文件候选对应的正式冻结后继，以及 ACTIVE 路径例外登记内容。",
+    "timestampBasis": "Local registration timestamp after the Founder decision",
+    "candidatePatchSha256": "705441c63394ccb931494a002dc82f19ae0e4d7029b2d3d51b438fb5d8915477",
+    "evidenceSha256": {
+      "final-approval-packet.md": "748b5848ba4f0ca9b0b7caee1929e0e114f5303b7dc5b34d03fe5946186625f8",
+      "candidate-manifest.json": "375e6e2ee42f85166c3cf15305d62c22f43c26b27a60e25dab2f3c6352140cbc",
+      "active-registration-draft.json": "2445d29df3050d30b2149e2ac527201b72247736cfd875d016afc7e826121dd0",
+      "claude-context-review.md": "a0685f8ec6a66cde9d3be9c9fb9dece9c9b68789ed045da1c1b4f6f00940ee3b",
+      "claude-final-delta-review.md": "6f11ed23cae0cd45cab29152df75883ae6f5f143c035c210b9eb4b270f9ab0fc",
+      "claude-boundary-review.md": "65038fb17657657d00a9b9779e6dd30d1df4365e4aeaf4efe4f80b092e62c89c"
+    }
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Exact catalogue-only candidate covering paged reads, count, selection, lookup, atomic offline cache and exact regression seals. Preserves transaction, authorization, Local First and printing behavior."
+}
