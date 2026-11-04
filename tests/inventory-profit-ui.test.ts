@@ -31,6 +31,24 @@ assert.match(
 )
 assert.match(inventory, /minimumStock[\s\S]*useState\('10'\)/, 'minimum stock defaults to 10')
 assert.match(inventory, /requestKey,\s*productId,\s*quantity:/, 'receiving sends its stable request key')
+assert.match(
+  inventory,
+  /body: JSON\.stringify\(\{\s*requestKey,\s*productId,\s*quantity: Number\(quantity\),\s*unitCost: Number\(unitCost\),\s*date,\s*\}\)/,
+  'all receiving pickers share the existing request body',
+)
+assert.match(
+  inventory,
+  /if \(event\.key !== 'Enter'\) return\s+event\.preventDefault\(\)\s+if \(!event\.nativeEvent\.isComposing && !event\.repeat\) void lookupReceivingProduct\(\)/,
+  'Enter on the manual code field only performs a lookup',
+)
+assert.match(inventory, /<button type="button"[^\n]*lookupReceivingProduct\(\)[^\n]*>查找<\/button>/, 'lookup button cannot submit the receiving form')
+assert.match(inventory, /matches\.length === 1 && !resultsMayBeTruncated/, 'auto-selection requires a confirmed unique result')
+assert.match(
+  inventory,
+  /if \(body\?\.ok !== true \|\| typeof body\.data\?\.duplicate !== 'boolean'\) \{\s*throw new Error[\s\S]*?\}\s*setMessage[\s\S]*?setRequestKey\(newRequestKey\(\)\)/,
+  'the request key changes only after a confirmed receipt response',
+)
+assert.equal((inventory.match(/setRequestKey\(newRequestKey\(\)\)/g) ?? []).length, 1, 'failure never rotates the request key')
 assert.match(inventory, /\/api\/inventory-profit\/inventory\/export/, 'inventory exports through the protected route')
 assert.match(inventory, /telegramPresenceHeaders\(\)/, 'sensitive inventory actions request Telegram presence')
 assert.match(inventory, /if \(realRole !== 'OWNER'\)/, 'inventory follows real OWNER identity even in staff work mode')
