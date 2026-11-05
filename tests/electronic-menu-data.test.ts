@@ -68,8 +68,11 @@ function fixture() {
     product: {
       async findMany(args) {
         calls.push({ model: 'product', args })
+        const after = args.where.OR?.[1]
         return products.filter((row) => row.tenantId === args.where.tenantId && row.status === args.where.status)
-          .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0).slice(0, args.take)
+          .filter((row) => !after || row.name > after.name || (row.name === after.name && row.id > after.id.gt))
+          .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+          .slice(0, args.take)
       },
     },
     productCategory: {
@@ -189,18 +192,20 @@ test('store selection isolates tenant catalog and preserves same-tenant sharing 
   assert.deepEqual(a.categories.map((row) => row.id), ['drinks', 'snacks'])
 })
 
-test('shared catalog selects existing columns; display projection remains whitelisted with the existing 200-item bound', async () => {
+test('shared catalog selects existing columns and completes every query batch without changing the public projection', async () => {
   const f = fixture()
   for (let i = 0; i < 205; i++) f.products.push(product(`many-${i}`, `Item ${String(i).padStart(3, '0')}`))
   const data = await displayData('STORE-A', f.db)
   assert.ok(data)
-  assert.equal(data.products.length, 200)
+  assert.equal(data.products.length, 207)
   assert.equal(data.products[0].name, 'Alpha')
   assert.equal(data.products[199].name, 'Item 198')
+  assert.equal(data.products[206].name, 'Zulu')
   assert.deepEqual(f.calls, [
     { model: 'store', args: { where: { code: 'STORE-A' }, select: { code: true, name: true, status: true, tenantId: true, currencyCode: true, announcement: true, promoText: true, bannerUrl: true, businessType: true } } },
-    { model: 'product', args: { where: { tenantId: 'tenant-a', status: 'ACTIVE' }, select: { id: true, name: true, nameZh: true, nameEn: true, nameKm: true, descZh: true, descEn: true, descKm: true, spec: true, sellPrice: true, discountPrice: true, discountEnabled: true, isRecommended: true, categoryId: true, imageUrl: true, imageUrls: true }, orderBy: { name: 'asc' }, take: 200 } },
+    { model: 'product', args: { where: { tenantId: 'tenant-a', status: 'ACTIVE' }, select: { id: true, name: true, nameZh: true, nameEn: true, nameKm: true, descZh: true, descEn: true, descKm: true, spec: true, sellPrice: true, discountPrice: true, discountEnabled: true, isRecommended: true, categoryId: true, imageUrl: true, imageUrls: true }, orderBy: [{ name: 'asc' }, { id: 'asc' }], take: 200 } },
     { model: 'category', args: { where: { tenantId: 'tenant-a' }, select: { id: true, name: true, parentId: true, sortOrder: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] } },
+    { model: 'product', args: { where: { tenantId: 'tenant-a', status: 'ACTIVE', OR: [{ name: { gt: 'Item 198' } }, { name: 'Item 198', id: { gt: 'many-198' } }] }, select: { id: true, name: true, nameZh: true, nameEn: true, nameKm: true, descZh: true, descEn: true, descKm: true, spec: true, sellPrice: true, discountPrice: true, discountEnabled: true, isRecommended: true, categoryId: true, imageUrl: true, imageUrls: true }, orderBy: [{ name: 'asc' }, { id: 'asc' }], take: 200 } },
   ])
   assert.deepEqual(Object.keys(data).sort(), ['categories', 'products', 'store'])
   assert.deepEqual(Object.keys(data.store).sort(), ['announcement', 'bannerUrl', 'code', 'currencyCode', 'electronicMenuMediaUrl', 'name', 'promoText'])
@@ -239,6 +244,95 @@ test('actual legacy GET and shared display projection have identical catalog, di
     assert.equal(current.products.find((row) => row.id === 'discount-zero')?.price, 0, 'Existing Decimal-object semantics are preserved')
     assert.deepEqual(current.products.find((row) => row.id === 'images-list')?.imageUrls, ['https://images.example/animated.gif', 'https://images.example/2.png', 'https://images.example/3.webp'])
     assert.deepEqual(current.products.find((row) => row.id === 'images-invalid')?.imageUrls, [])
+  }, true)
+})
+
+test('complete catalogs cross exact batch boundaries and grow past the audited 2096 products without a total cap', async () => {
+  for (const count of [0, 1, 199, 200, 201, 400, 2096, 20_001]) {
+    const f = fixture()
+    f.products.length = 0
+    const expected = Array.from({ length: count }, (_, i) => product(`id-${String(i).padStart(6, '0')}`, `Name ${String(Math.floor(i / 307)).padStart(5, '0')}`))
+    // Every 307 products deliberately share a name across multiple batches.
+    f.products.push(...expected.slice().reverse(),
+      product('foreign-first', 'A Foreign', { tenantId: 'tenant-b' }),
+      product('disabled-first', 'A Disabled', { status: 'DISABLED' }),
+    )
+    const result = await loadPublicMenuCatalog('STORE-A', f.db)
+    assert.ok(result)
+    assert.deepEqual(result.products.map((p) => p.id), expected.map((p) => p.id), `complete ordered ID set at ${count}`)
+    assert.equal(new Set(result.products.map((p) => p.id)).size, count)
+    const queries = f.calls.filter((c) => c.model === 'product')
+    assert.equal(queries.length, Math.floor(count / 200) + 1)
+    for (const call of queries) {
+      const args = call.args as Parameters<PublicMenuDatabase['product']['findMany']>[0]
+      assert.equal(args.where.tenantId, 'tenant-a')
+      assert.equal(args.where.status, 'ACTIVE')
+      assert.equal(args.take, 200, 'only individual database reads are bounded')
+    }
+  }
+})
+
+test('a failure after the first catalog batch rejects both public endpoints rather than succeeding with missing products', async () => {
+  const f = fixture()
+  f.products.push(...Array.from({ length: 205 }, (_, i) => product(`batch-${i}`, `Batch ${String(i).padStart(3, '0')}`)))
+  const findMany = f.db.product.findMany
+  f.db.product.findMany = async (args) => {
+    if (args.where.OR) throw new Error('NEXT_BATCH_FAILED')
+    return findMany(args)
+  }
+  await assert.rejects(loadPublicMenuCatalog('STORE-A', f.db), /NEXT_BATCH_FAILED/)
+  await withPrismaMock(f.db, async () => {
+    await assert.rejects(getExistingMenu(new NextRequest('http://localhost/api/public/menu?code=STORE-A')), /NEXT_BATCH_FAILED/)
+    const display = await menuRoute.GET(request('?code=STORE-A'))
+    assert.equal(display.status, 503)
+    assert.deepEqual(await display.json(), { error: 'MENU_UNAVAILABLE' })
+  }, true)
+})
+
+test('large catalogs complete independently for different tenants while same-tenant stores still share the catalog', async () => {
+  const f = fixture()
+  f.products.length = 0
+  for (const [tenantId, count] of [['tenant-a', 2096], ['tenant-b', 1234]] as const) {
+    for (let i = 0; i < count; i++) f.products.push(product(`${tenantId}-${i}`, `Product ${String(i).padStart(5, '0')}`, { tenantId }))
+  }
+  const [a, a2, b] = await Promise.all(['STORE-A', 'STORE-A2', 'STORE-B'].map((code) => loadPublicMenuCatalog(code, f.db)))
+  assert.ok(a && a2 && b)
+  assert.equal(a.products.length, 2096)
+  assert.deepEqual(a.products, a2.products)
+  assert.equal(b.products.length, 1234)
+  assert.ok(a.products.every((p) => p.id.startsWith('tenant-a-')))
+  assert.ok(b.products.every((p) => p.id.startsWith('tenant-b-')))
+})
+
+test('both actual public routes return all 2096 eligible IDs with unchanged prices, details, categories and privacy', async () => {
+  const f = fixture()
+  f.products.length = 0
+  for (let i = 0; i < 2096; i++) {
+    f.products.push(product(`catalog-${String(i).padStart(4, '0')}`, `Product ${String(i).padStart(4, '0')}`, {
+      nameZh: `商品 ${i}`, categoryId: i === 2095 ? null : i % 2 ? 'snacks' : 'drinks',
+      isRecommended: i === 2095, discountEnabled: i === 2095, discountPrice: i === 2095 ? decimal(8) : null,
+    }))
+  }
+  f.products.push(product('foreign-last', 'ZZZ foreign', { tenantId: 'tenant-b' }), product('disabled-last', 'ZZZ disabled', { status: 'DISABLED' }))
+  await withPrismaMock(f.db, async () => {
+    const legacy = await getExistingMenu(new NextRequest('http://localhost/api/public/menu?code=STORE-A'))
+    const display = await menuRoute.GET(request('?code=STORE-A'))
+    assert.equal(legacy.status, 200)
+    assert.equal(display.status, 200)
+    const body = await legacy.json()
+    const screen = await display.json()
+    assert.equal(body.products.length, 2096)
+    assert.deepEqual(body.products.map((p: { id: string }) => p.id), f.products.slice(0, 2096).map((p) => p.id))
+    assert.deepEqual(screen.products, body.products.map(({ marketingImageUrls: _images, ...p }: Record<string, unknown>) => p))
+    assert.equal(body.products[2095].price, 8)
+    assert.equal(body.products[2095].originalPrice, 10)
+    assert.equal(body.products[2095].spec, 'Regular')
+    assert.equal(body.products[2095].descZh, '中文描述')
+    assert.equal(body.products[2095].categoryId, null)
+    assert.equal(body.products[2095].isRecommended, true)
+    assert.deepEqual(body.categories, screen.categories)
+    assert.equal(groupElectronicMenu(screen, 'zh').flatMap((g) => g.items).length, 2096)
+    assert.doesNotMatch(JSON.stringify(screen), /PRIVATE_|tenantId|storeId|customerBound|marketingImageUrls|contactPhone|storeAddress|barcode|imageStorageKey/)
   }, true)
 })
 
