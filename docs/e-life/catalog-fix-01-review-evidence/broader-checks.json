@@ -1,0 +1,23 @@
+{
+  "officialCoreRunner": "BLOCKED before execution: existing unassigned tests/diamond-founder-recovery-readout.test.ts",
+  "orderBaseline": {
+    "pass": 35,
+    "fail": 4
+  },
+  "orderCandidate": {
+    "pass": 35,
+    "fail": 4
+  },
+  "sameFailedTestNames": true,
+  "existingBrowserSample": {
+    "pass": 2,
+    "fail": 1,
+    "failure": "unchanged auto-page clock test: expected12 got28; APIfully intercepted, loader not reached"
+  },
+  "newBrowserSuite": {
+    "pass": 2,
+    "fail": 0,
+    "syntheticOnly": true
+  },
+  "noOverallGreenSuiteClaim": true
+}

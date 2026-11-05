@@ -1,0 +1,15 @@
+[
+  {
+    "count": 2096,
+    "initialRenderMs": 443.1491669999999,
+    "responseBytes": 718313,
+    "mode": "local synthetic browser; order API intercepted"
+  },
+  {
+    "count": 5000,
+    "initialRenderMs": 775.301375,
+    "searchMs": 182.9527909999997,
+    "responseBytes": 1717289,
+    "mode": "local synthetic browser; not real-device FIELD"
+  }
+]
