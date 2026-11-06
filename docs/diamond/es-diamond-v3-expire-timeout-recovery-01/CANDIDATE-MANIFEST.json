@@ -58,5 +58,25 @@
   "compensationRuntimeImplemented": false,
   "compensationActive": false,
   "productionDeployOrRecoveryAuthorized": false,
-  "review": "PENDING"
+  "review": {
+    "status": "PASS",
+    "scope": "technical L3 code only; release/recovery NOT READY",
+    "productCandidate": "ca7e04ec9d600e568d29258f1e0dc9879c96a72c",
+    "governanceSnapshot": "6f8a7a76ff67bb155a2dbd8c44d7fd21eb3a14ea",
+    "rawSha256": "cc7fc6afb3567aab54d128d2ad875cb168606680ee24947b93783d06aa12781c",
+    "freshContext": true,
+    "filesModified": false,
+    "externalActions": false
+  },
+  "latestReadOnlyStatus": {
+    "at": "2026-11-06T15:26:51.918853Z",
+    "mode": "BLOCKED_UNKNOWN",
+    "stateVersion": 696,
+    "owner": null,
+    "leasePresent": false,
+    "historicalJobs": "3 PENDING / expired / zero attempts and claims",
+    "validHeldFront": 21,
+    "kitchen": 0,
+    "executionOrDeploymentPerformed": false
+  }
 }
