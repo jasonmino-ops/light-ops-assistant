@@ -1,0 +1,164 @@
+{
+  "taskId": "ES-DIAMOND-V3-EXPIRE-TIMEOUT-RECOVERY-01",
+  "mode": "APPROVED_EXACT_COMPENSATION_CANDIDATE_ONLY",
+  "risk": "L3",
+  "candidateSha": "b558dcd197f166936610b5c7c140c0acb5f55a86",
+  "reviewedTimeoutBase": "ca7e04ec9d600e568d29258f1e0dc9879c96a72c",
+  "trustedMain": "c1041533abca99657edc09c2e69e2c18d9df13d5",
+  "continuationParent": "b5d8d68364f570c5a1e0608f70941204a41c2dfe",
+  "productionSha": "9e717439569c0485c703367b668b31ed8a7505e6",
+  "deploymentId": "dpl_752r158kNqz3WwX1ixPjeGqYHaEn",
+  "productPaths": {
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts": "7fbcf5ce177e482668f34fc3fe00cbc752c8dff0ba26c387f089b4111fd28113",
+    "tests/v3-print-control-plane-service.test.ts": "7c4c8fc250ea1488fc8066da89839061c5d761b55060370052fdfa9d95e174e3"
+  },
+  "policyExpiresAt": "2026-11-08T00:00:00.000Z",
+  "bindingProjectionSha256": "baf365e585371d3daa3a60c6e98abf0e395bed4f743fb234e727a0dce5dcefd6",
+  "frozenTest": {
+    "path": "tests/cashier-realtime-integration.test.ts",
+    "sha256": "4a76962e28336391d30810d4476d2bad3b94eb09c0496a1649b13d0cd4757dc3",
+    "modified": false
+  },
+  "tests": {
+    "targeted": {
+      "pass": 142,
+      "fail": 0,
+      "skip": 0
+    },
+    "typescript": "PASS",
+    "build": "PASS",
+    "scope": "PASS",
+    "core": {
+      "counts": {
+        "expected": 103,
+        "collected": 103,
+        "executed": 103,
+        "passed": 101,
+        "failed": 2,
+        "knownFailures": 0,
+        "newFailures": 2,
+        "recoveredFailures": 1,
+        "knownEnvironmentBlocked": 0,
+        "skipped": 0,
+        "uncollected": 0,
+        "environmentFailures": 0
+      },
+      "status": "BLOCKED"
+    },
+    "productionTree": {
+      "targeted": "142 PASS /0 FAIL /0 SKIP",
+      "build": "PASS",
+      "executedAtSha": "df0fa833077e4c80f54c515b5ad557acafb3fb85",
+      "tree": "178bfec6bb55616c7f0c02e16422f413c6149e0d",
+      "finalDraftTreeIdentical": true
+    }
+  },
+  "releaseDraft": {
+    "status": "LOCAL_CODE_DRAFT_NOT_AUTHORIZED_PENDING_FROZEN_ADMISSION",
+    "productCandidate": "b558dcd197f166936610b5c7c140c0acb5f55a86",
+    "releaseDraftSha": "1427131e94aba6a19c52dee61f531fec2c9213b3",
+    "tree": "178bfec6bb55616c7f0c02e16422f413c6149e0d",
+    "productionParent": "9e717439569c0485c703367b668b31ed8a7505e6",
+    "diffPaths": [
+      "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts",
+      "tests/v3-print-control-plane-service.test.ts"
+    ],
+    "sourceBytesMatchProduct": true,
+    "noPush": true,
+    "noDeployment": true,
+    "requiredCheckIssued": false,
+    "releaseCommits": [
+      "77c5f55e630094f27bc691f62d2e903c2f6f56a1",
+      "1427131e94aba6a19c52dee61f531fec2c9213b3"
+    ],
+    "includedSourceCommits": [
+      "ca7e04ec9d600e568d29258f1e0dc9879c96a72c",
+      "b558dcd197f166936610b5c7c140c0acb5f55a86"
+    ],
+    "sourceMapping": "two exact cherry-pick -x commits",
+    "validationExecutedAtSha": "df0fa833077e4c80f54c515b5ad557acafb3fb85",
+    "validationTreeMatch": true,
+    "validationReuseReason": "Only commit history changed to formal source mappings; complete tree and every source/test byte identical. No claim that earlier commands ran at the new SHA.",
+    "sourceMainSha": "PENDING_MAIN_MERGE_APPROVAL",
+    "authorizedSelectiveRelease": "NOT_EXECUTED_NOT_AUTHORIZED"
+  },
+  "review": {
+    "status": "PASS_CODE_ONLY",
+    "releaseRecoveryReadiness": "NOT_READY",
+    "product": "b558dcd197f166936610b5c7c140c0acb5f55a86",
+    "releaseDraft": "1427131e94aba6a19c52dee61f531fec2c9213b3",
+    "governanceSnapshot": "d5c451f8d8210827930837c23b666530770ff7d6",
+    "rawJsonSha256": "bb304d8cde14f1bcff40c5f34c80031e4fdf52d5920c3647276d765fbf79f792",
+    "freshContext": true,
+    "sourceModified": false,
+    "productionActions": false
+  },
+  "frozenAdmission": "SEALED_DRAFT_NOT_ACTIVE",
+  "externalMutations": {
+    "push": false,
+    "merge": false,
+    "deploy": false,
+    "recovery": false,
+    "printing": false,
+    "migration": false
+  },
+  "documentationPaths": [
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/BUILD-CI-EVIDENCE.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/CANDIDATE-MANIFEST.json",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/CHECKSUMS.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/COMMIT-SCOPE-AUDIT.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/FINAL-CANDIDATE-RESULT.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/FROZEN-SUCCESSOR-SEALED-DRAFT.json",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/KNOWN-RISKS.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/L3-CODE-REVIEW.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/L3-FROZEN-DRAFTS-LIMITED-REVIEW.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/PRODUCTION-RELEASE-PLAN.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/READINESS-AND-AUTHORIZATION.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REPOSITORY-OVERVIEW.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REVIEW-DISPOSITION.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REVIEW-MANIFEST.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/SCOPE-BOUNDARY-AUDIT.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/TEST-COVERAGE-MATRIX.md"
+  ],
+  "frozenDraftMaterialized": {
+    "docs/freezes/ES-DIAMOND-V3-EXPIRE-TIMEOUT-COMPENSATION-01.md": "75d1a76f300357bb2ee597323a491778ac25219ae332569ab03180b97fac1842",
+    "docs/change-gates/ES-DIAMOND-V3-EXPIRE-TIMEOUT-RECOVERY-01 CORE Admission Disposition.md": "341d1284b727a664785826008931a0b70519e54586d0f8f8f5c3c3a0f4d4fa13"
+  },
+  "frozenDraftReview": {
+    "status": "PASS_PREPARATION_ONLY_NOT_APPROVAL",
+    "governanceSnapshot": "b9dacd2bbaf4658f920b33d34a44aa76f01c11af",
+    "rawJsonSha256": "0295c90805e2468da0ecfa94eaf074210a7c25790e3d7e2d337baef988bfef5f",
+    "draftContentHashesUnchanged": true,
+    "nonBlockingRawBaselineOmission": "RESOLVED_BY_ATTACHED_RAW_LOG_AND_EXACT_FOUR_ASSERTION_COMPARISON",
+    "rawBaselineLogSha256": "b1312600e5a3eec22d5f1c85ad8730ad25da9339bcffc10178259a8bf99663b4",
+    "supplementComparisonSha256": "23fbb65b34e35b998af8a445fee32493ec4e278be901e0c62c3dffb8f3869f72"
+  },
+  "finalRemoteRefs": {
+    "main": "c1041533abca99657edc09c2e69e2c18d9df13d5",
+    "release": "9e717439569c0485c703367b668b31ed8a7505e6",
+    "unchanged": true
+  },
+  "releaseReadiness": "CODE_AND_LOCAL_SELECTIVE_DRAFT_PREPARED_NOT_AUTHORIZED_PENDING_EXACT_FROZEN_ADMISSION_MAIN_MERGE_AND_RELEASE_GATES",
+  "exactChangedPaths": [
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts",
+    "docs/change-gates/ES-DIAMOND-V3-EXPIRE-TIMEOUT-RECOVERY-01 CORE Admission Disposition.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/BUILD-CI-EVIDENCE.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/CANDIDATE-MANIFEST.json",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/CHECKSUMS.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/COMMIT-SCOPE-AUDIT.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/FINAL-CANDIDATE-RESULT.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/FROZEN-SUCCESSOR-SEALED-DRAFT.json",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/KNOWN-RISKS.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/L3-CODE-REVIEW.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/L3-FROZEN-DRAFTS-LIMITED-REVIEW.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/PRODUCTION-RELEASE-PLAN.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/READINESS-AND-AUTHORIZATION.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REPOSITORY-OVERVIEW.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REVIEW-DISPOSITION.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REVIEW-MANIFEST.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/SCOPE-BOUNDARY-AUDIT.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/TEST-COVERAGE-MATRIX.md",
+    "docs/freezes/ES-DIAMOND-V3-EXPIRE-TIMEOUT-COMPENSATION-01.md",
+    "tests/v3-print-control-plane-service.test.ts"
+  ]
+}

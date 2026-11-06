@@ -451,6 +451,28 @@ const REVIEW_EVIDENCE = 'REVIEW_EXPIRED_V3_FRONT_EVIDENCE'
 const EXPIRE_JOBS = 'EXPIRE_UNEXECUTED_V3_FRONT'
 const FOUNDER_REVIEW_EVIDENCE = 'FOUNDER_REVIEW_DIAMOND_EXPIRED_FRONT'
 const FOUNDER_EXPIRE_JOBS = 'FOUNDER_EXPIRE_DIAMOND_UNEXECUTED_FRONT'
+const COMPENSATION_REVIEW = 'FOUNDER_REVIEW_DIAMOND_TIMEOUT_COMPENSATION'
+const COMPENSATION_EXPIRE = 'FOUNDER_EXPIRE_DIAMOND_TIMEOUT_COMPENSATION'
+// Reviewed, source-bound case policy. No request field or environment variable
+// can activate, extend or substitute this allowance. Old grants remain spent.
+const DIAMOND_TIMEOUT_COMPENSATION = {
+  admissionId: 'ES-DIAMOND-V3-EXPIRE-TIMEOUT-COMPENSATION-01',
+  tenantId: 'cmvulpn2e000006jvsqrt3y2n',
+  founderId: 'cmnko00l2000004juew5h2djr',
+  originalReviewId: 'cmw53mwgf000108i4xv786pi5',
+  originalRequestId: '5937c41d-ccdb-487c-82bd-645d07f38d9f',
+  originalReviewedAt: '2026-11-06T14:58:00.428Z',
+  originalBindingSha256: 'baf365e585371d3daa3a60c6e98abf0e395bed4f743fb234e727a0dce5dcefd6',
+  failedRequestId: 'a890b5c7-ee21-4458-99cc-8abdc978fd80',
+  failureLogId: '85xn9-1793977117530-8f1feb2fca13',
+  failureLogSha256: '10e59f70b711a885a538f55332b4c12f964ff39d950c81a02de9737eb837c54f',
+  stateVersion: 696,
+  ownerEpoch: 1,
+  releasedAt: '2026-11-03T11:42:48.649Z',
+  releasedBatchId: 'cmw0mbrad001h07l61ak5u0yy',
+  notBefore: '2026-11-06T15:02:50.681Z',
+  expiresAt: '2026-11-08T00:00:00.000Z',
+} as const
 const FOUNDER_STORE_ID = 'cmvulpn8r000106jvpo58kye4'
 const FOUNDER_STORE_CODE = 'ST883DC00C'
 const FOUNDER_DEVICE_ID = 'cmvyx1jes000208l14t5vf9ur'
@@ -487,14 +509,17 @@ type EvidenceCapture = {
   outboxSha256: string
   verifiedNoLocalExecution: true
 }
-type EvidenceCommand = QueueRecoveryBase & { action: typeof REVIEW_EVIDENCE | typeof FOUNDER_REVIEW_EVIDENCE; capture: EvidenceCapture; installationId: string }
-type ExpireCommand = QueueRecoveryBase & { action: typeof EXPIRE_JOBS | typeof FOUNDER_EXPIRE_JOBS; evidenceId: string }
+type EvidenceCommand = QueueRecoveryBase & { action: typeof REVIEW_EVIDENCE | typeof FOUNDER_REVIEW_EVIDENCE | typeof COMPENSATION_REVIEW; capture: EvidenceCapture; installationId: string }
+type ExpireCommand = QueueRecoveryBase & { action: typeof EXPIRE_JOBS | typeof FOUNDER_EXPIRE_JOBS | typeof COMPENSATION_EXPIRE; evidenceId: string }
 type QueueRecoveryCommand = EvidenceCommand | ExpireCommand
 function isEvidenceCommand(command: QueueRecoveryCommand): command is EvidenceCommand {
-  return command.action === REVIEW_EVIDENCE || command.action === FOUNDER_REVIEW_EVIDENCE
+  return command.action === REVIEW_EVIDENCE || command.action === FOUNDER_REVIEW_EVIDENCE || command.action === COMPENSATION_REVIEW
 }
 function founderRecovery(action: QueueRecoveryCommand['action']) {
-  return action === FOUNDER_REVIEW_EVIDENCE || action === FOUNDER_EXPIRE_JOBS
+  return action === FOUNDER_REVIEW_EVIDENCE || action === FOUNDER_EXPIRE_JOBS || compensationRecovery(action)
+}
+function compensationRecovery(action: QueueRecoveryCommand['action']) {
+  return action === COMPENSATION_REVIEW || action === COMPENSATION_EXPIRE
 }
 type ReviewedJob = {
   id: string
@@ -562,10 +587,11 @@ export function parseOpsV3QueueRecoveryCommand(value: unknown):
   { ok: true; value: QueueRecoveryCommand } | { ok: false; code: 'INVALID_QUEUE_RECOVERY_COMMAND' } | null {
   const row = object(value)
   if (!row || (row.action !== REVIEW_EVIDENCE && row.action !== EXPIRE_JOBS
-    && row.action !== FOUNDER_REVIEW_EVIDENCE && row.action !== FOUNDER_EXPIRE_JOBS)) return null
+    && row.action !== FOUNDER_REVIEW_EVIDENCE && row.action !== FOUNDER_EXPIRE_JOBS
+    && row.action !== COMPENSATION_REVIEW && row.action !== COMPENSATION_EXPIRE)) return null
   const invalid = { ok: false, code: 'INVALID_QUEUE_RECOVERY_COMMAND' } as const
   if (!exactKeys(row, ['action', 'confirmed', 'requestId', 'expectedStateVersion', 'jobIds', 'reason',
-    ...(row.action === REVIEW_EVIDENCE || row.action === FOUNDER_REVIEW_EVIDENCE ? ['capture', 'installationId'] : ['evidenceId'])])
+    ...(row.action === REVIEW_EVIDENCE || row.action === FOUNDER_REVIEW_EVIDENCE || row.action === COMPENSATION_REVIEW ? ['capture', 'installationId'] : ['evidenceId'])])
     || row.confirmed !== true || !id(row.requestId) || typeof row.expectedStateVersion !== 'number'
     || !Number.isSafeInteger(row.expectedStateVersion) || row.expectedStateVersion < 1
     || !Array.isArray(row.jobIds) || row.jobIds.length < 1 || row.jobIds.length > 3
@@ -575,7 +601,7 @@ export function parseOpsV3QueueRecoveryCommand(value: unknown):
     requestId: row.requestId, expectedStateVersion: row.expectedStateVersion,
     jobIds: [...row.jobIds].sort(), reason: RECOVERY_REASON,
   }
-  if (row.action === EXPIRE_JOBS || row.action === FOUNDER_EXPIRE_JOBS) {
+  if (row.action === EXPIRE_JOBS || row.action === FOUNDER_EXPIRE_JOBS || row.action === COMPENSATION_EXPIRE) {
     return id(row.evidenceId) ? { ok: true, value: { ...base, action: row.action, evidenceId: row.evidenceId } } : invalid
   }
   const capture = parseEvidenceCapture(row.capture)
@@ -603,6 +629,51 @@ function captureFresh(capture: EvidenceCapture, now: Date, registeredAt: Date, r
     && Math.abs(deviceAt - at) <= CAPTURE_CLOCK_SKEW_MS
     && now.getTime() - at <= EVIDENCE_MAX_AGE_MS
     && now.getTime() - received <= EVIDENCE_MAX_AGE_MS
+}
+
+function requireCompensationWindow(now: Date) {
+  requireRecovery(now.getTime() >= Date.parse(DIAMOND_TIMEOUT_COMPENSATION.notBefore)
+    && now.getTime() < Date.parse(DIAMOND_TIMEOUT_COMPENSATION.expiresAt), 'DIAMOND_COMPENSATION_EXPIRED')
+}
+
+function reviewedJobsProjection(value: unknown) {
+  return Array.isArray(value) ? value.map(raw => {
+    const row = object(raw)
+    return row ? [row.id, row.key, row.requestHash, row.updatedAt, row.receiptCreatedAt, row.expiresAt] : null
+  }) : null
+}
+
+async function readCompensationOriginal(
+  tx: Prisma.TransactionClient,
+  target: QueueRecoveryScope & { targetType: string; targetId: string },
+) {
+  const policy = DIAMOND_TIMEOUT_COMPENSATION
+  const audit = await tx.operationLog.findFirst({
+    where: { ...target, id: policy.originalReviewId, requestId: policy.originalRequestId,
+      actionType: FOUNDER_REVIEW_EVIDENCE, status: 'SUCCESS' },
+    select: { id: true, requestId: true, createdAt: true, payloadSnapshot: true },
+  })
+  const review = object(audit?.payloadSnapshot)
+  const capture = parseEvidenceCapture(review?.capture)
+  const fence = object(review?.fence)
+  requireRecovery(audit && review && capture && sha256(review.installationIdHash), 'DIAMOND_COMPENSATION_ORIGINAL_REQUIRED')
+  // Fixed typed projection is stable across JSONB object-key ordering. It pins
+  // every original public authority/job binding without publishing installation
+  // HMACs. The original HMAC is compared to the fresh installation below.
+  requireRecovery(digest([
+    audit.id, audit.requestId, audit.createdAt.toISOString(), review.reviewerId,
+    review.founderEmergency, review.reason,
+    [fence?.stateVersion, fence?.ownerEpoch, fence?.releasedAt],
+    [capture.captureId, capture.deviceId, capture.ownerEpoch, capture.releasedAt, capture.releasedBatchId, capture.capturedAt],
+    reviewedJobsProjection(review.jobs),
+  ]) === policy.originalBindingSha256, 'DIAMOND_COMPENSATION_ORIGINAL_MISMATCH')
+  const completed = await tx.operationLog.findFirst({
+    where: { ...target, status: 'SUCCESS',
+      actionType: { in: [EXPIRE_JOBS, FOUNDER_EXPIRE_JOBS, COMPENSATION_EXPIRE] } },
+    select: { id: true },
+  })
+  requireRecovery(!completed, 'DIAMOND_COMPENSATION_ALREADY_COMPLETED')
+  return { installationIdHash: review.installationIdHash, jobs: review.jobs }
 }
 
 function pendingUnexecutedJob(scope: QueueRecoveryScope, id: string) {
@@ -705,8 +776,20 @@ export async function runOpsV3QueueRecovery(
   clock: () => Date = () => new Date(),
 ): Promise<{ ok: true; requestId: string; evidenceId: string; jobIds: string[] } | { ok: false; code: string }> {
   const emergency = founderRecovery(command.action)
+  const compensation = compensationRecovery(command.action)
   const requiredRole = emergency ? 'SUPER_ADMIN' : 'OPS_ADMIN'
   if (actor.role !== requiredRole) return { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' }
+  if (compensation && (scope.tenantId !== DIAMOND_TIMEOUT_COMPENSATION.tenantId
+    || actor.id !== DIAMOND_TIMEOUT_COMPENSATION.founderId
+    || command.expectedStateVersion !== DIAMOND_TIMEOUT_COMPENSATION.stateVersion)) {
+    return { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' }
+  }
+  // EXPIRE includes conditional job writes and a mandatory audit in the same
+  // transaction. Bound this path separately; never extend evidence freshness,
+  // REVIEW, mode transitions or the shared Prisma client's transaction policy.
+  const transactionOptions = isEvidenceCommand(command)
+    ? { isolationLevel: 'Serializable' as const }
+    : { isolationLevel: 'Serializable' as const, timeout: 10_000 }
   try {
     return await db.$transaction(async tx => {
       const activeOperator = (adminId: string, role: 'OPS_ADMIN' | 'SUPER_ADMIN') => tx.opsAdmin.findFirst({
@@ -735,7 +818,8 @@ export async function runOpsV3QueueRecovery(
       const commandDigest = digest([actor.id, command])
       const prior = await tx.operationLog.findFirst({
         where: { ...target, requestId: command.requestId,
-          actionType: { in: [REVIEW_EVIDENCE, EXPIRE_JOBS, FOUNDER_REVIEW_EVIDENCE, FOUNDER_EXPIRE_JOBS] } },
+          actionType: { in: [REVIEW_EVIDENCE, EXPIRE_JOBS, FOUNDER_REVIEW_EVIDENCE, FOUNDER_EXPIRE_JOBS,
+            COMPENSATION_REVIEW, COMPENSATION_EXPIRE] } },
         select: { id: true, actionType: true, payloadSnapshot: true },
       })
       if (prior) {
@@ -761,9 +845,25 @@ export async function runOpsV3QueueRecovery(
       requireRecovery(!activeBatch, 'ACTIVE_EXECUTION_BATCH')
       const fence = { stateVersion: plane.stateVersion, ownerEpoch: plane.ownerEpoch, releasedAt: releasedAt.toISOString() }
       const auditBase = { ...target, status: 'SUCCESS' as const, requestId: command.requestId, message: command.reason, createdAt: now }
+      let compensationOriginal: Awaited<ReturnType<typeof readCompensationOriginal>> | null = null
+      if (compensation) {
+        requireCompensationWindow(now)
+        requireRecovery(fence.ownerEpoch === DIAMOND_TIMEOUT_COMPENSATION.ownerEpoch
+          && fence.releasedAt === DIAMOND_TIMEOUT_COMPENSATION.releasedAt, 'QUEUE_EVIDENCE_FENCE_MISMATCH')
+        compensationOriginal = await readCompensationOriginal(tx, target)
+      }
 
       if (isEvidenceCommand(command)) {
-        if (emergency) {
+        if (compensation) {
+          const used = await tx.operationLog.findFirst({
+            where: { ...target, actionType: COMPENSATION_REVIEW, status: 'SUCCESS' }, select: { id: true },
+          })
+          requireRecovery(!used, 'DIAMOND_COMPENSATION_ALREADY_AUTHORIZED')
+          requireRecovery(command.capture.releasedBatchId === DIAMOND_TIMEOUT_COMPENSATION.releasedBatchId,
+            'QUEUE_EVIDENCE_FENCE_MISMATCH')
+          requireRecovery(Date.parse(command.capture.capturedAt) > Date.parse(DIAMOND_TIMEOUT_COMPENSATION.notBefore)
+            && Date.parse(command.capture.deviceObservedAt) > Date.parse(DIAMOND_TIMEOUT_COMPENSATION.notBefore), 'QUEUE_EVIDENCE_STALE')
+        } else if (emergency) {
           // The Founder grant is one-time. A failed or expired grant requires a
           // new, separately authorized recovery rather than a re-dated capture.
           const priorFounderGrant = await tx.operationLog.findFirst({
@@ -778,7 +878,7 @@ export async function runOpsV3QueueRecovery(
         ])
         const priorCapture = await tx.operationLog.findFirst({
           where: {
-            ...target, actionType: { in: [REVIEW_EVIDENCE, FOUNDER_REVIEW_EVIDENCE] },
+            ...target, actionType: { in: [REVIEW_EVIDENCE, FOUNDER_REVIEW_EVIDENCE, COMPENSATION_REVIEW] },
             OR: [
               { payloadSnapshot: { path: ['captureKey'], equals: captureKey } },
               { payloadSnapshot: { path: ['capture', 'captureId'], equals: command.capture.captureId } },
@@ -792,22 +892,30 @@ export async function runOpsV3QueueRecovery(
         // not independently read or authenticate Windows ledger bytes.
         // Verify the installation from the captured Windows profile without storing its raw ID.
         const installationIdHash = hashInstallationId(command.installationId)
+        if (compensationOriginal) requireRecovery(installationIdHash === compensationOriginal.installationIdHash, 'EVIDENCE_DEVICE_INVALID')
         const jobs = await reviewQueueRows(tx, scope, { ...plane, handoffRequestedAt: releasedAt },
           command, command.capture, installationIdHash, now)
+        if (compensationOriginal) requireRecovery(digest(reviewedJobsProjection(jobs))
+          === digest(reviewedJobsProjection(compensationOriginal.jobs)), 'QUEUE_EVIDENCE_JOB_MISMATCH')
         const evidence = await tx.operationLog.create({
           data: {
             ...auditBase, actionType: command.action,
             payloadSnapshot: { commandDigest, captureKey, capture: command.capture, installationIdHash,
-              reviewerId: actor.id, founderEmergency: emergency, fence, jobs, reason: command.reason },
+              reviewerId: actor.id, founderEmergency: emergency, fence, jobs, reason: command.reason,
+              ...(compensation ? { compensation: DIAMOND_TIMEOUT_COMPENSATION } : {}) },
           },
           select: { id: true },
         })
+        if (compensation) {
+          requireCompensationWindow(clock())
+          requireRecovery(captureFresh(command.capture, clock(), now, releasedAt), 'QUEUE_EVIDENCE_STALE')
+        }
         return { ok: true, requestId: command.requestId, evidenceId: evidence.id, jobIds: command.jobIds }
       }
 
       const evidence = await tx.operationLog.findFirst({
         where: { ...target, id: command.evidenceId,
-          actionType: emergency ? FOUNDER_REVIEW_EVIDENCE : REVIEW_EVIDENCE, status: 'SUCCESS' },
+          actionType: compensation ? COMPENSATION_REVIEW : emergency ? FOUNDER_REVIEW_EVIDENCE : REVIEW_EVIDENCE, status: 'SUCCESS' },
         select: { createdAt: true, payloadSnapshot: true },
       })
       const review = object(evidence?.payloadSnapshot)
@@ -820,18 +928,28 @@ export async function runOpsV3QueueRecovery(
       if (emergency) {
         requireRecovery(capture.deviceId === FOUNDER_DEVICE_ID, 'QUEUE_RECOVERY_FORBIDDEN')
       }
+      if (compensationOriginal) {
+        const allowance = object(review.compensation)
+        requireRecovery(allowance && exactKeys(allowance, Object.keys(DIAMOND_TIMEOUT_COMPENSATION))
+          && Object.entries(DIAMOND_TIMEOUT_COMPENSATION).every(([key, value]) => allowance[key] === value),
+        'DIAMOND_COMPENSATION_ORIGINAL_MISMATCH')
+        requireRecovery(review.installationIdHash === compensationOriginal.installationIdHash, 'EVIDENCE_DEVICE_INVALID')
+        requireRecovery(capture.releasedBatchId === DIAMOND_TIMEOUT_COMPENSATION.releasedBatchId, 'QUEUE_EVIDENCE_FENCE_MISMATCH')
+      }
       requireRecovery(captureFresh(capture, now, evidence.createdAt, releasedAt), 'QUEUE_EVIDENCE_STALE')
       const reviewedFence = object(review.fence)
       requireRecovery(reviewedFence?.stateVersion === fence.stateVersion && reviewedFence?.ownerEpoch === fence.ownerEpoch
         && reviewedFence?.releasedAt === fence.releasedAt && review.reason === command.reason, 'QUEUE_EVIDENCE_FENCE_MISMATCH')
       const consumed = await tx.operationLog.findFirst({
-        where: { ...target, actionType: { in: [EXPIRE_JOBS, FOUNDER_EXPIRE_JOBS] },
+        where: { ...target, actionType: { in: [EXPIRE_JOBS, FOUNDER_EXPIRE_JOBS, COMPENSATION_EXPIRE] },
           payloadSnapshot: { path: ['evidenceId'], equals: command.evidenceId } },
         select: { id: true },
       })
       requireRecovery(!consumed, 'QUEUE_EVIDENCE_CONSUMED')
       const jobs = await reviewQueueRows(tx, scope, { ...plane, handoffRequestedAt: releasedAt },
         command, capture, review.installationIdHash, now)
+      if (compensationOriginal) requireRecovery(digest(reviewedJobsProjection(jobs))
+        === digest(reviewedJobsProjection(compensationOriginal.jobs)), 'QUEUE_EVIDENCE_JOB_MISMATCH')
       // PostgreSQL JSONB can reorder object keys. Compare only the fixed, typed projection.
       const reviewed = Array.isArray(review.jobs) ? review.jobs.map(raw => {
         const row = object(raw)
@@ -845,16 +963,19 @@ export async function runOpsV3QueueRecovery(
         status: 'EXPIRED', resultStatus: 'EXPIRED', effectBoundary: 'NOT_CROSSED',
         physicalCompletionKnown: false, resultCode: RECOVERY_RESULT_CODE,
       } as const
-      for (const job of jobs) {
-        const update = await tx.eshopTrayPrintJob.updateMany({
-          where: {
+      // One CAS statement avoids a network round trip per job. Each OR arm is
+      // the original exact predicate; any partial match rolls back the batch.
+      const update = await tx.eshopTrayPrintJob.updateMany({
+        where: {
+          ...scope,
+          OR: jobs.map(job => ({
             ...pendingUnexecutedJob(scope, job.id), idempotencyKey: job.key, requestHash: job.requestHash,
             expiresAt: new Date(job.expiresAt), updatedAt: new Date(job.updatedAt),
-          },
-          data: { ...disposition, completedAt: now },
-        })
-        requireRecovery(update.count === 1, 'QUEUE_JOB_CONCURRENT_CHANGE')
-      }
+          })),
+        },
+        data: { ...disposition, completedAt: now },
+      })
+      requireRecovery(update.count === jobs.length, 'QUEUE_JOB_CONCURRENT_CHANGE')
       // An update may have waited for a competing job-row lock. Recheck before recording success.
       requireRecovery(captureFresh(capture, clock(), evidence.createdAt, releasedAt), 'QUEUE_EVIDENCE_STALE')
       await tx.operationLog.create({
@@ -863,6 +984,7 @@ export async function runOpsV3QueueRecovery(
           payloadSnapshot: {
             commandDigest, evidenceId: command.evidenceId, reviewerId, executorId: actor.id,
             reason: command.reason, founderEmergency: emergency, fence,
+            ...(compensation ? { compensation: DIAMOND_TIMEOUT_COMPENSATION } : {}),
             jobs: jobs.map(job => ({
               ...job, before: { status: 'PENDING', attemptCount: 0, claimAttempt: 0, effectBoundary: null },
               after: { ...disposition, completedAt: now.toISOString() },
@@ -871,8 +993,9 @@ export async function runOpsV3QueueRecovery(
         },
       })
       requireRecovery(captureFresh(capture, clock(), evidence.createdAt, releasedAt), 'QUEUE_EVIDENCE_STALE')
+      if (compensation) requireCompensationWindow(clock())
       return { ok: true, requestId: command.requestId, evidenceId: command.evidenceId, jobIds: command.jobIds }
-    }, { isolationLevel: 'Serializable' })
+    }, transactionOptions)
   } catch (error) {
     if (error instanceof QueueRecoveryRejected) return { ok: false, code: error.message }
     if (errorCode(error) === 'P2034') return { ok: false, code: 'CONCURRENT_STATE_CHANGE' }
