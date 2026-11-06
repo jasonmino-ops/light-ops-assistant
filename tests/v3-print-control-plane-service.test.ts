@@ -895,14 +895,19 @@ test('only formal EXPIRE gets a bounded transaction budget; REVIEW keeps its exi
     ['EXPIRE_UNEXECUTED_V3_FRONT', 'OPS_ADMIN'],
     ['FOUNDER_REVIEW_DIAMOND_EXPIRED_FRONT', 'SUPER_ADMIN'],
     ['FOUNDER_EXPIRE_DIAMOND_UNEXECUTED_FRONT', 'SUPER_ADMIN'],
+    ['FOUNDER_REVIEW_DIAMOND_TIMEOUT_COMPENSATION', 'SUPER_ADMIN'],
+    ['FOUNDER_EXPIRE_DIAMOND_TIMEOUT_COMPENSATION', 'SUPER_ADMIN'],
   ] as const) {
+    const compensation = action.endsWith('TIMEOUT_COMPENSATION')
     const command = recoveryCommand({ ...recoveryBase, action,
+      ...(compensation ? { expectedStateVersion: 696 } : {}),
       ...(action.includes('REVIEW') ? { installationId: testInstallationId, capture: recoveryCapture } : { evidenceId: 'test-evidence-01' }),
     })
-    await assert.rejects(runOpsV3QueueRecovery(db, { tenantId: 'test-tenant', storeId: 'test-store' },
-      { id: 'test-operator', role }, command), error => error === marker)
+    await assert.rejects(runOpsV3QueueRecovery(db, { tenantId: compensation ? 'cmvulpn2e000006jvsqrt3y2n' : 'test-tenant', storeId: 'test-store' },
+      { id: compensation ? 'cmnko00l2000004juew5h2djr' : 'test-operator', role }, command), error => error === marker)
   }
   assert.deepEqual(observed, [
+    { isolationLevel: 'Serializable' }, { isolationLevel: 'Serializable', timeout: 10_000 },
     { isolationLevel: 'Serializable' }, { isolationLevel: 'Serializable', timeout: 10_000 },
     { isolationLevel: 'Serializable' }, { isolationLevel: 'Serializable', timeout: 10_000 },
   ])
@@ -1033,7 +1038,7 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
 
   // Real isolated PostgreSQL transactions. Delay is injected at the same
   // boundary as the Production failure: after job writes, before SUCCESS audit.
-  function delayedExpiryDb(options: { delayMs: number; legacyBudget?: boolean; failAudit?: boolean; mismatchLastRow?: boolean }) {
+  function delayedExpiryDb(options: { delayMs: number; legacyBudget?: boolean; failAudit?: boolean; mismatchLastRow?: boolean; auditAction?: string }) {
     const budgets: unknown[] = []
     let updateCalls = 0
     let auditAttempts = 0
@@ -1061,7 +1066,7 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
               if (key === 'operationLog') return {
                 ...target.operationLog,
                 create: async (args: Prisma.OperationLogCreateArgs) => {
-                  if (args.data.actionType === 'EXPIRE_UNEXECUTED_V3_FRONT') {
+                  if (args.data.actionType === (options.auditAction ?? 'EXPIRE_UNEXECUTED_V3_FRONT')) {
                     auditAttempts++
                     if (options.delayMs) await new Promise(resolve => setTimeout(resolve, options.delayMs))
                     if (options.failAudit) throw new Error('INJECTED_EXPIRE_AUDIT_FAILURE')
@@ -1461,5 +1466,376 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
     assert.deepEqual(await deliverV3PrintIntent(prisma as unknown as Parameters<typeof deliverV3PrintIntent>[0], {
       ...founderScope, batchId: 'founder-new-batch', deviceId: founderDeviceId, role: 'FRONT',
     }, startedAt), { ok: true, job: null })
+  })
+
+  // Synthetic database fixtures use only the original audit's public binding.
+  // No Production installation HMAC, ledger/outbox digest, secret or receipt
+  // bytes are copied. Windows identity and bytes below are test-only fixtures.
+  const compensationOriginal = {
+  "id": "cmw53mwgf000108i4xv786pi5",
+  "requestId": "5937c41d-ccdb-487c-82bd-645d07f38d9f",
+  "createdAt": "2026-11-06T14:58:00.428Z",
+  "actionType": "FOUNDER_REVIEW_DIAMOND_EXPIRED_FRONT",
+  "status": "SUCCESS",
+  "binding": {
+    "jobs": [
+      {
+        "id": "cmw0jlsme000v08kzgyiybcqg",
+        "key": "network:09077219d26a53e9146a7f3accbda41397206292bf7c91b981c2610f2768a855",
+        "expiresAt": "2026-11-04T10:26:07.310Z",
+        "updatedAt": "2026-11-03T10:26:16.325Z",
+        "requestHash": "f9c97bc48de154b301008553fa7356c066f56762e99e279c6d4bfd7f11ce96f7",
+        "receiptCreatedAt": "2026-11-03T10:26:07.310Z"
+      },
+      {
+        "id": "cmw0k7dgw001c08kz5xirfxzv",
+        "key": "network:0cb47cc27b1c5c969da9f7b3c742c1d4bbf43a0eb80afdba8b79ba5979d11d5e",
+        "expiresAt": "2026-11-04T10:42:54.520Z",
+        "updatedAt": "2026-11-03T10:43:02.606Z",
+        "requestHash": "4f95efe92016bc563b09c6232073eb7336731250207321c75fc86661505d4f35",
+        "receiptCreatedAt": "2026-11-03T10:42:54.520Z"
+      },
+      {
+        "id": "cmw0kwwta001v08jv6q6rl2f4",
+        "key": "network:1278898eee83ae82edfa72d866018fdf5c4b4935f3031e03b83015dea4732971",
+        "expiresAt": "2026-11-04T11:02:45.845Z",
+        "updatedAt": "2026-11-03T11:02:54.524Z",
+        "requestHash": "e69d36b521e7b52b24534bbf42e54329958528d9e95af7466a1d8e3089e328ad",
+        "receiptCreatedAt": "2026-11-03T11:02:45.845Z"
+      }
+    ],
+    "fence": {
+      "ownerEpoch": 1,
+      "releasedAt": "2026-11-03T11:42:48.649Z",
+      "stateVersion": 696
+    },
+    "reason": "EXPIRED_UNEXECUTED_FRONT_RECOVERY",
+    "capture": {
+      "deviceId": "cmvyx1jes000208l14t5vf9ur",
+      "captureId": "451a3438-1031-4e39-be5d-6e762d39e08d",
+      "capturedAt": "2026-11-06T14:57:41.747Z",
+      "ownerEpoch": 1,
+      "releasedAt": "2026-11-03T11:42:48.649Z",
+      "releasedBatchId": "cmw0mbrad001h07l61ak5u0yy"
+    },
+    "reviewerId": "cmnko00l2000004juew5h2djr",
+    "founderEmergency": true
+  }
+}
+  const compScope = { tenantId: 'cmvulpn2e000006jvsqrt3y2n', storeId: 'cmvulpn8r000106jvpo58kye4' }
+  const compFounder = { id: 'cmnko00l2000004juew5h2djr', role: 'SUPER_ADMIN' }
+  const compAt = new Date('2026-11-06T16:00:01.000Z')
+  const compReviewAction = 'FOUNDER_REVIEW_DIAMOND_TIMEOUT_COMPENSATION'
+  const compExpireAction = 'FOUNDER_EXPIRE_DIAMOND_TIMEOUT_COMPENSATION'
+  const compJobIds = compensationOriginal.binding.jobs.map(job => job.id)
+  const compOriginalCapture = {
+    ...recoveryCapture, ...compensationOriginal.binding.capture, verifiedNoLocalExecution: true as const,
+    deviceObservedAt: compensationOriginal.binding.capture.capturedAt,
+    historyVerifiedFrom: compensationOriginal.binding.jobs[0].receiptCreatedAt,
+    jobs: compensationOriginal.binding.jobs.map(({ id, key, requestHash, updatedAt }) => ({ id, key, requestHash, updatedAt })),
+  }
+
+  async function resetCompensation(at = compAt) {
+    await reset()
+    await pool.query('UPDATE "Store" SET "id"=$1,"tenantId"=$2,"code"=$3', [compScope.storeId, compScope.tenantId, 'ST883DC00C'])
+    await pool.query(`INSERT INTO "OpsAdmin" VALUES ($1,'ACTIVE','SUPER_ADMIN')`, [compFounder.id])
+    await pool.query('UPDATE "DesktopDevice" SET "id"=$1,"tenantId"=$2,"storeId"=$3', [compOriginalCapture.deviceId, compScope.tenantId, compScope.storeId])
+    await prisma.v3PrintControlPlane.updateMany({ data: {
+      ...compScope, stateVersion: 696, ownerEpoch: 1, handoffRequestedAt: new Date(compOriginalCapture.releasedAt),
+    } })
+    await prisma.v3PrintExecutionBatch.updateMany({ data: {
+      ...compScope, id: compOriginalCapture.releasedBatchId, ownerDeviceId: compOriginalCapture.deviceId,
+      ownerEpoch: 1, stateVersion: 695, revokedAt: new Date(compOriginalCapture.releasedAt),
+      expiresAt: new Date('2026-11-03T11:43:48.649Z'),
+    } })
+    await prisma.eshopTrayPrintJob.deleteMany()
+    await pool.query('DELETE FROM "SaleRecord"')
+    for (const [index, job] of compensationOriginal.binding.jobs.entries()) {
+      const orderNo = ['S-20261103-ST883DC00C-0001', 'S-20261103-ST883DC00C-0003', 'S-20261103-ST883DC00C-0004'][index]
+      await pool.query(`INSERT INTO "SaleRecord" VALUES ($1,$2,$3,$4,$4,'COMPLETED','SALE',$5)`, [
+        job.id, compScope.tenantId, compScope.storeId, orderNo, job.receiptCreatedAt.slice(0, -1),
+      ])
+      await prisma.eshopTrayPrintJob.create({ data: {
+        ...compScope, id: job.id, idempotencyKey: job.key, requestHash: job.requestHash,
+        schemaVersion: 3, maxAttempts: 1, status: 'PENDING',
+        payload: { schemaVersion: 3, source: 'LOCAL_DESKTOP', role: 'FRONT', payloadKind: 'RAW_BYTES',
+          orderNo, printJobId: job.key, rendererVersion: 'network-1', ...raw },
+        expiresAt: new Date(job.expiresAt), nextAttemptAt: new Date(job.receiptCreatedAt),
+        createdAt: new Date(job.updatedAt), updatedAt: new Date(job.updatedAt),
+      } })
+    }
+    await prisma.eshopTrayPrintJob.create({ data: {
+      ...compScope, id: 'held-front-sentinel', idempotencyKey: keyForFixture('held-front-sentinel'),
+      requestHash: 'a'.repeat(64), schemaVersion: 3, payload: {}, maxAttempts: 1,
+      resultMessage: 'V3_DURABLY_HELD', expiresAt: new Date(at.getTime() + 86_400_000),
+    } })
+    const captureKey = createHash('sha256').update(JSON.stringify([
+      compOriginalCapture.deviceId, compOriginalCapture.capturedAt, compOriginalCapture.ledgerSha256, compOriginalCapture.outboxSha256,
+    ])).digest('hex')
+    await prisma.operationLog.create({ data: {
+      ...compScope, id: compensationOriginal.id, requestId: compensationOriginal.requestId,
+      createdAt: new Date('2026-11-06T14:58:00.428Z'), targetType: 'V3PrintControlPlane', targetId: 'test-plane-01',
+      actionType: 'FOUNDER_REVIEW_DIAMOND_EXPIRED_FRONT', status: 'SUCCESS',
+      payloadSnapshot: { ...compensationOriginal.binding, capture: compOriginalCapture, captureKey,
+        commandDigest: 'test-only-original-command-not-production', installationIdHash: hashInstallationId(testInstallationId) },
+    } })
+    const parsed = recoveryCommand({ ...recoveryBase, action: compReviewAction, expectedStateVersion: 696,
+      jobIds: compJobIds, requestId: 'compensation-review-01', installationId: testInstallationId,
+      capture: { ...compOriginalCapture, captureId: 'new-compensation-capture-01',
+        capturedAt: new Date(at.getTime() - 1000).toISOString(), deviceObservedAt: new Date(at.getTime() - 1000).toISOString() },
+    })
+    if (!('capture' in parsed)) throw new Error('expected compensation review')
+    return parsed
+  }
+  const compRun = (command: ReturnType<typeof recoveryCommand>, actor = compFounder, at = compAt,
+    db: Pick<PrismaClient, '$transaction'> = prisma, useScope = compScope) =>
+    runOpsV3QueueRecovery(db, useScope, actor, command, () => at)
+  async function compRegister(review: ReturnType<typeof recoveryCommand>) {
+    const approved = await compRun(review)
+    assert.ok(approved.ok, JSON.stringify(approved))
+    const expiry = recoveryCommand({ ...recoveryBase, action: compExpireAction, expectedStateVersion: 696,
+      jobIds: compJobIds, evidenceId: approved.evidenceId, requestId: 'compensation-expire-01' })
+    if (!('evidenceId' in expiry)) throw new Error('expected compensation expire')
+    return expiry
+  }
+  async function assertCompensationUnchanged(grants = 0) {
+    assert.equal(await prisma.eshopTrayPrintJob.count({ where: {
+      id: { in: compJobIds }, status: 'PENDING', attemptCount: 0, claimAttempt: 0, completedAt: null,
+    } }), 3)
+    assert.equal(await prisma.operationLog.count({ where: { actionType: compReviewAction } }), grants)
+    assert.equal(await prisma.operationLog.count({ where: { actionType: compExpireAction } }), 0)
+    assert.equal(await prisma.operationLog.count({ where: { id: compensationOriginal.id } }), 1)
+    const plane = await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { storeId: compScope.storeId } })
+    assert.equal(plane.mode, 'BLOCKED_UNKNOWN'); assert.equal(plane.stateVersion, 696)
+    assert.equal(plane.ownerDeviceId, null); assert.equal(plane.leaseId, null)
+    const held = await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: 'held-front-sentinel' } })
+    assert.equal(held.status, 'PENDING'); assert.equal(held.resultMessage, 'V3_DURABLY_HELD')
+  }
+
+  await t.test('compensation parser uses distinct exact commands and rejects caller-provided grants', async () => {
+    const review = await resetCompensation()
+    assert.equal(review.action, compReviewAction)
+    for (const extra of [{ admissionId: 'caller-grant' }, { originalReviewId: compensationOriginal.id },
+      { compensation: { approved: true } }, { expiresAt: '2099-01-01T00:00:00.000Z' }]) {
+      assert.deepEqual(parseOpsV3QueueRecoveryCommand({ ...review, confirmed: true, ...extra }),
+        { ok: false, code: 'INVALID_QUEUE_RECOVERY_COMMAND' })
+    }
+    assert.deepEqual(parseOpsV3QueueRecoveryCommand({ ...review, confirmed: false }), { ok: false, code: 'INVALID_QUEUE_RECOVERY_COMMAND' })
+    assert.deepEqual(parseOpsV3QueueRecoveryCommand({ ...review, confirmed: true, installationId: undefined }), { ok: false, code: 'INVALID_QUEUE_RECOVERY_COMMAND' })
+    await assertCompensationUnchanged()
+  })
+
+  await t.test('compensation REVIEW is append-only single-use; exact replay cannot create another grant', async () => {
+    const review = await resetCompensation()
+    const original = await prisma.operationLog.findUniqueOrThrow({ where: { id: compensationOriginal.id } })
+    const approved = await compRun(review)
+    assert.ok(approved.ok, JSON.stringify(approved))
+    await assertCompensationUnchanged(1)
+    assert.deepEqual(await compRun(review, compFounder, new Date('2026-11-09T00:00:00.000Z')), approved)
+    assert.deepEqual(await compRun({ ...review, requestId: 'compensation-review-02' }), { ok: false, code: 'DIAMOND_COMPENSATION_ALREADY_AUTHORIZED' })
+    assert.deepEqual(await compRun(recoveryCommand({ ...review, confirmed: true, action: 'FOUNDER_REVIEW_DIAMOND_EXPIRED_FRONT', requestId: 'original-founder-still-spent' })),
+      { ok: false, code: 'FOUNDER_RECOVERY_ALREADY_AUTHORIZED' })
+    assert.deepEqual(await prisma.operationLog.findUniqueOrThrow({ where: { id: compensationOriginal.id } }), original)
+    const grant = await prisma.operationLog.findUniqueOrThrow({ where: { id: approved.evidenceId } })
+    const payload = grant.payloadSnapshot as any
+    assert.equal(payload.compensation.originalReviewId, original.id)
+    assert.equal(payload.compensation.failedRequestId, 'a890b5c7-ee21-4458-99cc-8abdc978fd80')
+    assert.equal(payload.compensation.failureLogSha256, '10e59f70b711a885a538f55332b4c12f964ff39d950c81a02de9737eb837c54f')
+    assert.equal('installationId' in payload, false)
+    assert.deepEqual(await compRun({ ...review, capture: { ...review.capture!, captureId: 'conflicting-capture-01' } } as typeof review),
+      { ok: false, code: 'QUEUE_REQUEST_CONFLICT' })
+    await assertCompensationUnchanged(1)
+  })
+
+  await t.test('compensation pins the actual Founder, tenant, store, device and complete job set', async () => {
+    const review = await resetCompensation()
+    for (const actor of [{ ...compFounder, role: 'OPS_ADMIN' }, { id: 'other-super-admin', role: 'SUPER_ADMIN' }]) {
+      assert.deepEqual(await compRun(review, actor), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    }
+    for (const useScope of [{ ...compScope, tenantId: 'other-tenant' }, { ...compScope, storeId: 'other-store' }]) {
+      assert.deepEqual(await compRun(review, compFounder, compAt, prisma, useScope), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    }
+    assert.deepEqual(await compRun({ ...review, jobIds: compJobIds.slice(0, 2) }), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    assert.deepEqual(await compRun({ ...review, expectedStateVersion: 697 }), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    const wrongDevice = recoveryCommand({ ...review, confirmed: true, capture: { ...compOriginalCapture, deviceId: 'another-device-01' } })
+    assert.deepEqual(await compRun(wrongDevice), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    await pool.query('UPDATE "OpsAdmin" SET "status"=\'DISABLED\' WHERE "id"=$1', [compFounder.id])
+    assert.deepEqual(await compRun(review), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    await assertCompensationUnchanged()
+  })
+
+  await t.test('compensation requires the exact original successful audit and unchanged original job identities', async () => {
+    for (const mutation of ['missing', 'request', 'createdAt', 'reviewer', 'fence', 'jobs']) {
+      const review = await resetCompensation()
+      const original = await prisma.operationLog.findUniqueOrThrow({ where: { id: compensationOriginal.id } })
+      const payload = original.payloadSnapshot as any
+      if (mutation === 'missing') await prisma.operationLog.delete({ where: { id: original.id } })
+      else if (mutation === 'request') await prisma.operationLog.update({ where: { id: original.id }, data: { requestId: 'wrong-original-request' } })
+      else if (mutation === 'createdAt') await prisma.operationLog.update({ where: { id: original.id }, data: { createdAt: new Date(original.createdAt.getTime() + 1) } })
+      else {
+        if (mutation === 'reviewer') payload.reviewerId = 'other-original-founder'
+        if (mutation === 'fence') payload.fence.ownerEpoch = 2
+        if (mutation === 'jobs') payload.jobs[0].requestHash = 'a'.repeat(64)
+        await prisma.operationLog.update({ where: { id: original.id }, data: { payloadSnapshot: payload } })
+      }
+      assert.deepEqual(await compRun(review), { ok: false, code: ['missing', 'request'].includes(mutation)
+        ? 'DIAMOND_COMPENSATION_ORIGINAL_REQUIRED' : 'DIAMOND_COMPENSATION_ORIGINAL_MISMATCH' })
+      assert.equal(await prisma.operationLog.count({ where: { actionType: compReviewAction } }), 0)
+    }
+    let review = await resetCompensation()
+    await prisma.eshopTrayPrintJob.update({ where: { id: compJobIds[0] }, data: { requestHash: 'a'.repeat(64) } })
+    if (!('capture' in review)) throw new Error('expected evidence command')
+    review.capture.jobs[0].requestHash = 'a'.repeat(64)
+    assert.deepEqual(await compRun(review), { ok: false, code: 'QUEUE_EVIDENCE_JOB_MISMATCH' })
+    review = await resetCompensation()
+    await prisma.operationLog.create({ data: { ...compScope, targetType: 'V3PrintControlPlane', targetId: 'test-plane-01',
+      actionType: 'FOUNDER_EXPIRE_DIAMOND_UNEXECUTED_FRONT', status: 'SUCCESS', payloadSnapshot: { evidenceId: compensationOriginal.id } } })
+    assert.deepEqual(await compRun(review), { ok: false, code: 'DIAMOND_COMPENSATION_ALREADY_COMPLETED' })
+  })
+
+  await t.test('compensation rechecks installation identity and refuses active or ambiguous execution fences', async () => {
+    for (const mutation of ['installation', 'original-installation', 'device-revoked', 'version', 'owner', 'epoch', 'release', 'batch', 'claim', 'unknown']) {
+      const review = await resetCompensation()
+      let code = 'EVIDENCE_DEVICE_INVALID'
+      if (mutation === 'installation') await pool.query('UPDATE "DesktopDevice" SET "installationIdHash"=$1', ['a'.repeat(64)])
+      if (mutation === 'original-installation') {
+        const old = await prisma.operationLog.findUniqueOrThrow({ where: { id: compensationOriginal.id } })
+        await prisma.operationLog.update({ where: { id: old.id }, data: { payloadSnapshot: { ...(old.payloadSnapshot as any), installationIdHash: 'b'.repeat(64) } } })
+      }
+      if (mutation === 'device-revoked') await pool.query('UPDATE "DesktopDevice" SET "status"=\'REVOKED\'')
+      if (mutation === 'version') { await prisma.v3PrintControlPlane.updateMany({ data: { stateVersion: 697 } }); code = 'CONCURRENT_STATE_CHANGE' }
+      if (mutation === 'owner') { await prisma.v3PrintControlPlane.updateMany({ data: { ownerDeviceId: compOriginalCapture.deviceId } }); code = 'QUEUE_FENCE_NOT_RELEASED' }
+      if (mutation === 'epoch') { await prisma.v3PrintControlPlane.updateMany({ data: { ownerEpoch: 2 } }); code = 'QUEUE_EVIDENCE_FENCE_MISMATCH' }
+      if (mutation === 'release') { await prisma.v3PrintControlPlane.updateMany({ data: { handoffRequestedAt: new Date('2026-11-03T11:42:48.650Z') } }); code = 'QUEUE_EVIDENCE_FENCE_MISMATCH' }
+      if (mutation === 'batch') { await prisma.v3PrintExecutionBatch.updateMany({ data: { revokedAt: null, expiresAt: new Date(compAt.getTime() + 60_000) } }); code = 'ACTIVE_EXECUTION_BATCH' }
+      if (mutation === 'claim') { await prisma.eshopTrayPrintJob.update({ where: { id: compJobIds[0] }, data: { claimAttempt: 1 } }); code = 'QUEUE_JOB_NOT_UNEXECUTED' }
+      if (mutation === 'unknown') { await prisma.eshopTrayPrintJob.update({ where: { id: compJobIds[0] }, data: { effectBoundary: 'CROSSING_UNKNOWN' } }); code = 'QUEUE_JOB_NOT_UNEXECUTED' }
+      assert.deepEqual(await compRun(review), { ok: false, code }, mutation)
+      assert.equal(await prisma.operationLog.count({ where: { actionType: compReviewAction } }), 0)
+    }
+  })
+
+  await t.test('compensation rejects stale/reused capture, enforces finite window and rechecks expiry after audit', async () => {
+    let review = await resetCompensation()
+    assert.deepEqual(await compRun(review, compFounder, new Date(compAt.getTime() + 30_001)), { ok: false, code: 'QUEUE_EVIDENCE_STALE' })
+    if (!('capture' in review)) throw new Error('expected evidence command')
+    assert.deepEqual(await compRun({ ...review, capture: compOriginalCapture }), { ok: false, code: 'QUEUE_EVIDENCE_STALE' })
+    assert.deepEqual(await compRun({ ...review, capture: { ...review.capture, captureId: compOriginalCapture.captureId } }), { ok: false, code: 'QUEUE_EVIDENCE_CAPTURE_REUSED' })
+    assert.deepEqual(await compRun(review, compFounder, new Date('2026-11-06T15:02:50.680Z')), { ok: false, code: 'DIAMOND_COMPENSATION_EXPIRED' })
+    assert.deepEqual(await compRun(review, compFounder, new Date('2026-11-08T00:00:00.000Z')), { ok: false, code: 'DIAMOND_COMPENSATION_EXPIRED' })
+    const boundary = new Date('2026-11-07T23:59:59.999Z')
+    review = await resetCompensation(boundary)
+    let reads = 0
+    assert.deepEqual(await runOpsV3QueueRecovery(prisma, compScope, compFounder, review,
+      () => ++reads === 1 ? boundary : new Date(boundary.getTime() + 1)), { ok: false, code: 'DIAMOND_COMPENSATION_EXPIRED' })
+    await assertCompensationUnchanged()
+  })
+
+  await t.test('concurrent compensation requests create one grant; losing request cannot renew it', async () => {
+    const review = await resetCompensation()
+    const results = await Promise.all([compRun(review), compRun({ ...review, requestId: 'concurrent-comp-review-02' })])
+    assert.equal(results.filter(result => result.ok).length, 1)
+    for (const result of results) if (!result.ok) assert.ok(['CONCURRENT_STATE_CHANGE', 'DIAMOND_COMPENSATION_ALREADY_AUTHORIZED'].includes(result.code), JSON.stringify(result))
+    await assertCompensationUnchanged(1)
+    assert.deepEqual(await compRun({ ...review, requestId: 'third-comp-review-03' }), { ok: false, code: 'DIAMOND_COMPENSATION_ALREADY_AUTHORIZED' })
+  })
+
+  await t.test('compensation REVIEW audit failure and 5000ms timeout roll back the grant without touching jobs', async () => {
+    let review = await resetCompensation()
+    await pool.query(`ALTER TABLE "OperationLog" ADD CONSTRAINT test_no_comp_review CHECK ("actionType" <> '${compReviewAction}')`)
+    try { await assert.rejects(compRun(review)); await assertCompensationUnchanged() }
+    finally { await pool.query('ALTER TABLE "OperationLog" DROP CONSTRAINT test_no_comp_review') }
+    assert.equal((await compRun(review)).ok, true)
+    review = await resetCompensation()
+    const delayed = delayedExpiryDb({ delayMs: 5_300, auditAction: compReviewAction })
+    await assert.rejects(compRun(review, compFounder, compAt, delayed.db),
+      (error: unknown) => !!error && typeof error === 'object' && 'code' in error && error.code === 'P2028')
+    assert.equal(delayed.updateCalls(), 0); await assertCompensationUnchanged()
+    assert.equal((await compRun(review)).ok, true)
+  })
+
+  await t.test('compensation EXPIRE requires its own fresh linked grant and exact actor; old actions stay separate', async () => {
+    const review = await resetCompensation()
+    const expiry = await compRegister(review)
+    assert.deepEqual(await compRun({ ...expiry, evidenceId: compensationOriginal.id }), { ok: false, code: 'QUEUE_EVIDENCE_REQUIRED' })
+    assert.deepEqual(await compRun(recoveryCommand({ ...expiry, confirmed: true, action: 'FOUNDER_EXPIRE_DIAMOND_UNEXECUTED_FRONT' })), { ok: false, code: 'QUEUE_EVIDENCE_REQUIRED' })
+    assert.deepEqual(await compRun(expiry, { id: 'another-founder', role: 'SUPER_ADMIN' }), { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' })
+    assert.deepEqual(await compRun(expiry, compFounder, new Date(compAt.getTime() + 300_001)), { ok: false, code: 'QUEUE_EVIDENCE_STALE' })
+    assert.deepEqual(await compRun({ ...review, requestId: 'comp-review-after-expiry' }, compFounder, new Date(compAt.getTime() + 300_001)),
+      { ok: false, code: 'DIAMOND_COMPENSATION_ALREADY_AUTHORIZED' })
+    const grant = await prisma.operationLog.findUniqueOrThrow({ where: { id: expiry.evidenceId } })
+    const payload = grant.payloadSnapshot as any
+    payload.compensation.originalReviewId = 'different-original-evidence'
+    await prisma.operationLog.update({ where: { id: grant.id }, data: { payloadSnapshot: payload } })
+    assert.deepEqual(await compRun(expiry), { ok: false, code: 'DIAMOND_COMPENSATION_ORIGINAL_MISMATCH' })
+    await assertCompensationUnchanged(1)
+  })
+
+  await t.test('compensation EXPIRE preserves 10s audit atomicity, rolls back failures and never releases held jobs', async () => {
+    let review = await resetCompensation()
+    let expiry = await compRegister(review)
+    await pool.query(`ALTER TABLE "OperationLog" ADD CONSTRAINT test_no_comp_expire CHECK ("actionType" <> '${compExpireAction}')`)
+    try { await assert.rejects(compRun(expiry)); await assertCompensationUnchanged(1) }
+    finally { await pool.query('ALTER TABLE "OperationLog" DROP CONSTRAINT test_no_comp_expire') }
+    let delayed = delayedExpiryDb({ delayMs: 10_300, auditAction: compExpireAction })
+    await assert.rejects(compRun(expiry, compFounder, compAt, delayed.db),
+      (error: unknown) => !!error && typeof error === 'object' && 'code' in error && error.code === 'P2028')
+    await assertCompensationUnchanged(1)
+    assert.deepEqual(await compRun({ ...review, requestId: 'no-renew-after-timeout' }), { ok: false, code: 'DIAMOND_COMPENSATION_ALREADY_AUTHORIZED' })
+    delayed = delayedExpiryDb({ delayMs: 5_700, auditAction: compExpireAction })
+    const original = await prisma.operationLog.findUniqueOrThrow({ where: { id: compensationOriginal.id } })
+    const before = await prisma.eshopTrayPrintJob.findMany({ where: { id: { in: compJobIds } }, orderBy: { id: 'asc' } })
+    const completed = await compRun(expiry, compFounder, compAt, delayed.db)
+    assert.ok(completed.ok, JSON.stringify(completed)); assert.equal(delayed.updateCalls(), 1)
+    assert.deepEqual(delayed.budgets, [{ isolationLevel: 'Serializable', timeout: 10_000 }])
+    assert.deepEqual(await compRun(expiry, compFounder, new Date('2026-11-09T00:00:00.000Z')), completed)
+    assert.equal(await prisma.operationLog.count({ where: { actionType: compExpireAction } }), 1)
+    assert.deepEqual(await compRun({ ...expiry, requestId: 'new-expire-after-success' }), { ok: false, code: 'DIAMOND_COMPENSATION_ALREADY_COMPLETED' })
+    assert.deepEqual(await prisma.operationLog.findUniqueOrThrow({ where: { id: compensationOriginal.id } }), original)
+    const after = await prisma.eshopTrayPrintJob.findMany({ where: { id: { in: compJobIds } }, orderBy: { id: 'asc' } })
+    for (const [index, job] of after.entries()) {
+      assert.equal(job.status, 'EXPIRED'); assert.equal(job.effectBoundary, 'NOT_CROSSED')
+      assert.equal(job.idempotencyKey, before[index].idempotencyKey); assert.equal(job.requestHash, before[index].requestHash)
+      assert.deepEqual(job.payload, before[index].payload); assert.equal(job.attemptCount, 0); assert.equal(job.claimAttempt, 0)
+    }
+    const plane = await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { storeId: compScope.storeId } })
+    assert.equal(plane.mode, 'BLOCKED_UNKNOWN'); assert.equal(plane.stateVersion, 696); assert.equal(plane.ownerDeviceId, null)
+    const held = await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: 'held-front-sentinel' } })
+    assert.equal(held.status, 'PENDING'); assert.equal(held.resultMessage, 'V3_DURABLY_HELD')
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM "SaleRecord"')).rows[0].n, 3)
+  })
+
+  await t.test('same-request concurrent compensation is idempotent without another grant', async () => {
+    const review = await resetCompensation()
+    const results = await Promise.all([compRun(review), compRun(review)])
+    const committed = results.find(result => result.ok)
+    assert.ok(committed)
+    for (const result of results) if (result.ok) assert.deepEqual(result, committed)
+    else assert.equal(result.code, 'CONCURRENT_STATE_CHANGE')
+    assert.deepEqual(await compRun(review), committed)
+    await assertCompensationUnchanged(1)
+  })
+
+  await t.test('compensation EXPIRE crossing policy deadline rolls back all rows and its audit', async () => {
+    const boundary = new Date('2026-11-07T23:59:59.999Z')
+    const review = await resetCompensation(boundary)
+    const approved = await compRun(review, compFounder, boundary)
+    assert.ok(approved.ok, JSON.stringify(approved))
+    const expiry = recoveryCommand({ ...recoveryBase, action: compExpireAction, expectedStateVersion: 696,
+      jobIds: compJobIds, evidenceId: approved.evidenceId, requestId: 'comp-expire-policy-boundary' })
+    let reads = 0
+    assert.deepEqual(await runOpsV3QueueRecovery(prisma, compScope, compFounder, expiry,
+      () => ++reads === 1 ? boundary : new Date(boundary.getTime() + 1)), { ok: false, code: 'DIAMOND_COMPENSATION_EXPIRED' })
+    await assertCompensationUnchanged(1)
+  })
+
+  await t.test('compensation concurrent EXPIRE cannot consume one grant twice', async () => {
+    const expiry = await compRegister(await resetCompensation())
+    const results = await Promise.all([compRun(expiry), compRun({ ...expiry, requestId: 'concurrent-comp-expire-02' })])
+    assert.equal(results.filter(result => result.ok).length, 1)
+    for (const result of results) if (!result.ok) assert.ok(['CONCURRENT_STATE_CHANGE', 'DIAMOND_COMPENSATION_ALREADY_COMPLETED'].includes(result.code), JSON.stringify(result))
+    assert.equal(await prisma.operationLog.count({ where: { actionType: compReviewAction } }), 1)
+    assert.equal(await prisma.operationLog.count({ where: { actionType: compExpireAction } }), 1)
+    assert.equal(await prisma.eshopTrayPrintJob.count({ where: { status: 'EXPIRED', id: { in: compJobIds } } }), 3)
   })
 })
