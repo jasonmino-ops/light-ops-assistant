@@ -883,6 +883,18 @@ test('Founder emergency commands remain distinct from the two-Ops commands', () 
 
 const recoverySocket = process.env.DIAMOND_QUEUE_TEST_SOCKET
 
+test('only FINALIZE_V3_ACTIVE gets the mode transaction budget; other mode actions keep default policy', async () => {
+  for (const action of ['START_ACTIVATION', 'ENTER_MANUAL_REVIEW', 'FINALIZE_V3_ACTIVE', 'START_DEACTIVATION', 'FINALIZE_V2_ACTIVE'] as const) {
+    const marker = new Error('CAPTURE_MODE_TRANSACTION_POLICY')
+    const observed: unknown[] = []
+    const db = { $transaction: async (_work: unknown, options: unknown) => { observed.push(options); throw marker } } as unknown as OpsPrintControlDb
+    await assert.rejects(runOpsPrintModeAction(db, { tenantId: 'test-tenant', storeId: 'test-store',
+      operatorAdminId: 'test-ops', operatorRole: 'OPS_ADMIN', expectedStateVersion: 1, action }), error => error === marker)
+    assert.deepEqual(observed, [action === 'FINALIZE_V3_ACTIVE'
+      ? { isolationLevel: 'Serializable', timeout: 10_000 } : { isolationLevel: 'Serializable' }])
+  }
+})
+
 test('only formal EXPIRE gets a bounded transaction budget; REVIEW keeps its existing policy', async () => {
   const marker = new Error('TRANSACTION_OPTIONS_CAPTURED')
   const observed: unknown[] = []
@@ -1035,6 +1047,162 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
     assert.equal(await prisma.eshopTrayPrintJob.count({ where: { status: 'EXPIRED' } }), 0)
     assert.equal(await prisma.operationLog.count({ where: { actionType: 'EXPIRE_UNEXECUTED_V3_FRONT' } }), 0)
   }
+
+  // FINALIZE uses this same socket-only disposable schema, never Production.
+  // Preserve three already-terminal historical rows alongside 21 held intents.
+  const finalizeInput = { ...scope, operatorAdminId: executor.id, operatorRole: 'OPS_ADMIN',
+    expectedStateVersion: 9, action: 'FINALIZE_V3_ACTIVE' as const }
+  const heldIds = Array.from({ length: 21 }, (_, i) => `held-front-${String(i).padStart(2, '0')}`)
+  async function resetFinalize() {
+    await reset()
+    const original = await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: jobIds[0] } })
+    await prisma.eshopTrayPrintJob.create({ data: { ...original, payload: original.payload as Prisma.InputJsonObject,
+      id: 'historical-third', idempotencyKey: 'historical-third' } })
+    await prisma.eshopTrayPrintJob.updateMany({ data: {
+      status: 'EXPIRED', effectBoundary: 'NOT_CROSSED', completedAt: startedAt,
+    } })
+    for (const [i, id] of heldIds.entries()) {
+      await prisma.eshopTrayPrintJob.create({ data: {
+        ...scope, id, idempotencyKey: id, requestHash: 'a'.repeat(64), schemaVersion: 3,
+        payload: { schemaVersion: 3, source: 'CLOUD_H5', role: 'FRONT', payloadKind: 'RAW_BYTES',
+          orderNo: id, printJobId: id, rendererVersion: 'network-1', ...raw },
+        resultMessage: 'V3_DURABLY_HELD',
+        expiresAt: new Date(startedAt.getTime() + (i < 18 ? 60_000 : -60_000)),
+        nextAttemptAt: new Date(startedAt.getTime() + 60_000),
+      } })
+    }
+    // A terminal ACK and another store's held KITCHEN intent cannot be touched.
+    await prisma.eshopTrayPrintJob.create({ data: { ...original, payload: original.payload as Prisma.InputJsonObject,
+      id: 'already-acked', idempotencyKey: 'already-acked',
+      status: 'SUCCEEDED', completedAt: startedAt, effectBoundary: 'CROSSED' } })
+    const front = await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: heldIds[0] } })
+    await prisma.eshopTrayPrintJob.create({ data: { ...front, id: 'other-store-kitchen', storeId: 'other-store',
+      idempotencyKey: 'other-store-kitchen', payload: { ...(front.payload as object), role: 'KITCHEN', printJobId: 'other-store-kitchen' } } })
+  }
+  async function finalizeSnapshot() {
+    return {
+      plane: await prisma.v3PrintControlPlane.findMany({ orderBy: { id: 'asc' } }),
+      jobs: await prisma.eshopTrayPrintJob.findMany({ orderBy: { id: 'asc' } }),
+      batches: await prisma.v3PrintExecutionBatch.findMany({ orderBy: { id: 'asc' } }),
+      audits: await prisma.operationLog.findMany({ orderBy: { id: 'asc' } }),
+    }
+  }
+  function finalizeDb(options: { delayMs?: number; legacyBudget?: boolean; failAudit?: boolean;
+    failHeldCas?: boolean; failModeCas?: boolean } = {}) {
+    const budgets: unknown[] = []
+    let heldWrites = 0
+    const db = new Proxy(prisma, { get(target, key) {
+      if (key !== '$transaction') return Reflect.get(target, key)
+      return <T>(work: (tx: Prisma.TransactionClient) => Promise<T>, config: {
+        isolationLevel?: Prisma.TransactionIsolationLevel; timeout?: number
+      }) => {
+        budgets.push(config)
+        return target.$transaction(async tx => work(new Proxy(tx, { get(inner, name) {
+          if (name === 'operationLog' && options.failAudit) return {
+            ...inner.operationLog, create: async () => { throw new Error('INJECTED_FINALIZE_AUDIT_FAILURE') },
+          }
+          if (name === 'v3PrintControlPlane' && options.failModeCas) return {
+            ...inner.v3PrintControlPlane, updateMany: async () => ({ count: 0 }),
+          }
+          if (name === 'eshopTrayPrintJob') return { ...inner.eshopTrayPrintJob,
+            updateMany: async (args: Prisma.EshopTrayPrintJobUpdateManyArgs) => {
+              heldWrites++
+              // Some held rows and audit/CAS have already been written when
+              // the injected delay or CAS failure occurs; all must roll back.
+              if (heldWrites === 11) {
+                if (options.delayMs) await new Promise(resolve => setTimeout(resolve, options.delayMs))
+                if (options.failHeldCas) return { count: 0 }
+              }
+              return inner.eshopTrayPrintJob.updateMany(args)
+            },
+          }
+          return Reflect.get(inner, name)
+        } })), { ...config, ...(options.legacyBudget ? { timeout: 5_000 } : {}) })
+      }
+    } }) as unknown as OpsPrintControlDb
+    return { db, budgets, heldWrites: () => heldWrites }
+  }
+  const finalizeWith = (db: OpsPrintControlDb) => runOpsPrintModeAction(db, finalizeInput, startedAt)
+  const expiredTransaction = (error: unknown) => !!error && typeof error === 'object' && 'code' in error && error.code === 'P2028'
+
+  await t.test('FINALIZE reproduces default 5s expiry mid-held-loop and rolls back audit, mode and partial held writes', async () => {
+    await resetFinalize()
+    const before = await finalizeSnapshot()
+    const delayed = finalizeDb({ delayMs: 5_700, legacyBudget: true })
+    await assert.rejects(finalizeWith(delayed.db), expiredTransaction)
+    assert.equal(delayed.heldWrites(), 11)
+    assert.deepEqual(await finalizeSnapshot(), before)
+  })
+  await t.test('FINALIZE commits a slow 21-held transition atomically and duplicate requests have no side effects', async () => {
+    await resetFinalize()
+    const before = await finalizeSnapshot()
+    const delayed = finalizeDb({ delayMs: 5_700 })
+    const result = await finalizeWith(delayed.db)
+    assert.ok(result.ok, JSON.stringify(result))
+    assert.deepEqual(delayed.budgets, [{ isolationLevel: 'Serializable', timeout: 10_000 }])
+    assert.equal(delayed.heldWrites(), 21)
+    const after = await finalizeSnapshot()
+    assert.equal(after.plane[0].mode, 'V3_ACTIVE')
+    assert.equal(after.plane[0].stateVersion, 10)
+    assert.equal(after.plane[0].ownerDeviceId, null)
+    assert.equal(after.plane[0].leaseId, null)
+    assert.equal(after.plane[0].ownerEpoch, before.plane[0].ownerEpoch)
+    assert.deepEqual(after.batches, before.batches)
+    assert.equal(after.audits.length, 1)
+    assert.equal(after.audits[0].message, 'FINALIZE_V3_ACTIVE')
+    for (const job of after.jobs) {
+      const old = before.jobs.find(row => row.id === job.id)!
+      if (!heldIds.includes(job.id)) assert.deepEqual(job, old)
+      else {
+        const { resultMessage, nextAttemptAt, updatedAt, ...stable } = job
+        const { resultMessage: _oldMarker, nextAttemptAt: _oldAttempt, updatedAt: _oldUpdate, ...oldStable } = old
+        assert.deepEqual(stable, oldStable, 'TTL, payload/role, identity, attempts and effect boundary cannot change')
+        assert.equal(resultMessage, null)
+        assert.deepEqual(nextAttemptAt, startedAt)
+      }
+    }
+    const duplicate = await finalizeWith(delayed.db)
+    assert.equal(duplicate.ok, false)
+    if (!duplicate.ok) assert.equal(duplicate.code, 'CONCURRENT_STATE_CHANGE')
+    const newVersionDuplicate = await runOpsPrintModeAction(delayed.db, { ...finalizeInput, expectedStateVersion: 10 }, startedAt)
+    assert.equal(newVersionDuplicate.ok, false)
+    if (!newVersionDuplicate.ok) assert.equal(newVersionDuplicate.code, 'ACTION_NOT_AVAILABLE')
+    assert.equal(delayed.heldWrites(), 21)
+    assert.deepEqual(await finalizeSnapshot(), after)
+  })
+  await t.test('FINALIZE remains bounded at 10s and rolls back all partial materialization', async () => {
+    await resetFinalize()
+    const before = await finalizeSnapshot()
+    await assert.rejects(finalizeWith(finalizeDb({ delayMs: 10_300 }).db), expiredTransaction)
+    assert.deepEqual(await finalizeSnapshot(), before)
+  })
+  await t.test('FINALIZE audit failure, mode CAS failure and mid-held CAS failure preserve every row', async () => {
+    for (const options of [{ failAudit: true }, { failModeCas: true }, { failHeldCas: true }]) {
+      await resetFinalize()
+      const before = await finalizeSnapshot()
+      if (options.failModeCas) {
+        const result = await finalizeWith(finalizeDb(options).db)
+        assert.equal(result.ok, false)
+        if (!result.ok) assert.equal(result.code, 'CONCURRENT_STATE_CHANGE')
+      } else await assert.rejects(finalizeWith(finalizeDb(options).db),
+        options.failAudit ? /INJECTED_FINALIZE_AUDIT_FAILURE/ : /V3_HELD_MATERIALIZATION_RACE/)
+      assert.deepEqual(await finalizeSnapshot(), before)
+    }
+  })
+  await t.test('concurrent FINALIZE commits at most one mode change, one audit and one held materialization', async () => {
+    await resetFinalize()
+    const db = finalizeDb()
+    const results = await Promise.all([finalizeWith(db.db), finalizeWith(db.db)])
+    assert.equal(results.filter(result => result.ok).length, 1)
+    const rejected = results.find(result => !result.ok)!
+    assert.equal(rejected.ok, false)
+    if (!rejected.ok) assert.equal(rejected.code, 'CONCURRENT_STATE_CHANGE')
+    const after = await finalizeSnapshot()
+    assert.equal(after.plane[0].stateVersion, 10)
+    assert.equal(after.audits.length, 1)
+    assert.equal(after.jobs.filter(job => heldIds.includes(job.id) && job.resultMessage === null).length, 21)
+    assert.equal(after.jobs.filter(job => job.status === 'EXPIRED' && job.effectBoundary === 'NOT_CROSSED').length, 3)
+  })
 
   // Real isolated PostgreSQL transactions. Delay is injected at the same
   // boundary as the Production failure: after job writes, before SUCCESS audit.
