@@ -119,3 +119,82 @@ test('Ops merchant detail renders authoritative modes and fail-closed controls',
   assert.match(page, /if \(!state \|\| loading \|\| error\) return/)
   assert.match(page, /disabled=\{controlsDisabled\}/)
 })
+
+// ES-OPS-LOCAL-FIRST-UX-01: captured before UI edits. These protect operations, not layout.
+const operationSignatures = {
+  "app/ops/[tenantId]/page.tsx": {
+    "patch": "280cc295c814395cbfcf1ed84cf136b9c9ca89d7ce4b13bcf582971cab107fd8",
+    "toggleFeatured": "f4e1744d42c3c314ff06fd70323c386c278d1766cdf3a62e1240906baeabc615",
+    "saveSort": "08e196acac27b4e5599cfd7cc317d9624b9d13fcfa85daa0178252093e1979d4",
+    "loadPrintMode": "cbf569c0e9068a5fb9f376d61486613043a0d71218ce02773d867eb1ed4e174b",
+    "requestTransition": "b696e3aea96d7538a0577bbf283e51e4945307c965d84dafd217b23641d593d4"
+  },
+  "app/ops/[tenantId]/DiamondFounderRecoveryPanel.tsx": {
+    "object": "116c7eb1a323aee332afb4dd83434b0a4a1eb9b5bf406857ed7a7a69cad5904a",
+    "exactKeys": "e41d0671351fd4ec6a6db280afceb32cfaeb6dd11543d7c520b8bfd4d061ac11",
+    "iso": "90cd312f8a28472374e18985343971fa21a62fd0e20b331c5b0645c647943131",
+    "parseCapture": "40cb63e99586e89bf1130d0faa29ed9b4c973c026b221db218c749ff6700faea",
+    "stateAllowsReview": "6dcc45fc4ba1b65ac24ba41e4bdb659ce7ddb5a97896fc36296f9956fe53ae58",
+    "captureIsFresh": "d87bce7baadce3130c95d76437d2b707e7acc5e6377a0a75061db72eb61b5a67",
+    "recoveryActions": "eeea62d0e79e2d1abffb841ba4179cec11ef560f8be4bc284b243072d8b46087",
+    "clearEvidence": "d65046d43a86c75c809051ea6a168744183aacda17450b5d98c51a2dd6f1ff52",
+    "postOnce": "f3e79352cbc07ce3a78c7d773afbb435d48b4e473f30336b0e1ce710fbd6903c",
+    "review": "9b7330c593b198e6d8fd95799bc120d44d617d1764d3b38ab151685669f2b049",
+    "expire": "c256e5bd71eec1e7b137be4ca64046492acac5c2651490a7f5e2bb516b83dd84"
+  }
+}
+const ts = require('typescript')
+const { createHash } = require('node:crypto')
+const operationPrinter = ts.createPrinter({ removeComments: true })
+function signature(source, name) {
+  const file = ts.createSourceFile('source.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  let found
+  function visit(node) { if (ts.isFunctionDeclaration(node) && node.name?.text === name) found = node; ts.forEachChild(node, visit) }
+  visit(file)
+  if (!found) throw Error('missing function ' + name)
+  return createHash('sha256').update(operationPrinter.printNode(ts.EmitHint.Unspecified, found, file)).digest('hex')
+}
+
+test('Local First UX leaves all existing mutation handlers and eligibility functions unchanged', () => {
+  for (const [file, functions] of Object.entries(operationSignatures)) {
+    for (const [name, expected] of Object.entries(functions)) assert.equal(signature(read(file), name), expected, file + ': ' + name)
+  }
+})
+
+test('operation guard rejects changed payloads and eligibility boundaries', () => {
+  const panel = read('app/ops/[tenantId]/DiamondFounderRecoveryPanel.tsx')
+  for (const [name, before, after] of [
+    ['review', 'confirmed: true', 'confirmed: false'],
+    ['expire', 'expectedStateVersion: activeGrant.stateVersion', 'expectedStateVersion: 0'],
+    ['recoveryActions', 'EXPIRE_WINDOW_MS - 5000', 'EXPIRE_WINDOW_MS'],
+    ['stateAllowsReview', 'recovery.leasePresent === false', 'true'],
+  ]) {
+    assert.ok(panel.includes(before))
+    assert.notEqual(signature(panel.replace(before, after), name), operationSignatures['app/ops/[tenantId]/DiamondFounderRecoveryPanel.tsx'][name])
+  }
+})
+
+test('Local First UX keeps original action visibility, disabled expressions and click bindings', () => {
+  const page = read('app/ops/[tenantId]/page.tsx')
+  const file = ts.createSourceFile('page.tsx', page, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  let panel
+  function locate(node) { if (ts.isFunctionDeclaration(node) && node.name?.text === 'PrintModePanel') panel = node; ts.forEachChild(node, locate) }
+  locate(file)
+  const buttons = []
+  const visibility = []
+  function visit(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(file) === 'controlsDisabled') assert.equal(node.initializer.getText(file), 'loading || busy || error !== null')
+    if (ts.isBinaryExpression(node) && node.left.getText(file).startsWith('state?.actions.')) visibility.push(node.left.getText(file))
+    if (ts.isJsxOpeningElement(node) && node.tagName.getText(file) === 'button') {
+      const values = Object.fromEntries(node.attributes.properties.filter(ts.isJsxAttribute).filter(a => ['disabled', 'onClick'].includes(a.name.text)).map(a => [a.name.text, a.initializer.expression.getText(file)]))
+      buttons.push(values)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(panel)
+  assert.deepEqual(visibility, ['startActivation','startDeactivation','enterManualReview','finalizeV3Active','finalizeV2Active'].map(key => 'state?.actions.' + key))
+  assert.deepEqual(buttons, [...['START_ACTIVATION','START_DEACTIVATION','ENTER_MANUAL_REVIEW','FINALIZE_V3_ACTIVE','FINALIZE_V2_ACTIVE'].map(action => ({disabled: 'controlsDisabled', onClick: "() => requestTransition('" + action + "')"})), {disabled: 'loading || busy', onClick: 'loadPrintMode'}])
+  const founder = read('app/ops/[tenantId]/DiamondFounderRecoveryPanel.tsx')
+  assert.match(founder, /disabled=\{!mayReview\}[^>]*onClick=\{review\}/)
+  assert.match(founder, /disabled=\{!mayExpire\}[^>]*onClick=\{expire\}/)
+})
