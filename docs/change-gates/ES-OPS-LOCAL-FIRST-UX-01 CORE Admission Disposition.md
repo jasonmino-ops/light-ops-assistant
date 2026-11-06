@@ -8,6 +8,8 @@ Exact instruction: “在独立治理分支修改 scripts/test/manifests/root-co
 
 This records the approved two-path repair and the narrowly scoped admission exception. It is not a Scope Guard ACTIVE registry, a test PASS, permission to modify frozen tests, or merge/push/deploy authority.
 
+Current closeout status is defined by the additive section **BASELINE-ATTRIBUTED CORE CLOSEOUT** below. Earlier non-waiver/invalidation statements describe the predecessor governance commit and are preserved as history; they are not silently reused as an effective grant. Required product review and merge acceptance remain separate.
+
 ## Exact approved scope
 
 Product Candidate `cd60f0d57b3a7d36869c23edff9948c3f4538cd3`; parent `9021adf65b43708f68e423065702ec948a6b64e9`; trusted baseline `36ab0226363d71c4d2b42b6cfed58af3e27f6627`.
@@ -103,3 +105,55 @@ Raw evidence and exact source/manifest/proposal/review material are archived sep
 
 Ready for Merge: **NO**. No merge, push, Production/Preview deployment, migration, Diamond recovery or real printing was performed.
 
+
+## Addendum — BASELINE-ATTRIBUTED CORE CLOSEOUT (2026-11-06)
+
+### Authority and exact binding
+
+Founder Decision: `BASELINE-ATTRIBUTED CORE CLOSEOUT`. Exact current direction: “分别在可信 main 和当前候选组合上复现，确认是否由本任务引入”；“对已证明的既有基线失败，使用正式的基线失败处置机制；不得修改或跳过测试”；“核验五路径限定例外是否满足现行生效条件，不得把草案视为已生效”。
+
+This additive record implements that direction in the already-authorized disposition path. Authority is ES-ENG-001 Founder Approval (exception to a frozen baseline), Workflow V1 §5/§6, and the task-specific evidence form demonstrated by G2. No G2/V3 approval is inherited. No KTF entry, test/assertion, runner or Scope Guard rule changes.
+
+- Product Candidate: `cd60f0d57b3a7d36869c23edff9948c3f4538cd3`. Five paths/content hashes and frozen cashier digest remain exactly those listed above.
+- Clean exact trusted main: `36ab0226363d71c4d2b42b6cfed58af3e27f6627`; detached reproduction worktree contains no governance/product diff.
+- Predecessor Governance Commit: `ace51a6e2c09a914b5ad30aef0834b1cd8681034`.
+- Tested combination: frozen Product source HEAD plus approved103-entry manifest SHA-256 `be7b3d97d93f63ff6a09ee807621614a43f78b810a2ca0270050bd1e78d8d4a2`. This does not fabricate a merged integration HEAD. This additive document has no effect on tested product/test bytes.
+- Comparison evidence: `BASELINE-COMPARISON.json`, SHA-256 `4bf6d046057404d495a20a7901a000eea07f853db65252242c674d7f56af1e6e`; exact assertion identities are in `FAILURE-REGISTER.md`.
+
+### F1 renewed limited admission — not a baseline failure
+
+Main focused result1PASS/0FAIL/0SKIP; Candidate focused0PASS/1FAIL/0SKIP. Unchanged `tests/cashier-realtime-integration.test.ts:795` calls helper283; Candidate actual rejected-path array equals the five frozen UX paths, expected array empty. This is task-caused admission difference, with no evidence of product-behavior regression.
+
+- Exact-main raw log `cashier-main.log`, SHA-256 `d82c9b05e49152af9ee8e231d1707e4b3a5803d095710239419d47b6f516be1a`.
+- Candidate raw log `cashier-candidate.log`, SHA-256 `7113f48a3189b09879a886470948756f7fb6325fd8e3f8b0f2cfcbe2b2006b99`.
+
+The prior five-path grant was invalidated for merge reliance when unclassified F2 was discovered. This addendum explicitly renews only that same five-path disposition under the current Founder direction after F2 is independently baseline-attributed and separately recorded below. It does not retrospectively make the earlier invalidated state effective.
+
+### F2 exact task-scoped baseline exception
+
+Exact test `tests/customer-order-recovery.test.ts`: the same four identities listed in the historical table fail on clean exact main and Product Candidate. Lines83/109/152 are503≠200; line127 is999≠1. Both runs1PASS/4FAIL/0SKIP, with matching case identities and failure values. Relevant8 source/test/schema/dependency blobs are byte-identical, as recorded in the comparison matrix. The fixture lacks `eshopTrayPrintJob.findUnique`, reaching Prisma at `lib/customer-order-fulfillment.ts:374`. This establishes pre-existing test/harness debt relative to this UX task, not correctness of real recovery behavior.
+
+- Main raw log `recovery-main.log`, SHA-256 `5a878f031d991967743d1e7b4f9434fbafbdc0ee2408b20ca6830c8ef141d389`.
+- Candidate raw log `recovery-candidate.log`, SHA-256 `d1717c49feb1c60c293c84d3e5d79b0c69b8c65dfacf212289abf579dbf0acf4`.
+
+The current Founder directive supplies the task-specific baseline-failure disposition authority. Record F2 only as `RAW FAIL — BASELINE-ATTRIBUTED TASK-SCOPED EXCEPTION`, using the formal exact-baseline/Candidate/evidence/causality/expiry mechanism. It is not a global known failure, not a KTF edit, and not an exception for another task or Candidate. No product/test repair, skip or assertion weakening is made.
+
+### Raw truth and operative conditions
+
+Raw CORE stays **103/103 collected and executed;101PASS/2FAIL/0SKIP; exit1/BLOCKED**, knownFailures0/newFailures2 under the unmodified runner/KTF. The original raw and structured hashes above remain unchanged. No121-entry full-aggregate PASS is asserted.
+
+Documentary disposition covers exactly F1 admission plus F2 baseline debt, with candidate-attributable product regressions0 in this comparison. The qualified record is not machine CORE PASS. Historical statements “F2 not waived” and “additional failure invalidates current reliance” were true at predecessor ace51a6e; this explicit addendum supersedes them only for these two exact identities after the new comparison. Every other unlisted failure remains blocking.
+
+F1 revalidation checklist: exact Candidate/baseline/five bytes/frozen cashier hash; exact final assertion/five rejected paths; approved manifest103 full execution; only the separately evidenced F2 failure; unchanged relevant safety surfaces; current review deadline. These evidence conditions are satisfied by the recorded comparison, not by an unapproved draft or an unrelated Scope Guard ACTIVE JSON. No forbidden path is changed by this documentary update.
+
+**Required product Claude limited review remains NOT_COMPLETED (official subscription session not logged in). Therefore operative product Acceptance / merge reliance is NOT complete, even if supplementary independent metadata review passes.** This is the existing required product review, not a new Claude requirement merely for hashes. This local record is not represented as merged into trusted main or as a deployment/merge authorization.
+
+The renewed bounded disposition invalidates on another failed identity, count/fingerprint change, extra rejected path, any Candidate/baseline/content drift, relevant surface overlap, missing evidence, later baseline repair or expiry. Retain deadline **2026-11-07 Asia/Phnom_Penh and before merge**; no implicit extension.
+
+### Current closeout evidence
+
+Fresh-context supplementary metadata review and final committed source binding are recorded in the closeout evidence packet. Neither substitutes for Claude. Preview result is separately labeled local hydrated Next / synthetic API or actual hosted runtime; no fixture screenshot can certify Provider readiness or FIELD.
+
+Evidence retention: real Vault `05-开发记录/开发日志/附件/ES-OPS-LOCAL-FIRST-UX-01-cd60f0d5/baseline-core-closeout-cd60f0d5.tar.gz`; actual archival completion/checksum is in its sibling checksum file and the development record. The evidence packet excludes ephemeral local Preview credentials.
+
+Ready for Merge remains **NO** until required review/visual acceptance and the remaining applicable merge gates are satisfied. No main merge, push, Production deployment, real Diamond recovery, printing, frozen-test/assertion/KTF/V3 change is authorized or performed by this addendum.
