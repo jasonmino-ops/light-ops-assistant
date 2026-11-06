@@ -1,0 +1,9 @@
+# Review manifest
+
+Product candidate `b558dcd197f166936610b5c7c140c0acb5f55a86`, reviewed timeout base ca7e04ec9d600e568d29258f1e0dc9879c96a72c, continuation governance b5d8d68364f570c5a1e0608f70941204a41c2dfe. This explicit new Founder decision authorizes only Diamond's one-time compensation implementation/test/review, minimal freeze/release preparation. No Production or FIELD action.
+
+Exact source paths/hashes are in CANDIDATE-MANIFEST.json. Both the compensation-only diff and complete trusted-main/Production patch are supplied to the fresh Claude review. The original public audit projection is read-only Production evidence, not a fabricated failure audit; no installation hash, credentials or receipt bytes supplied. Tests synthesize installation identity and receipt bytes only in owned Unix-socket PostgreSQL.
+
+Local selective release draft `1427131e94aba6a19c52dee61f531fec2c9213b3`, tree `178bfec6bb55616c7f0c02e16422f413c6149e0d`, has exactly two cherry-pick -x mapped commits (ca7e04ec9d600e568d29258f1e0dc9879c96a72c, b558dcd197f166936610b5c7c140c0acb5f55a86) and only two product paths vs current Production. The initial tested draft had the identical complete tree; history was corrected to formal V1 source mappings, and all previous tree-specific results are labeled with their actual execution SHA. No check status or selective-release authorization is claimed.
+
+Fresh Claude L3: PENDING. Readiness, exact negative tests, safety preservation, source approval binding, inactive frozen proposal and complete raw results must all be inspected. Verdict must distinguish code candidate acceptance from still-blocked merge/release/FIELD.
