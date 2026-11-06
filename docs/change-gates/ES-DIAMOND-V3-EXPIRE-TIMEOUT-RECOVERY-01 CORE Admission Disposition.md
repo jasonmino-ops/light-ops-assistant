@@ -2,6 +2,8 @@
 
 Status: **SEALED DRAFT — NOT ACTIVE — NOT A WAIVER**. Founder approval of implementation is not approval of this frozen/core exception. No assertion/test/KTF/manifest/registry changes. This draft prepares an exact decision under ES-ENG-001 Founder Approval “Exception to a frozen baseline” and Workflow V1 §6.1–6.2. The earlier Ops UX disposition supplies a process precedent only, expressly excludes V3, and is not inherited.
 
+Exact business scope: tenant `cmvulpn2e000006jvsqrt3y2n`; Store `ST883DC00C` / `cmvulpn8r000106jvpo58kye4`; Device `cmvyx1jes000208l14t5vf9ur`; original ACTIVE SUPER_ADMIN `cmnko00l2000004juew5h2djr`. Only jobs `cmw0jlsme000v08kzgyiybcqg`, `cmw0k7dgw001c08kz5xirfxzv`, `cmw0kwwta001v08jv6q6rl2f4`. Dedicated actions `FOUNDER_REVIEW_DIAMOND_TIMEOUT_COMPENSATION` and `FOUNDER_EXPIRE_DIAMOND_TIMEOUT_COMPENSATION`, on the existing authenticated POST only. No other case/role/store/device/job or mutable authorization input is admitted.
+
 ## Immutable test truth
 
 CORE: **103 collected /103 executed /101 PASS /2 FAIL /0 SKIP /BLOCKED**, runner newFailures2 against its own historical KTF. Targeted real PostgreSQL/contract tests142 PASS/0 FAIL/0 SKIP, TypeScript/Build/Scope PASS; production-parent tree142 and Build PASS. Raw failures remain failures. No unexecuted domain/integration/FIELD work is labeled PASS.

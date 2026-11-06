@@ -4,6 +4,8 @@ Status: **SEALED DRAFT — NOT ACTIVE**. No formal frozen exception, main merge,
 
 This additive successor records the reviewed EXPIRE10s/OR-CAS preservation and two dedicated exact-case compensation actions. It does not overwrite the historical Founder grant, old freeze records, roles, Owner/Lease/Fence, receipt/TTL, no-claim/no-UNKNOWN, audit atomicity, idempotency or ordinary independent two-OPS_ADMIN rules. New REVIEW is append-only, single-success-use, and requires fresh Windows evidence/current installation; no task writes or automatic FINALIZE/printing. Only the matching separately confirmed new EXPIRE may atomically terminalize the exact three jobs and audit. Exact replay only returns the recorded result. Unknown outcome requires read-only audit verification first.
 
+Exact business scope: tenant `cmvulpn2e000006jvsqrt3y2n`; Store `ST883DC00C` / `cmvulpn8r000106jvpo58kye4`; Device `cmvyx1jes000208l14t5vf9ur`; original ACTIVE SUPER_ADMIN `cmnko00l2000004juew5h2djr`. Only jobs `cmw0jlsme000v08kzgyiybcqg`, `cmw0k7dgw001c08kz5xirfxzv`, `cmw0kwwta001v08jv6q6rl2f4`. Dedicated actions `FOUNDER_REVIEW_DIAMOND_TIMEOUT_COMPENSATION` and `FOUNDER_EXPIRE_DIAMOND_TIMEOUT_COMPENSATION`, on the existing authenticated POST only. No other case/role/store/device/job or mutable authorization input is admitted.
+
 ## Exact compiled policy (not client input)
 
 ```json

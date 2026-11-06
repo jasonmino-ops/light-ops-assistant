@@ -117,8 +117,8 @@
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/TEST-COVERAGE-MATRIX.md"
   ],
   "frozenDraftMaterialized": {
-    "docs/freezes/ES-DIAMOND-V3-EXPIRE-TIMEOUT-COMPENSATION-01.md": "d2f21def420ede4496dd13fc536aa43f964adf93f2816aa090f1d4093ca396cb",
-    "docs/change-gates/ES-DIAMOND-V3-EXPIRE-TIMEOUT-RECOVERY-01 CORE Admission Disposition.md": "f9757b0d6b33bba82c49306acb32bd4a08d90fedb432a1acb570829b3e362160"
+    "docs/freezes/ES-DIAMOND-V3-EXPIRE-TIMEOUT-COMPENSATION-01.md": "75d1a76f300357bb2ee597323a491778ac25219ae332569ab03180b97fac1842",
+    "docs/change-gates/ES-DIAMOND-V3-EXPIRE-TIMEOUT-RECOVERY-01 CORE Admission Disposition.md": "341d1284b727a664785826008931a0b70519e54586d0f8f8f5c3c3a0f4d4fa13"
   },
   "frozenDraftReview": "PENDING_LIMITED_GOVERNANCE_CHECK"
 }
