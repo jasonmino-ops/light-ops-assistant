@@ -82,7 +82,17 @@
     "sourceMainSha": "PENDING_MAIN_MERGE_APPROVAL",
     "authorizedSelectiveRelease": "NOT_EXECUTED_NOT_AUTHORIZED"
   },
-  "review": "PENDING",
+  "review": {
+    "status": "PASS_CODE_ONLY",
+    "releaseRecoveryReadiness": "NOT_READY",
+    "product": "b558dcd197f166936610b5c7c140c0acb5f55a86",
+    "releaseDraft": "1427131e94aba6a19c52dee61f531fec2c9213b3",
+    "governanceSnapshot": "d5c451f8d8210827930837c23b666530770ff7d6",
+    "rawJsonSha256": "bb304d8cde14f1bcff40c5f34c80031e4fdf52d5920c3647276d765fbf79f792",
+    "freshContext": true,
+    "sourceModified": false,
+    "productionActions": false
+  },
   "frozenAdmission": "SEALED_DRAFT_NOT_ACTIVE",
   "externalMutations": {
     "push": false,
@@ -105,5 +115,10 @@
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REVIEW-MANIFEST.md",
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/SCOPE-BOUNDARY-AUDIT.md",
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/TEST-COVERAGE-MATRIX.md"
-  ]
+  ],
+  "frozenDraftMaterialized": {
+    "docs/freezes/ES-DIAMOND-V3-EXPIRE-TIMEOUT-COMPENSATION-01.md": "d2f21def420ede4496dd13fc536aa43f964adf93f2816aa090f1d4093ca396cb",
+    "docs/change-gates/ES-DIAMOND-V3-EXPIRE-TIMEOUT-RECOVERY-01 CORE Admission Disposition.md": "f9757b0d6b33bba82c49306acb32bd4a08d90fedb432a1acb570829b3e362160"
+  },
+  "frozenDraftReview": "PENDING_LIMITED_GOVERNANCE_CHECK"
 }
