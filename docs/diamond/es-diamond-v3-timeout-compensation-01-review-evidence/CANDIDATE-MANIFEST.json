@@ -107,11 +107,15 @@
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/CANDIDATE-MANIFEST.json",
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/CHECKSUMS.md",
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/COMMIT-SCOPE-AUDIT.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/FINAL-CANDIDATE-RESULT.md",
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/FROZEN-SUCCESSOR-SEALED-DRAFT.json",
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/KNOWN-RISKS.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/L3-CODE-REVIEW.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/L3-FROZEN-DRAFTS-LIMITED-REVIEW.md",
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/PRODUCTION-RELEASE-PLAN.md",
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/READINESS-AND-AUTHORIZATION.md",
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REPOSITORY-OVERVIEW.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REVIEW-DISPOSITION.md",
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REVIEW-MANIFEST.md",
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/SCOPE-BOUNDARY-AUDIT.md",
     "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/TEST-COVERAGE-MATRIX.md"
@@ -120,5 +124,41 @@
     "docs/freezes/ES-DIAMOND-V3-EXPIRE-TIMEOUT-COMPENSATION-01.md": "75d1a76f300357bb2ee597323a491778ac25219ae332569ab03180b97fac1842",
     "docs/change-gates/ES-DIAMOND-V3-EXPIRE-TIMEOUT-RECOVERY-01 CORE Admission Disposition.md": "341d1284b727a664785826008931a0b70519e54586d0f8f8f5c3c3a0f4d4fa13"
   },
-  "frozenDraftReview": "PENDING_LIMITED_GOVERNANCE_CHECK"
+  "frozenDraftReview": {
+    "status": "PASS_PREPARATION_ONLY_NOT_APPROVAL",
+    "governanceSnapshot": "b9dacd2bbaf4658f920b33d34a44aa76f01c11af",
+    "rawJsonSha256": "0295c90805e2468da0ecfa94eaf074210a7c25790e3d7e2d337baef988bfef5f",
+    "draftContentHashesUnchanged": true,
+    "nonBlockingRawBaselineOmission": "RESOLVED_BY_ATTACHED_RAW_LOG_AND_EXACT_FOUR_ASSERTION_COMPARISON",
+    "rawBaselineLogSha256": "b1312600e5a3eec22d5f1c85ad8730ad25da9339bcffc10178259a8bf99663b4",
+    "supplementComparisonSha256": "23fbb65b34e35b998af8a445fee32493ec4e278be901e0c62c3dffb8f3869f72"
+  },
+  "finalRemoteRefs": {
+    "main": "c1041533abca99657edc09c2e69e2c18d9df13d5",
+    "release": "9e717439569c0485c703367b668b31ed8a7505e6",
+    "unchanged": true
+  },
+  "releaseReadiness": "CODE_AND_LOCAL_SELECTIVE_DRAFT_PREPARED_NOT_AUTHORIZED_PENDING_EXACT_FROZEN_ADMISSION_MAIN_MERGE_AND_RELEASE_GATES",
+  "exactChangedPaths": [
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts",
+    "docs/change-gates/ES-DIAMOND-V3-EXPIRE-TIMEOUT-RECOVERY-01 CORE Admission Disposition.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/BUILD-CI-EVIDENCE.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/CANDIDATE-MANIFEST.json",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/CHECKSUMS.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/COMMIT-SCOPE-AUDIT.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/FINAL-CANDIDATE-RESULT.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/FROZEN-SUCCESSOR-SEALED-DRAFT.json",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/KNOWN-RISKS.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/L3-CODE-REVIEW.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/L3-FROZEN-DRAFTS-LIMITED-REVIEW.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/PRODUCTION-RELEASE-PLAN.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/READINESS-AND-AUTHORIZATION.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REPOSITORY-OVERVIEW.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REVIEW-DISPOSITION.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REVIEW-MANIFEST.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/SCOPE-BOUNDARY-AUDIT.md",
+    "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/TEST-COVERAGE-MATRIX.md",
+    "docs/freezes/ES-DIAMOND-V3-EXPIRE-TIMEOUT-COMPENSATION-01.md",
+    "tests/v3-print-control-plane-service.test.ts"
+  ]
 }

@@ -1,0 +1,41 @@
+Independent re-verification attempt was denied by the sandbox (expected — I already have the sanctioned verifier's output). Proceeding with the review based on `VERIFY-DRAFTS.py`'s PASS result plus my own document reads.
+
+---
+
+# Claude Limited Independent L3 Governance Review — ES-DIAMOND-V3-EXPIRE-TIMEOUT-COMPENSATION-01 / RECOVERY-01 CORE Admission Disposition
+
+## 1. Result: **PASS (draft preparation only)**
+
+Both documents are precise, explicitly inactive, scoped, and do not claim any approval, waiver, or CORE PASS that doesn't exist. Nothing here authorizes merge, release, deploy, or real recovery.
+
+## 2. Blocking Issues
+None.
+
+## 3. Non-Blocking Issues
+- The freeze doc's claim "Same failures reproduced on clean c104 main in the same isolated synthetic connection environment" (CORE Admission Disposition, item 2) relies on `BASELINE-COMPARISON.json` (`exitStatus:1` for `customer-order-recovery.test.ts` on `c1041533`), but the raw `baseline-customer-order-recovery.test.log` itself is **not present** in this packet (only the cashier-realtime baseline log is included, and it shows a PASS). The exit-code-only baseline record is consistent with, but weaker evidence than, a raw log for the *specific* assertion content (HTTP 503 vs 200, backlog 999 vs 1) claimed in the disposition. This is a documentation/evidence-completeness gap, not a misstatement — the summarized claim is plausible and matches the known `eshopTrayPrintJob.findUnique` stub gap visible in `CORE-FAIL-customer-order-recovery.test.log`, but it isn't independently re-derivable from this packet alone.
+- `FROZEN-SUCCESSOR-SEALED-DRAFT.json` conditions are strong and explicit, but the two drafts' own "Exact content and delivery bindings" JSON blocks are byte-identical between the two files (lines 36–60 of the freeze doc and 16–40 of the disposition) — intentional and fine, but worth Founder awareness that they are a single shared fact-block duplicated across two governing files, so any future edit to one must be mirrored exactly or the drafts will diverge from each other (a drift the verifier would catch, since it asserts `facts==json.loads(dblocks[0])`).
+
+## 4. Boundary Violations
+None found. Both docs explicitly disclaim: frozen exception, main merge, deploy, FIELD/recovery, printing, deadline extension, scope expansion, replay of ACK/UNKNOWN, FINALIZE, and inheritance of the prior Ops UX disposition. Correctly state these are not Scope Guard forbidden-path exceptions.
+
+## 5. Missing Evidence
+- `baseline-customer-order-recovery.test.log` (raw) — see Non-Blocking above. Everything else cited in-text (policy JSON, failure logs, CORE summary, manifest, L3 review JSON, frozen test bytes, AGENTS/Workflow V1/ES-ENG-001 clauses) is present and hash-bound.
+
+## 6. Architecture Risks
+- **CORE attribution, confirmed correct as written.** The disposition states the cashier-realtime-integration failure is a "candidate-specific admission failure," not an inherited baseline waiver, and explicitly distinguishes it from the ca7-predecessor's pre-existing gap. I independently confirmed: `BASELINE-COMPARISON.json` shows `exitStatus:0` for this test at trusted main `c1041533` (also confirmed by the included baseline log: "cashier realtime Stage 1F integration and regression checks passed"), while `core/core/summary.json` shows `FAIL`/`NOT_IN_ACTIVE_BASELINE` for the candidate. Main PASS + candidate FAIL is exactly a candidate-specific admission gap, not a baseline-equivalent condition — the drafts and REVIEW-DISPOSITION.md state this correctly and do **not** repeat the raw review's looser "inherited/pre-existing" language as a waiver basis.
+- The `customer-order-recovery.test.ts` failure is correctly kept separate and attributed to baseline (unstubbed `eshopTrayPrintJob.findUnique` at `lib/customer-order-fulfillment.ts:374`, unchanged file/bytes) — consistent with `BASELINE-COMPARISON.json` showing the same `exitStatus:1` at `c1041533`.
+- Raw counts **103 executed / 101 PASS / 2 FAIL / 0 SKIP / BLOCKED** are stated identically in both drafts, `CANDIDATE-MANIFEST.json`, `FROZEN-SUCCESSOR-SEALED-DRAFT.json`, and `core/core/summary.json` — no drift.
+- Authority citations are accurate: ES-ENG-001 "Founder Approval is mandatory for... Exception to a frozen baseline" (confirmed at line 346 of that doc), and Workflow V1 §6.1 lists "修改冻结能力或公共合同" (modifying frozen capability/public contract) and main-merge/deploy among mandatory-pause conditions, with §6.2 explicitly excluding FINAL/Freeze assets from task-instruction-level authorization, requiring a formal Founder Approval record instead. Both drafts correctly reflect this — they request exact future approval, not inferred consent.
+- The proposed bounded exception is narrow: pinned to exact candidate/release/tree/parent SHAs, exact two product paths, exact two failure identities, and a hard deadline (`2026-11-08T00:00:00.000Z`). It explicitly invalidates itself on any drift (extra failure, hash/ref change, deadline expiry) and does not generalize to an allowlist. This matches the "no waiving unknown execution or product defects" requirement.
+- No alteration to frozen assertions, KTF, manifest, or registry is claimed anywhere, and the verifier independently confirms `frozenTest.modified: false` and byte-equality of the manifest/frozen test against commit `c1041533`.
+
+## 7. Acceptance Recommendation
+Accept these two drafts as **prepared, accurate, and inactive**. No action is recommended beyond what they already state: they remain SEALED-DRAFT/NOT ACTIVE pending exact Founder Approval, which is a separate, not-yet-granted step. The one correction to make before/alongside any future Founder review: attach or reference the raw `baseline-customer-order-recovery.test.log` so the "reproduced on clean c104 main" claim in both drafts is backed by raw evidence rather than only a summarized exit code, consistent with the standard already met for the cashier-realtime baseline claim.
+
+## 8. Reviewer Declaration
+- **Materials actually read:** both target drafts in full; `BINDINGS.json`; `VERIFY-DRAFTS.py` (read before executing); `CANDIDATE-MANIFEST.json`; `FROZEN-SUCCESSOR-SEALED-DRAFT.json`; `REVIEW-DISPOSITION.md`; `PRODUCTION-RELEASE-PLAN.md`; `CASE-POLICY.json`; `core/core/summary.json`; both `CORE-FAIL-*.test.log` files (cashier-realtime in full, customer-order-recovery partial/offset-read); `baseline-cashier-realtime-integration.test.log`; `BASELINE-COMPARISON.json`; `CLAUDE-COMPENSATION-L3-REVIEW.json` (prior fresh-context L3 code-PASS transcript); `POST-REVIEW-VERIFY.json`; relevant sections of `AGENTS.md`-referenced `docs/workflows/E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V1.md` (§6.1–6.2) and `docs/governance/ES-ENG-001 Engineering Workflow Baseline V1.0 FINAL.md` (Founder Approval lists).
+- **Fresh session, no shared implementer conversation history**, no prior context beyond this packet.
+- **No files modified, no edits, no external/API/network calls, no merge/release/deploy/recovery actions taken.** The only execution was the provided read-only `VERIFY-DRAFTS.py`.
+- **Verifier result:** `{"result": "PASS", "governanceSnapshot": "b9dacd2bbaf4658f920b33d34a44aa76f01c11af", "candidate": "b558dcd197f166936610b5c7c140c0acb5f55a86", "releaseDraft": "1427131e94aba6a19c52dee61f531fec2c9213b3", ...}` — exit success, no assertion failures.
+- **Binding:** snapshot `b9dacd2bbaf4658f920b33d34a44aa76f01c11af`; product `b558dcd197f166936610b5c7c140c0acb5f55a86`; freeze doc SHA-256 `75d1a76f300357bb2ee597323a491778ac25219ae332569ab03180b97fac1842`; disposition doc SHA-256 `341d1284b727a664785826008931a0b70519e54586d0f8f8f5c3c3a0f4d4fa13` (both as asserted by `VERIFY-DRAFTS.py` against `BINDINGS.json` and live git `HEAD`; I did not independently recompute these hashes outside the sanctioned verifier due to sandbox restriction on ad hoc Bash, so this is a **script-attested**, not doubly-independent, hash match).
+- I do not approve or activate either draft, do not equate the prior code-level L3 PASS to release/recovery readiness, and I do not attribute the cashier-realtime-integration failure to an inherited baseline waiver — it is correctly a candidate-specific admission gap against trusted main.
