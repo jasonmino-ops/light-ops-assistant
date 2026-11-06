@@ -707,6 +707,12 @@ export async function runOpsV3QueueRecovery(
   const emergency = founderRecovery(command.action)
   const requiredRole = emergency ? 'SUPER_ADMIN' : 'OPS_ADMIN'
   if (actor.role !== requiredRole) return { ok: false, code: 'QUEUE_RECOVERY_FORBIDDEN' }
+  // EXPIRE includes conditional job writes and a mandatory audit in the same
+  // transaction. Bound this path separately; never extend evidence freshness,
+  // REVIEW, mode transitions or the shared Prisma client's transaction policy.
+  const transactionOptions = isEvidenceCommand(command)
+    ? { isolationLevel: 'Serializable' as const }
+    : { isolationLevel: 'Serializable' as const, timeout: 10_000 }
   try {
     return await db.$transaction(async tx => {
       const activeOperator = (adminId: string, role: 'OPS_ADMIN' | 'SUPER_ADMIN') => tx.opsAdmin.findFirst({
@@ -845,16 +851,19 @@ export async function runOpsV3QueueRecovery(
         status: 'EXPIRED', resultStatus: 'EXPIRED', effectBoundary: 'NOT_CROSSED',
         physicalCompletionKnown: false, resultCode: RECOVERY_RESULT_CODE,
       } as const
-      for (const job of jobs) {
-        const update = await tx.eshopTrayPrintJob.updateMany({
-          where: {
+      // One CAS statement avoids a network round trip per job. Each OR arm is
+      // the original exact predicate; any partial match rolls back the batch.
+      const update = await tx.eshopTrayPrintJob.updateMany({
+        where: {
+          ...scope,
+          OR: jobs.map(job => ({
             ...pendingUnexecutedJob(scope, job.id), idempotencyKey: job.key, requestHash: job.requestHash,
             expiresAt: new Date(job.expiresAt), updatedAt: new Date(job.updatedAt),
-          },
-          data: { ...disposition, completedAt: now },
-        })
-        requireRecovery(update.count === 1, 'QUEUE_JOB_CONCURRENT_CHANGE')
-      }
+          })),
+        },
+        data: { ...disposition, completedAt: now },
+      })
+      requireRecovery(update.count === jobs.length, 'QUEUE_JOB_CONCURRENT_CHANGE')
       // An update may have waited for a competing job-row lock. Recheck before recording success.
       requireRecovery(captureFresh(capture, clock(), evidence.createdAt, releasedAt), 'QUEUE_EVIDENCE_STALE')
       await tx.operationLog.create({
@@ -872,7 +881,7 @@ export async function runOpsV3QueueRecovery(
       })
       requireRecovery(captureFresh(capture, clock(), evidence.createdAt, releasedAt), 'QUEUE_EVIDENCE_STALE')
       return { ok: true, requestId: command.requestId, evidenceId: command.evidenceId, jobIds: command.jobIds }
-    }, { isolationLevel: 'Serializable' })
+    }, transactionOptions)
   } catch (error) {
     if (error instanceof QueueRecoveryRejected) return { ok: false, code: error.message }
     if (errorCode(error) === 'P2034') return { ok: false, code: 'CONCURRENT_STATE_CHANGE' }

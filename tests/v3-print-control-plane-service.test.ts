@@ -883,6 +883,31 @@ test('Founder emergency commands remain distinct from the two-Ops commands', () 
 
 const recoverySocket = process.env.DIAMOND_QUEUE_TEST_SOCKET
 
+test('only formal EXPIRE gets a bounded transaction budget; REVIEW keeps its existing policy', async () => {
+  const marker = new Error('TRANSACTION_OPTIONS_CAPTURED')
+  const observed: unknown[] = []
+  const db = { $transaction: async (_work: unknown, options: unknown) => {
+    observed.push(options)
+    throw marker
+  } } as unknown as Pick<PrismaClient, '$transaction'>
+  for (const [action, role] of [
+    ['REVIEW_EXPIRED_V3_FRONT_EVIDENCE', 'OPS_ADMIN'],
+    ['EXPIRE_UNEXECUTED_V3_FRONT', 'OPS_ADMIN'],
+    ['FOUNDER_REVIEW_DIAMOND_EXPIRED_FRONT', 'SUPER_ADMIN'],
+    ['FOUNDER_EXPIRE_DIAMOND_UNEXECUTED_FRONT', 'SUPER_ADMIN'],
+  ] as const) {
+    const command = recoveryCommand({ ...recoveryBase, action,
+      ...(action.includes('REVIEW') ? { installationId: testInstallationId, capture: recoveryCapture } : { evidenceId: 'test-evidence-01' }),
+    })
+    await assert.rejects(runOpsV3QueueRecovery(db, { tenantId: 'test-tenant', storeId: 'test-store' },
+      { id: 'test-operator', role }, command), error => error === marker)
+  }
+  assert.deepEqual(observed, [
+    { isolationLevel: 'Serializable' }, { isolationLevel: 'Serializable', timeout: 10_000 },
+    { isolationLevel: 'Serializable' }, { isolationLevel: 'Serializable', timeout: 10_000 },
+  ])
+})
+
 test('queue recovery serializable guards and claim race in isolated PostgreSQL', {
   skip: !recoverySocket && 'requires the dedicated DIAMOND_QUEUE_TEST_SOCKET fixture',
 }, async t => {
@@ -1005,6 +1030,108 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
     assert.equal(await prisma.eshopTrayPrintJob.count({ where: { status: 'EXPIRED' } }), 0)
     assert.equal(await prisma.operationLog.count({ where: { actionType: 'EXPIRE_UNEXECUTED_V3_FRONT' } }), 0)
   }
+
+  // Real isolated PostgreSQL transactions. Delay is injected at the same
+  // boundary as the Production failure: after job writes, before SUCCESS audit.
+  function delayedExpiryDb(options: { delayMs: number; legacyBudget?: boolean; failAudit?: boolean; mismatchLastRow?: boolean }) {
+    const budgets: unknown[] = []
+    let updateCalls = 0
+    let auditAttempts = 0
+    const db = {
+      $transaction: (<T>(work: (tx: Prisma.TransactionClient) => Promise<T>, config?: {
+        isolationLevel?: Prisma.TransactionIsolationLevel; timeout?: number
+      }) => {
+        budgets.push(config)
+        return prisma.$transaction(async tx => {
+          const wrapped = new Proxy(tx, {
+            get(target, key) {
+              if (key === 'eshopTrayPrintJob') return {
+                ...target.eshopTrayPrintJob,
+                updateMany: async (args: Prisma.EshopTrayPrintJobUpdateManyArgs) => {
+                  updateCalls++
+                  if (options.mismatchLastRow) {
+                    // A CAS mismatch after validation must undo every row,
+                    // including any rows that did match the single statement.
+                    await target.eshopTrayPrintJob.update({ where: { id: jobIds[1] },
+                      data: { updatedAt: new Date(receiptTime.getTime() + 1) } })
+                  }
+                  return target.eshopTrayPrintJob.updateMany(args)
+                },
+              }
+              if (key === 'operationLog') return {
+                ...target.operationLog,
+                create: async (args: Prisma.OperationLogCreateArgs) => {
+                  if (args.data.actionType === 'EXPIRE_UNEXECUTED_V3_FRONT') {
+                    auditAttempts++
+                    if (options.delayMs) await new Promise(resolve => setTimeout(resolve, options.delayMs))
+                    if (options.failAudit) throw new Error('INJECTED_EXPIRE_AUDIT_FAILURE')
+                  }
+                  return target.operationLog.create(args)
+                },
+              }
+              return Reflect.get(target, key)
+            },
+          })
+          return work(wrapped)
+        }, { ...config, ...(options.legacyBudget ? { timeout: 5_000 } : {}) })
+      }) as PrismaClient['$transaction'],
+    }
+    return { db, budgets, updateCalls: () => updateCalls, auditAttempts: () => auditAttempts }
+  }
+
+  await t.test('slow EXPIRE reproduces the 5000ms audit-boundary timeout and rolls back all writes', async () => {
+    await reset()
+    const action = await register()
+    const delayed = delayedExpiryDb({ delayMs: 5_700, legacyBudget: true })
+    await assert.rejects(runOpsV3QueueRecovery(delayed.db, scope, executor, action, () => startedAt),
+      (error: unknown) => !!error && typeof error === 'object' && 'code' in error && error.code === 'P2028')
+    assert.equal(delayed.updateCalls(), 1)
+    assert.equal(delayed.auditAttempts(), 1)
+    await assertNoExpiry()
+    assert.equal(await prisma.eshopTrayPrintJob.count({ where: { status: 'PENDING', attemptCount: 0, claimAttempt: 0 } }), 2)
+  })
+
+  await t.test('slow EXPIRE commits job batch plus audit within the new budget and exact replay does not write again', async () => {
+    await reset()
+    const action = await register()
+    const delayed = delayedExpiryDb({ delayMs: 5_700 })
+    const completed = await runOpsV3QueueRecovery(delayed.db, scope, executor, action, () => startedAt)
+    assert.ok(completed.ok, JSON.stringify(completed))
+    assert.deepEqual(delayed.budgets, [{ isolationLevel: 'Serializable', timeout: 10_000 }])
+    assert.equal(delayed.updateCalls(), 1)
+    assert.equal(delayed.auditAttempts(), 1)
+    assert.equal(await prisma.eshopTrayPrintJob.count({ where: { status: 'EXPIRED', effectBoundary: 'NOT_CROSSED' } }), 2)
+    assert.equal(await prisma.operationLog.count({ where: { actionType: 'EXPIRE_UNEXECUTED_V3_FRONT' } }), 1)
+    assert.deepEqual(await runOpsV3QueueRecovery(delayed.db, scope, executor, action, () => startedAt), completed)
+    assert.equal(delayed.updateCalls(), 1)
+    assert.equal(delayed.auditAttempts(), 1)
+  })
+
+  await t.test('EXPIRE still times out and rolls back beyond the bounded 10000ms budget', async () => {
+    await reset()
+    const action = await register()
+    const delayed = delayedExpiryDb({ delayMs: 10_300 })
+    await assert.rejects(runOpsV3QueueRecovery(delayed.db, scope, executor, action, () => startedAt),
+      (error: unknown) => !!error && typeof error === 'object' && 'code' in error && error.code === 'P2028')
+    assert.equal(delayed.updateCalls(), 1)
+    await assertNoExpiry()
+  })
+
+  await t.test('partial CAS and audit failure each roll back the entire EXPIRE batch without consuming evidence', async () => {
+    await reset()
+    let action = await register()
+    let delayed = delayedExpiryDb({ delayMs: 0, mismatchLastRow: true })
+    assert.deepEqual(await runOpsV3QueueRecovery(delayed.db, scope, executor, action, () => startedAt),
+      { ok: false, code: 'QUEUE_JOB_CONCURRENT_CHANGE' })
+    await assertNoExpiry()
+    await reset()
+    action = await register()
+    delayed = delayedExpiryDb({ delayMs: 0, failAudit: true })
+    await assert.rejects(runOpsV3QueueRecovery(delayed.db, scope, executor, action, () => startedAt),
+      /INJECTED_EXPIRE_AUDIT_FAILURE/)
+    await assertNoExpiry()
+    assert.equal((await run(action)).ok, true)
+  })
 
   await t.test('expiry and authenticated scoped fresh independent evidence are required', async () => {
     await reset()
