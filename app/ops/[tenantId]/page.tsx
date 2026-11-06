@@ -6,6 +6,7 @@ import Link from 'next/link'
 import QRCode from 'react-qr-code'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import DiamondFounderRecoveryPanel, { type DiamondRecoveryReadout } from './DiamondFounderRecoveryPanel'
+import { describePrintMode, LOCAL_FIRST_TONES } from './localFirstPresentation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -351,25 +352,25 @@ function StoreRow({ tenantId, st, onChanged }: { tenantId: string; st: Store; on
   function saveSort() { const v = parseInt(sort, 10); patch({ eLifeFeaturedSort: isNaN(v) ? 0 : v }) }
 
   return (
-    <div style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${featured ? 'rgba(7,193,96,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 10, overflow: 'hidden', marginBottom: 0 }}>
+    <div style={{ background: '#fff', color: '#334155', border: `1px solid ${featured ? '#86bda0' : '#dce3ec'}`, borderRadius: 10, overflow: 'hidden', marginBottom: 0 }}>
 
       {/* ── 信息区 ── */}
       <div style={{ padding: '12px 12px 10px' }}>
         {/* 店名 + code + 类型 + 推荐 badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-          <span style={{ color: '#fff', fontSize: 14, fontWeight: 700, marginRight: 2 }}>{st.name}</span>
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'monospace', background: 'rgba(255,255,255,0.08)', padding: '1px 6px', borderRadius: 4, letterSpacing: '0.03em' }}>
+          <span style={{ color: '#0f172a', fontSize: 14, fontWeight: 700, marginRight: 2 }}>{st.name}</span>
+          <span style={{ fontSize: 12, color: '#475569', fontFamily: 'monospace', background: '#f1f5f9', border: '1px solid #64748b', padding: '1px 6px', borderRadius: 4, overflowWrap: 'anywhere', letterSpacing: '0.03em' }}>
             {st.code}
           </span>
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.08)', padding: '1px 6px', borderRadius: 4 }}>
+          <span style={{ fontSize: 12, color: '#475569', background: '#f1f5f9', border: '1px solid #64748b', padding: '1px 6px', borderRadius: 4 }}>
             {BIZ_LABELS[st.businessType] ?? st.businessType}
           </span>
           {/* E-Life 推荐 badge */}
           <span style={{
-            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-            background: featured ? 'rgba(7,193,96,0.18)' : 'rgba(255,255,255,0.06)',
-            color:      featured ? '#4ade80'             : 'rgba(255,255,255,0.3)',
-            border:     featured ? '1px solid rgba(7,193,96,0.35)' : '1px solid rgba(255,255,255,0.1)',
+            fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
+            background: featured ? '#f0fdf4' : '#f1f5f9',
+            color:      featured ? '#166534'             : '#475569',
+            border:     featured ? '1px solid #166534' : '1px solid #64748b',
           }}>
             {featured ? '✓ E-Life 推荐' : 'E-Life 未推荐'}
           </span>
@@ -381,7 +382,7 @@ function StoreRow({ tenantId, st, onChanged }: { tenantId: string; st: Store; on
             href={`/ops/stores/${encodeURIComponent(st.id)}/delegate`}
             style={{
               display: 'inline-block', padding: '7px 16px',
-              background: '#d97706', color: '#fff',
+              background: '#854d0e', color: '#fff',
               fontSize: 12, fontWeight: 700, borderRadius: 7,
               textDecoration: 'none', flexShrink: 0,
               boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
@@ -391,7 +392,7 @@ function StoreRow({ tenantId, st, onChanged }: { tenantId: string; st: Store; on
           </Link>
           <Link
             href={`/ops/stores/${encodeURIComponent(st.id)}/customers`}
-            style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', textDecoration: 'none', flexShrink: 0, padding: '7px 4px' }}
+            style={{ fontSize: 12, color: '#475569', textDecoration: 'none', flexShrink: 0, padding: '7px 4px' }}
           >
             顾客资产 ›
           </Link>
@@ -401,42 +402,34 @@ function StoreRow({ tenantId, st, onChanged }: { tenantId: string; st: Store; on
       <PrintModePanel tenantId={tenantId} store={st} />
 
       {/* ── E-Life 推荐控件 ── */}
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ borderTop: '1px solid #e2e8f0', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {featured ? (
           <>
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', flexShrink: 0 }}>排序：</span>
+            <span style={{ fontSize: 13, color: '#475569', flexShrink: 0 }}>排序：</span>
             <input
               type="number" value={sort} onChange={(e) => setSort(e.target.value)}
-              style={{ width: 52, height: 26, textAlign: 'center', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, color: '#fff', fontSize: 11, outline: 'none' }}
+              style={{ width: 52, minHeight: 36, textAlign: 'center', background: '#f1f5f9', border: '1px solid #64748b', borderRadius: 6, color: '#334155', fontSize: 13, outline: 'none' }}
             />
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>越小越前</span>
+            <span style={{ fontSize: 12, color: '#475569', flexShrink: 0 }}>越小越前</span>
             <button disabled={saving} onClick={saveSort}
-              style={{ height: 26, padding: '0 10px', fontSize: 11, cursor: 'pointer', borderRadius: 6, background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.65)', border: '1px solid rgba(255,255,255,0.15)', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
+              style={{ minHeight: 36, padding: '0 10px', fontSize: 13, cursor: 'pointer', borderRadius: 6, background: '#f1f5f9', color: '#334155', border: '1px solid #64748b', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
               {saving ? '…' : '保存排序'}
             </button>
             <button disabled={saving} onClick={toggleFeatured}
-              style={{ height: 26, padding: '0 10px', fontSize: 11, cursor: 'pointer', borderRadius: 6, background: 'rgba(220,50,50,0.18)', color: 'rgba(255,110,110,0.9)', border: '1px solid rgba(220,60,60,0.25)', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
+              style={{ minHeight: 36, padding: '0 10px', fontSize: 13, cursor: 'pointer', borderRadius: 6, background: '#fef2f2', color: '#991b1b', border: '1px solid #991b1b', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
               取消推荐
             </button>
           </>
         ) : (
           <button disabled={saving} onClick={toggleFeatured}
-            style={{ height: 26, padding: '0 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', borderRadius: 6, background: '#07c160', color: '#fff', border: 'none', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
+            style={{ minHeight: 36, padding: '0 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', borderRadius: 6, background: '#166534', color: '#fff', border: 'none', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
             {saving ? '…' : '设为 E-Life 推荐'}
           </button>
         )}
-        {err && <span style={{ fontSize: 11, color: '#ff7875' }}>{err}</span>}
+        {err && <span style={{ fontSize: 13, color: '#991b1b' }}>{err}</span>}
       </div>
     </div>
   )
-}
-
-const PRINT_MODE_META: Record<V3PrintMode, { label: string; color: string; bg: string; border: string }> = {
-  V2_ACTIVE: { label: '传统打印', color: '#d97706', bg: 'rgba(217,119,6,0.12)', border: 'rgba(217,119,6,0.35)' },
-  V2_DRAINING: { label: '正在切换到 Local First', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.35)' },
-  V3_ACTIVE: { label: 'Local First', color: '#4ade80', bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.35)' },
-  V3_DRAINING: { label: '正在切回传统打印', color: '#60a5fa', bg: 'rgba(96,165,250,0.12)', border: 'rgba(96,165,250,0.35)' },
-  BLOCKED_UNKNOWN: { label: '需要人工处理', color: '#f87171', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.35)' },
 }
 
 const PRINT_MODE_ERRORS: Record<string, string> = {
@@ -467,6 +460,7 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [observedAt, setObservedAt] = useState<number | null>(null)
   const endpoint = `/api/ops/tenants/${encodeURIComponent(tenantId)}/stores/${encodeURIComponent(store.id)}/v3-print-control-plane`
 
   async function loadPrintMode() {
@@ -527,92 +521,114 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
     }
   }
 
+  useEffect(() => { if (state) setObservedAt(Date.now()) }, [state])
+
   const mode = state?.controlPlane.mode
-  const meta = mode ? PRINT_MODE_META[mode] : null
   const ownerLabel = state?.ownerDevice?.id ?? state?.controlPlane.ownerDeviceId ?? '无'
   const controlsDisabled = loading || busy || error !== null
+  const presentation = state ? describePrintMode(state, observedAt ?? Date.now()) : null
+  const tone = presentation ? LOCAL_FIRST_TONES[presentation.tone] : LOCAL_FIRST_TONES.neutral
+  const controlReason = loading ? '正在读取云端快照，请等待。'
+    : busy ? '请求正在提交，请等待结果，勿重复点击。'
+      : error ? '读取或操作未获确认；先刷新状态并核对服务端审计，勿重复提交。' : ''
+  const reasonId = `print-control-reason-${store.id}`
 
   return (
-    <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '10px 12px', background: 'rgba(0,0,0,0.08)' }}>
+    <div style={{ borderTop: '1px solid #e2e8f0', padding: '10px 12px', background: '#f8fafc' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,0.55)', marginBottom: 5 }}>打印模式</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#475569', marginBottom: 5 }}>打印模式</div>
           {loading && !state ? (
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>读取 authoritative state…</span>
-          ) : meta ? (
-            <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 800, color: meta.color, background: meta.bg, border: `1px solid ${meta.border}`, borderRadius: 10, padding: '3px 9px' }}>
-              {meta.label}
+            <span style={{ fontSize: 12, color: '#475569' }}>读取 authoritative state…</span>
+          ) : presentation ? (
+            <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 800, color: tone.color, background: tone.bg, border: `1px solid ${tone.border}`, borderRadius: 10, padding: '3px 9px' }}>
+              {presentation.label}
             </span>
           ) : null}
         </div>
         <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
           {state?.actions.startActivation && (
-            <button disabled={controlsDisabled} onClick={() => requestTransition('START_ACTIVATION')}
-              style={{ height: 30, padding: '0 12px', border: 'none', borderRadius: 6, background: '#16a34a', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+            <button disabled={controlsDisabled} aria-describedby={reasonId} onClick={() => requestTransition('START_ACTIVATION')}
+              style={{ minHeight: 44, padding: '0 12px', border: 'none', borderRadius: 6, background: '#166534', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
               {busy ? '切换中…' : '启用 Local First'}
             </button>
           )}
           {state?.actions.startDeactivation && (
-            <button disabled={controlsDisabled} onClick={() => requestTransition('START_DEACTIVATION')}
-              style={{ height: 30, padding: '0 12px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+            <button disabled={controlsDisabled} aria-describedby={reasonId} onClick={() => requestTransition('START_DEACTIVATION')}
+              style={{ minHeight: 44, padding: '0 12px', border: '1px solid #64748b', borderRadius: 6, background: '#f1f5f9', color: '#334155', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
               {busy ? '切换中…' : '切回传统打印'}
             </button>
           )}
           {state?.actions.enterManualReview && (
-            <button disabled={controlsDisabled} onClick={() => requestTransition('ENTER_MANUAL_REVIEW')}
-              style={{ height: 30, padding: '0 12px', border: '1px solid rgba(251,191,36,0.45)', borderRadius: 6, background: 'rgba(251,191,36,0.12)', color: '#fde68a', fontSize: 11, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+            <button disabled={controlsDisabled} aria-describedby={reasonId} onClick={() => requestTransition('ENTER_MANUAL_REVIEW')}
+              style={{ minHeight: 44, padding: '0 12px', border: '1px solid #854d0e', borderRadius: 6, background: '#fffbeb', color: '#854d0e', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
               {busy ? '确认中…' : '进入人工确认闸'}
             </button>
           )}
           {state?.actions.finalizeV3Active && (
-            <button disabled={controlsDisabled} onClick={() => requestTransition('FINALIZE_V3_ACTIVE')}
-              style={{ height: 30, padding: '0 12px', border: 'none', borderRadius: 6, background: '#16a34a', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+            <button disabled={controlsDisabled} aria-describedby={reasonId} onClick={() => requestTransition('FINALIZE_V3_ACTIVE')}
+              style={{ minHeight: 44, padding: '0 12px', border: 'none', borderRadius: 6, background: '#166534', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
               {busy ? '切换中…' : '确认启用 Local First'}
             </button>
           )}
           {state?.actions.finalizeV2Active && (
-            <button disabled={controlsDisabled} onClick={() => requestTransition('FINALIZE_V2_ACTIVE')}
-              style={{ height: 30, padding: '0 12px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+            <button disabled={controlsDisabled} aria-describedby={reasonId} onClick={() => requestTransition('FINALIZE_V2_ACTIVE')}
+              style={{ minHeight: 44, padding: '0 12px', border: '1px solid #64748b', borderRadius: 6, background: '#f1f5f9', color: '#334155', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
               {busy ? '切换中…' : '确认恢复传统打印'}
             </button>
           )}
           <button disabled={loading || busy} onClick={loadPrintMode}
-            style={{ height: 30, padding: '0 9px', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, background: 'transparent', color: 'rgba(255,255,255,0.55)', fontSize: 11, cursor: 'pointer' }}>
+            style={{ minHeight: 44, padding: '0 9px', border: '1px solid #64748b', borderRadius: 6, background: 'transparent', color: '#475569', fontSize: 14, cursor: 'pointer' }}>
             刷新
           </button>
         </div>
       </div>
 
+      <div id={reasonId} style={{ marginTop: 10, fontSize: 14, lineHeight: 1.6, color: '#334155', overflowWrap: 'anywhere' }}>
+        {observedAt && <p style={{ fontSize: 12, color: '#475569' }}>快照接收时间（本机）：{new Date(observedAt).toLocaleString('zh-CN')}；状态不会自动刷新。</p>}
+        {state && <>
+          {(error || loading) && <p style={{ color: '#854d0e' }}>以下为上次收到的快照，当前状态待核对。</p>}
+          <p>{presentation?.next}</p>
+          <p><strong>Owner 接管：</strong>{presentation?.owner}</p>
+          <p><strong>Windows / Provider：</strong>云端当前无法验证；进程存活或最近联系不等于 Provider READY。</p>
+          <p><strong>FRONT 配置：</strong>云端未知，需在门店电脑确认；历史健康记录不代表当前本地状态。</p>
+        </>}
+        {controlReason && <p role="status" style={{ color: '#854d0e' }}>{controlReason}</p>}
+        {presentation && presentation.unavailable.length > 0 && <ul style={{ paddingLeft: 18, marginTop: 8 }}>
+          {presentation.unavailable.map(item => <li key={item.label}><strong>{item.label}暂不可用：</strong>{item.reason}</li>)}
+        </ul>}
+      </div>
+
       {mode === 'BLOCKED_UNKNOWN' && (
-        <div style={{ marginTop: 8, fontSize: 11, color: '#fca5a5', lineHeight: 1.5 }}>
+        <div style={{ marginTop: 8, fontSize: 14, color: presentation?.waitingForConfirmation ? '#1e40af' : '#991b1b', lineHeight: 1.5 }}>
           已进入人工安全闸；BLOCKED_UNKNOWN 不会自动转出。请核对 owner、V2/V3 execution 与 reconciliation 后，明确选择最终模式。
         </div>
       )}
       {state && mode === 'V2_DRAINING' && (state.blocking.v2Drain || state.blocking.v2DrainWindowActive) && (
-        <div style={{ marginTop: 8, fontSize: 11, color: '#fde68a', lineHeight: 1.5 }}>
+        <div style={{ marginTop: 8, fontSize: 14, color: '#854d0e', lineHeight: 1.5 }}>
           正在等待 120 秒安全排空窗口与旧 V2 队列清零；claimed、executing 或 CROSSING_UNKNOWN 未清零时不能继续。
           {state.v2DrainReadyAt ? ` 最早复核时间：${new Date(state.v2DrainReadyAt).toLocaleString('zh-CN')}` : ''}
         </div>
       )}
       {state && mode === 'V3_DRAINING' && (state.blocking.ownerActive || state.blocking.activeExecutionBatch || state.blocking.v3Drain) && (
-        <div style={{ marginTop: 8, fontSize: 11, color: '#fde68a', lineHeight: 1.5 }}>
+        <div style={{ marginTop: 8, fontSize: 14, color: '#854d0e', lineHeight: 1.5 }}>
           正在等待 V3 Desktop 安全释放 owner、已签发 execution batch 结束或撤销，并确认没有可执行或状态不明的 V3 intent。
         </div>
       )}
       {state && mode === 'V3_ACTIVE' && state.blocking.handoffOrReconciliation && (
-        <div style={{ marginTop: 8, fontSize: 11, color: '#fde68a', lineHeight: 1.5 }}>
+        <div style={{ marginTop: 8, fontSize: 14, color: '#854d0e', lineHeight: 1.5 }}>
           当前 handoff/reconciliation 未完成，不能开始切回传统打印。
         </div>
       )}
-      {error && <div style={{ marginTop: 8, fontSize: 11, color: '#fca5a5', lineHeight: 1.5 }}>{error}</div>}
-      {diamondRecoveryError && <div style={{ marginTop: 8, fontSize: 11, color: '#fca5a5', lineHeight: 1.5 }}>
+      {error && <div style={{ marginTop: 8, fontSize: 14, color: '#991b1b', lineHeight: 1.5 }}>{error}</div>}
+      {diamondRecoveryError && <div style={{ marginTop: 8, fontSize: 14, color: '#991b1b', lineHeight: 1.5 }}>
         Diamond 恢复证据读取失败（{diamondRecoveryError}）；Founder REVIEW / EXPIRE 不可用。现有打印模式状态仍可单独读取与操作。
       </div>}
 
       {state && (
-        <details style={{ marginTop: 8, color: 'rgba(255,255,255,0.48)' }}>
-          <summary style={{ fontSize: 11, cursor: 'pointer' }}>安全状态详情</summary>
-          <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '5px 8px', marginTop: 7, fontSize: 10, lineHeight: 1.45 }}>
+        <details style={{ marginTop: 8, color: '#475569' }}>
+          <summary style={{ fontSize: 14, cursor: 'pointer' }}>安全状态详情</summary>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 115px) minmax(0, 1fr)', overflowWrap: 'anywhere', gap: '5px 8px', marginTop: 7, fontSize: 12, lineHeight: 1.45 }}>
             <span>Active Desktop devices</span><span>{state.registeredDeviceCount > 0 ? `${state.registeredDeviceCount} (V3 capability not asserted)` : '0'}</span>
             <span>Current owner</span><span style={{ wordBreak: 'break-all' }}>{ownerLabel}</span>
             <span>Active execution batch</span><span>{state.activeBatch ? `YES · expires ${new Date(state.activeBatch.expiresAt).toLocaleString('zh-CN')}` : 'NO'}</span>
@@ -624,9 +640,16 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
           </div>
         </details>
       )}
+      <details style={{ marginTop: 12, fontSize: 14, color: '#334155', lineHeight: 1.6 }}>
+        <summary style={{ cursor: 'pointer', minHeight: 32 }}>设置与现场检查指引</summary>
+        <p>设备绑定：由对应门店老板使用既有电脑管理与激活入口。</p>
+        <p>Windows 运行状态：系统托盘 → 查看运行状态；网络打印 Add-on 设置：管理中心 → 打印设置。</p>
+        <p>V3 前台／厨房使用独立配置，不能把 Add-on 已配置当成 V3 已就绪；目前需授权人员现场核对。</p>
+        <p>历史健康记录位于 Ops 健康页，仅作历史排障参考。</p>
+      </details>
       {state && diamondRecovery && <DiamondFounderRecoveryPanel tenantId={tenantId} store={store}
         recovery={diamondRecovery} state={state}
-        disabled={controlsDisabled} onUpdated={loadPrintMode} />}
+        disabled={controlsDisabled} disabledReason={controlReason} onUpdated={loadPrintMode} />}
     </div>
   )
 }
