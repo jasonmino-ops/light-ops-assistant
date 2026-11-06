@@ -106,12 +106,15 @@ test('Ops activation adapter is authenticated, store-scoped and service-composed
 
 test('Ops merchant detail renders authoritative modes and fail-closed controls', () => {
   const page = read('app/ops/[tenantId]/page.tsx')
+  // Labels are rendered through the single presentation helper; retain all Chinese contract assertions.
+  const display = page + '\n' + read('app/ops/[tenantId]/localFirstPresentation.ts')
+  assert.match(page, /describePrintMode\(state/)
   assert.match(page, /打印模式/)
-  assert.match(page, /传统打印/)
-  assert.match(page, /正在切换到 Local First/)
-  assert.match(page, /Local First/)
-  assert.match(page, /正在切回传统打印/)
-  assert.match(page, /需要人工处理/)
+  assert.match(display, /传统打印/)
+  assert.match(display, /正在切换到 Local First/)
+  assert.match(display, /Local First/)
+  assert.match(display, /正在切回传统打印/)
+  assert.match(display, /需要人工处理/)
   assert.match(page, /BLOCKED_UNKNOWN 不会自动转出/)
   assert.match(page, /确认启用 Local First/)
   assert.match(page, /确认恢复传统打印/)
@@ -197,4 +200,20 @@ test('Local First UX keeps original action visibility, disabled expressions and 
   const founder = read('app/ops/[tenantId]/DiamondFounderRecoveryPanel.tsx')
   assert.match(founder, /disabled=\{!mayReview\}[^>]*onClick=\{review\}/)
   assert.match(founder, /disabled=\{!mayExpire\}[^>]*onClick=\{expire\}/)
+})
+
+test('N1/N4/N7: setup copy, single display mapping and evidence accessible names match real UI', () => {
+  const page = read('app/ops/[tenantId]/page.tsx')
+  const founder = read('app/ops/[tenantId]/DiamondFounderRecoveryPanel.tsx')
+  const labels = read('lib/i18n/zh.ts')
+  assert.match(page, /管理中心 → 打印设置/)
+  assert.doesNotMatch(page, /管理中心 → 打印配置|PRINT_MODE_META/)
+  assert.match(labels, /printConfig:\s*['"]打印设置['"]/)
+  assert.match(page, /\{presentation\.label\}/)
+  for (const label of ['Windows 本地采集证据（JSON）','目标电脑 Installation ID（安装身份）']) {
+    assert.ok(founder.includes('>' + label + '</label>'))
+    assert.ok(founder.includes('aria-label="' + label + '"'))
+  }
+  assert.match(founder, /EXPIRE 实际可提交时间剩余 \{presentation\.expireSubmitWindow\.seconds\}/)
+  assert.match(founder, /采集后 295 秒/)
 })

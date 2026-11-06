@@ -2,12 +2,16 @@
 import type { DiamondRecoveryReadout } from './DiamondFounderRecoveryPanel'
 
 export const LOCAL_FIRST_TONES = {
-  neutral: { color: '#334155', bg: '#f1f5f9', border: '#cbd5e1' },
-  info: { color: '#1e40af', bg: '#eff6ff', border: '#bfdbfe' },
-  warning: { color: '#854d0e', bg: '#fffbeb', border: '#fde68a' },
-  error: { color: '#991b1b', bg: '#fef2f2', border: '#fecaca' },
-  success: { color: '#166534', bg: '#f0fdf4', border: '#bbf7d0' },
+  neutral: { color: '#334155', bg: '#f1f5f9', border: '#64748b' },
+  info: { color: '#1e40af', bg: '#eff6ff', border: '#1e40af' },
+  warning: { color: '#854d0e', bg: '#fffbeb', border: '#854d0e' },
+  error: { color: '#991b1b', bg: '#fef2f2', border: '#991b1b' },
+  success: { color: '#166534', bg: '#f0fdf4', border: '#166534' },
 } as const
+
+const REVIEW_DISPLAY_WINDOW_MS = 30_000
+const EXPIRE_EVIDENCE_WINDOW_MS = 300_000
+const EXPIRE_SUBMIT_WINDOW_MS = 295_000
 
 type Queue = { pending: number; claimed: number; executing: number; crossingUnknown: number }
 type Plane = {
@@ -37,9 +41,12 @@ export function describePrintMode(state: ModeState, now: number) {
   const tone: keyof typeof LOCAL_FIRST_TONES = mode === 'V2_ACTIVE' ? 'neutral'
     : waitingForConfirmation || mode === 'V3_ACTIVE' || mode === 'V3_DRAINING' ? 'info'
       : mode === 'BLOCKED_UNKNOWN' ? 'error' : mode === 'V2_DRAINING' ? 'warning' : 'neutral'
-  let owner = '尚未取得执行权；需在门店电脑核对 Desktop。'
-  if (mode === 'V2_ACTIVE') owner = '传统打印模式不要求 V3 Owner 接管。'
-  else if (plane.ownerDeviceId) {
+  let owner = mode === 'V3_ACTIVE' ? '尚未取得执行权；需在门店电脑核对 Desktop。'
+    : mode === 'V3_DRAINING' ? '当前无 V3 Owner 归属；继续核对排空与批次，不需重新接管。'
+      : ['V2_ACTIVE', 'V2_DRAINING', 'BLOCKED_UNKNOWN'].includes(mode)
+        ? '当前阶段不要求 V3 Owner 接管；按现有切换流程核对安全条件。'
+        : '当前模式未知，Owner 状态需刷新核对。'
+  if (plane.ownerDeviceId) {
     const lease = Date.parse(plane.leaseExpiresAt ?? '')
     const batch = state.activeBatch
     owner = Number.isFinite(lease) && lease > now && state.ownerDevice?.status === 'ACTIVE'
@@ -83,7 +90,7 @@ export function captureWindow(capturedAt: string | number | null | undefined, no
   const at = typeof capturedAt === 'number' ? capturedAt : Date.parse(capturedAt ?? '')
   if (!Number.isFinite(at) || !Number.isFinite(now) || at > now) return null
   const deadline = at + durationMs
-  return { deadline, seconds: Math.max(0, Math.floor((deadline - now) / 1000)), closed: now >= deadline }
+  return { deadline, seconds: Math.max(0, Math.ceil((deadline - now) / 1000)), closed: now >= deadline }
 }
 
 type FounderInput = {
@@ -102,12 +109,14 @@ export function describeFounderRecovery(input: FounderInput) {
   const jobsExpired = recovery.jobs.length === 3 && recovery.jobs.every(job => job.status === 'EXPIRED'
     && job.resultStatus === 'EXPIRED' && job.effectBoundary === 'NOT_CROSSED' && !!job.completedAt)
   const terminalAudit = jobsExpired && review?.status === 'CONSUMED' && !!review.expireAuditId
-  const recovered = !input.disabled && !input.busy && !input.blocked && terminalAudit && state.controlPlane.mode === 'V3_ACTIVE'
-    && !state.controlPlane.handoffQuarantineUntil && Object.values(state.v3Queue).every(count => count === 0)
-  const status = recovered ? '三笔任务恢复记录已核验，云端模式已确认；本地出票仍需现场验证。'
+  // This panel reports only the three historical tasks. New orders are not recovery evidence.
+  const completedRecord = terminalAudit && state.controlPlane.mode === 'V3_ACTIVE' && !state.controlPlane.handoffQuarantineUntil
+  const recovered = !input.disabled && !input.busy && !input.blocked && completedRecord
+  const expireCapturedAt = activeGrant?.capturedAtMs ?? (review?.status === 'EXPIRED' ? review.capturedAt : null)
+  const status = completedRecord ? '已读取到三笔历史任务终结记录与云端模式确认；本地出票仍需现场验证。'
     : terminalAudit ? '三笔任务已终结，等待核对最终模式；尚不能视为恢复完成。'
       : review?.status === 'AVAILABLE' ? activeGrant && activeGrant.stateVersion === state.controlPlane.stateVersion
-        ? clock - activeGrant.capturedAtMs >= 295_000
+        ? clock - activeGrant.capturedAtMs >= EXPIRE_SUBMIT_WINDOW_MS
           ? '已审核；EXPIRE 的前端提交窗口已关闭。先查询审计，不得重新 REVIEW。'
           : '审核记录可用；EXPIRE 仍需单独确认。'
         : '已有审核记录，但版本或采集信息不完整／不匹配；先核对审计，不得重新 REVIEW。'
@@ -136,15 +145,16 @@ export function describeFounderRecovery(input: FounderInput) {
     : !activeGrant ? review ? '已有审核记录，但版本或采集信息不完整／不匹配；先核对审计，不得重新 REVIEW。'
       : '先完成 REVIEW 并取得本身份可用的一次性审核记录。'
       : conditions || jobReason || (activeGrant.stateVersion !== state.controlPlane.stateVersion ? '控制面版本已变化；先查询审计，不沿用旧授权。'
-        : clock - activeGrant.capturedAtMs >= 295_000 ? 'EXPIRE 提交窗口已关闭；前端提前 5 秒关闭，不延长服务端 5 分钟有效期。'
+        : clock - activeGrant.capturedAtMs >= EXPIRE_SUBMIT_WINDOW_MS ? 'EXPIRE 提交窗口已关闭；前端提前 5 秒关闭，不延长服务端 5 分钟有效期。'
           : 'EXPIRE 暂不可用；先刷新核对。'))
   const matchingCapture = capture && capture.ownerEpoch === state.controlPlane.ownerEpoch
     && capture.releasedAt === state.controlPlane.handoffRequestedAt
     && Date.parse(capture.capturedAt) >= Date.parse(capture.releasedAt)
-    && Math.abs(Date.parse(capture.deviceObservedAt) - Date.parse(capture.capturedAt)) <= 30_000
+    && Math.abs(Date.parse(capture.deviceObservedAt) - Date.parse(capture.capturedAt)) <= REVIEW_DISPLAY_WINDOW_MS
   return {
     recovered, status, reviewReason, expireReason,
-    reviewWindow: matchingCapture ? captureWindow(capture.capturedAt, clock, 30_000) : null,
-    expireWindow: captureWindow(activeGrant?.capturedAtMs ?? (review?.status === 'EXPIRED' ? review.capturedAt : null), clock, 300_000),
+    reviewWindow: matchingCapture ? captureWindow(capture.capturedAt, clock, REVIEW_DISPLAY_WINDOW_MS) : null,
+    expireWindow: captureWindow(expireCapturedAt, clock, EXPIRE_EVIDENCE_WINDOW_MS),
+    expireSubmitWindow: captureWindow(expireCapturedAt, clock, EXPIRE_SUBMIT_WINDOW_MS),
   }
 }

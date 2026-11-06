@@ -359,10 +359,10 @@ function StoreRow({ tenantId, st, onChanged }: { tenantId: string; st: Store; on
         {/* 店名 + code + 类型 + 推荐 badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
           <span style={{ color: '#0f172a', fontSize: 14, fontWeight: 700, marginRight: 2 }}>{st.name}</span>
-          <span style={{ fontSize: 12, color: '#475569', fontFamily: 'monospace', background: '#f1f5f9', padding: '1px 6px', borderRadius: 4, overflowWrap: 'anywhere', letterSpacing: '0.03em' }}>
+          <span style={{ fontSize: 12, color: '#475569', fontFamily: 'monospace', background: '#f1f5f9', border: '1px solid #64748b', padding: '1px 6px', borderRadius: 4, overflowWrap: 'anywhere', letterSpacing: '0.03em' }}>
             {st.code}
           </span>
-          <span style={{ fontSize: 12, color: '#475569', background: '#f1f5f9', padding: '1px 6px', borderRadius: 4 }}>
+          <span style={{ fontSize: 12, color: '#475569', background: '#f1f5f9', border: '1px solid #64748b', padding: '1px 6px', borderRadius: 4 }}>
             {BIZ_LABELS[st.businessType] ?? st.businessType}
           </span>
           {/* E-Life 推荐 badge */}
@@ -370,7 +370,7 @@ function StoreRow({ tenantId, st, onChanged }: { tenantId: string; st: Store; on
             fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
             background: featured ? '#f0fdf4' : '#f1f5f9',
             color:      featured ? '#166534'             : '#475569',
-            border:     featured ? '1px solid rgba(7,193,96,0.35)' : '1px solid #f1f5f9',
+            border:     featured ? '1px solid #166534' : '1px solid #64748b',
           }}>
             {featured ? '✓ E-Life 推荐' : 'E-Life 未推荐'}
           </span>
@@ -408,15 +408,15 @@ function StoreRow({ tenantId, st, onChanged }: { tenantId: string; st: Store; on
             <span style={{ fontSize: 13, color: '#475569', flexShrink: 0 }}>排序：</span>
             <input
               type="number" value={sort} onChange={(e) => setSort(e.target.value)}
-              style={{ width: 52, minHeight: 36, textAlign: 'center', background: '#f1f5f9', border: '1px solid #94a3b8', borderRadius: 6, color: '#334155', fontSize: 13, outline: 'none' }}
+              style={{ width: 52, minHeight: 36, textAlign: 'center', background: '#f1f5f9', border: '1px solid #64748b', borderRadius: 6, color: '#334155', fontSize: 13, outline: 'none' }}
             />
             <span style={{ fontSize: 12, color: '#475569', flexShrink: 0 }}>越小越前</span>
             <button disabled={saving} onClick={saveSort}
-              style={{ minHeight: 36, padding: '0 10px', fontSize: 13, cursor: 'pointer', borderRadius: 6, background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
+              style={{ minHeight: 36, padding: '0 10px', fontSize: 13, cursor: 'pointer', borderRadius: 6, background: '#f1f5f9', color: '#334155', border: '1px solid #64748b', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
               {saving ? '…' : '保存排序'}
             </button>
             <button disabled={saving} onClick={toggleFeatured}
-              style={{ minHeight: 36, padding: '0 10px', fontSize: 13, cursor: 'pointer', borderRadius: 6, background: '#fef2f2', color: '#991b1b', border: '1px solid rgba(220,60,60,0.25)', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
+              style={{ minHeight: 36, padding: '0 10px', fontSize: 13, cursor: 'pointer', borderRadius: 6, background: '#fef2f2', color: '#991b1b', border: '1px solid #991b1b', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
               取消推荐
             </button>
           </>
@@ -430,14 +430,6 @@ function StoreRow({ tenantId, st, onChanged }: { tenantId: string; st: Store; on
       </div>
     </div>
   )
-}
-
-const PRINT_MODE_META: Record<V3PrintMode, { label: string; color: string; bg: string; border: string }> = {
-  V2_ACTIVE: { label: '传统打印', ...LOCAL_FIRST_TONES.neutral },
-  V2_DRAINING: { label: '正在切换到 Local First', ...LOCAL_FIRST_TONES.warning },
-  V3_ACTIVE: { label: 'Local First 模式已启用', ...LOCAL_FIRST_TONES.info },
-  V3_DRAINING: { label: '正在切回传统打印', ...LOCAL_FIRST_TONES.info },
-  BLOCKED_UNKNOWN: { label: '需要人工处理', ...LOCAL_FIRST_TONES.error },
 }
 
 const PRINT_MODE_ERRORS: Record<string, string> = {
@@ -532,7 +524,6 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
   useEffect(() => { if (state) setObservedAt(Date.now()) }, [state])
 
   const mode = state?.controlPlane.mode
-  const meta = mode ? PRINT_MODE_META[mode] : null
   const ownerLabel = state?.ownerDevice?.id ?? state?.controlPlane.ownerDeviceId ?? '无'
   const controlsDisabled = loading || busy || error !== null
   const presentation = state ? describePrintMode(state, observedAt ?? Date.now()) : null
@@ -549,9 +540,9 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
           <div style={{ fontSize: 14, fontWeight: 800, color: '#475569', marginBottom: 5 }}>打印模式</div>
           {loading && !state ? (
             <span style={{ fontSize: 12, color: '#475569' }}>读取 authoritative state…</span>
-          ) : meta ? (
+          ) : presentation ? (
             <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 800, color: tone.color, background: tone.bg, border: `1px solid ${tone.border}`, borderRadius: 10, padding: '3px 9px' }}>
-              {presentation?.label ?? meta.label}
+              {presentation.label}
             </span>
           ) : null}
         </div>
@@ -564,13 +555,13 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
           )}
           {state?.actions.startDeactivation && (
             <button disabled={controlsDisabled} aria-describedby={reasonId} onClick={() => requestTransition('START_DEACTIVATION')}
-              style={{ minHeight: 44, padding: '0 12px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#f1f5f9', color: '#334155', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+              style={{ minHeight: 44, padding: '0 12px', border: '1px solid #64748b', borderRadius: 6, background: '#f1f5f9', color: '#334155', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
               {busy ? '切换中…' : '切回传统打印'}
             </button>
           )}
           {state?.actions.enterManualReview && (
             <button disabled={controlsDisabled} aria-describedby={reasonId} onClick={() => requestTransition('ENTER_MANUAL_REVIEW')}
-              style={{ minHeight: 44, padding: '0 12px', border: '1px solid #d6b65c', borderRadius: 6, background: '#fffbeb', color: '#854d0e', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+              style={{ minHeight: 44, padding: '0 12px', border: '1px solid #854d0e', borderRadius: 6, background: '#fffbeb', color: '#854d0e', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
               {busy ? '确认中…' : '进入人工确认闸'}
             </button>
           )}
@@ -582,12 +573,12 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
           )}
           {state?.actions.finalizeV2Active && (
             <button disabled={controlsDisabled} aria-describedby={reasonId} onClick={() => requestTransition('FINALIZE_V2_ACTIVE')}
-              style={{ minHeight: 44, padding: '0 12px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#f1f5f9', color: '#334155', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+              style={{ minHeight: 44, padding: '0 12px', border: '1px solid #64748b', borderRadius: 6, background: '#f1f5f9', color: '#334155', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
               {busy ? '切换中…' : '确认恢复传统打印'}
             </button>
           )}
           <button disabled={loading || busy} onClick={loadPrintMode}
-            style={{ minHeight: 44, padding: '0 9px', border: '1px solid #94a3b8', borderRadius: 6, background: 'transparent', color: '#475569', fontSize: 14, cursor: 'pointer' }}>
+            style={{ minHeight: 44, padding: '0 9px', border: '1px solid #64748b', borderRadius: 6, background: 'transparent', color: '#475569', fontSize: 14, cursor: 'pointer' }}>
             刷新
           </button>
         </div>
@@ -652,7 +643,7 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
       <details style={{ marginTop: 12, fontSize: 14, color: '#334155', lineHeight: 1.6 }}>
         <summary style={{ cursor: 'pointer', minHeight: 32 }}>设置与现场检查指引</summary>
         <p>设备绑定：由对应门店老板使用既有电脑管理与激活入口。</p>
-        <p>Windows 运行状态：系统托盘 → 查看运行状态；网络打印 Add-on 设置：Desktop 管理中心 → 打印配置。</p>
+        <p>Windows 运行状态：系统托盘 → 查看运行状态；网络打印 Add-on 设置：管理中心 → 打印设置。</p>
         <p>V3 前台／厨房使用独立配置，不能把 Add-on 已配置当成 V3 已就绪；目前需授权人员现场核对。</p>
         <p>历史健康记录位于 Ops 健康页，仅作历史排障参考。</p>
       </details>

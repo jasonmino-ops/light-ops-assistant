@@ -370,6 +370,8 @@ test('UX clocks reject missing, invalid and future capture times, and never rese
     activeGrant: { capturedAtMs: input.clock - 295_000, stateVersion: 10 } }
   const display = describeFounderRecovery(expiring)
   assert.equal(display.expireWindow?.seconds, 5)
+  assert.equal(display.expireSubmitWindow?.seconds, 0)
+  assert.equal(display.expireSubmitWindow?.closed, true)
   assert.match(display.expireReason, /提前 5 秒关闭/)
   const audited = { ...expiring, recovery: { ...expiring.recovery, review: { status: 'AVAILABLE' as const,
     evidenceId: 'ux-evidence', requestId: 'ux-request', capturedAt: new Date(expiring.activeGrant.capturedAtMs).toISOString(),
@@ -444,4 +446,65 @@ test('UX never suggests a second REVIEW when an AVAILABLE audit has incomplete o
     assert.match(display.reviewReason, /已有审核记录.*不得重新 REVIEW/)
     assert.match(display.expireReason, /已有审核记录.*不得重新 REVIEW/)
   }
+})
+
+test('N2: EXPIRE submit countdown ends at 295 seconds while evidence has a separate 300-second deadline', () => {
+  const base = uxFounderFixture()
+  const capturedAtMs = base.clock - 294_999
+  const input = { ...base, mayReview: false, activeGrant: { capturedAtMs, stateVersion: 10 } }
+  const before = describeFounderRecovery(input)
+  assert.equal(before.expireSubmitWindow?.seconds, 1)
+  assert.equal(before.expireSubmitWindow?.closed, false)
+  assert.equal(before.expireSubmitWindow?.deadline, capturedAtMs + 295_000)
+  assert.equal(before.expireWindow?.deadline, capturedAtMs + 300_000)
+  const closed = describeFounderRecovery({ ...input, clock: base.clock + 1, mayExpire: false })
+  assert.equal(closed.expireSubmitWindow?.seconds, 0)
+  assert.equal(closed.expireSubmitWindow?.closed, true)
+  assert.match(closed.expireReason, /提交窗口已关闭/)
+})
+
+test('N3: three-job history stays complete during unrelated new order activity', () => {
+  const base = uxFounderFixture()
+  base.state.controlPlane.mode = 'V3_ACTIVE'
+  base.recovery.review = { status: 'CONSUMED', evidenceId: 'review-history', requestId: 'request-history',
+    reviewedAt: null, capturedAt: null, stateVersion: 10, expireAuditId: 'expire-history', expireRequestId: null }
+  base.recovery.jobs = base.recovery.jobs.map(job => ({ ...job, status: 'EXPIRED', resultStatus: 'EXPIRED',
+    effectBoundary: 'NOT_CROSSED', completedAt: new Date(base.clock).toISOString() }))
+  for (const queue of [{ pending: 2, claimed: 1, executing: 1, crossingUnknown: 0 },
+    { pending: 1, claimed: 0, executing: 0, crossingUnknown: 1 }]) {
+    const result = describeFounderRecovery({ ...base, state: { ...base.state, v3Queue: queue } })
+    assert.equal(result.recovered, true)
+    assert.match(result.status, /已读取到三笔历史任务/)
+    assert.doesNotMatch(result.status, /已核验|等待核对最终模式/)
+    assert.equal(recoveryActions({ ...base, state: { ...base.state, v3Queue: queue } }).mayReview, false)
+    assert.equal(recoveryActions({ ...base, state: { ...base.state, v3Queue: queue } }).mayExpire, false)
+  }
+  base.recovery.jobs[0].effectBoundary = 'CROSSING_UNKNOWN'
+  assert.equal(describeFounderRecovery(base).recovered, false)
+  base.recovery.jobs[0].effectBoundary = 'NOT_CROSSED'
+  base.recovery.review.status = 'UNKNOWN'
+  assert.equal(describeFounderRecovery(base).recovered, false)
+})
+
+test('N5: only active V3 with no owner prompts owner acquisition', () => {
+  const base = uxModeFixture()
+  for (const mode of ['V2_ACTIVE', 'V2_DRAINING', 'BLOCKED_UNKNOWN', 'V3_DRAINING']) {
+    const result = describePrintMode({ ...base, controlPlane: { ...base.controlPlane, mode } }, 0)
+    assert.doesNotMatch(result.owner, /尚未取得执行权|需在门店电脑核对 Desktop/)
+    assert.match(result.owner, /不要求|不需重新接管/)
+  }
+  const active = describePrintMode({ ...base, controlPlane: { ...base.controlPlane, mode: 'V3_ACTIVE' } }, 0)
+  assert.match(active.owner, /尚未取得执行权/)
+})
+
+test('N6: status badge borders contrast at least 3:1 against both adjacent surfaces', () => {
+  const luminance = (hex: string) => [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)/255)
+    .map(v => v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4)
+    .reduce((sum,v,i)=>sum+v*[0.2126,0.7152,0.0722][i],0)
+  const ratio=(a:string,b:string)=>(Math.max(luminance(a),luminance(b))+0.05)/(Math.min(luminance(a),luminance(b))+0.05)
+  for(const tone of Object.values(LOCAL_FIRST_TONES)) {
+    assert.ok(ratio(tone.border,tone.bg)>=3)
+    assert.ok(ratio(tone.border,'#f8fafc')>=3)
+  }
+  for(const color of ['#64748b','#854d0e','#991b1b','#166534'])assert.ok(ratio(color,'#f1f5f9')>=3)
 })
