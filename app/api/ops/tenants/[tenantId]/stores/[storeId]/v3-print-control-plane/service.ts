@@ -320,7 +320,7 @@ export async function runOpsPrintModeAction(
   const scope = { tenantId: input.tenantId, storeId: input.storeId }
   const runSerializable = targetDb.$transaction.bind(targetDb) as unknown as <T>(
     operation: (tx: unknown) => Promise<T>,
-    options: { isolationLevel: 'Serializable' },
+    options: { isolationLevel: 'Serializable'; timeout?: number },
   ) => Promise<T>
 
   try {
@@ -433,7 +433,11 @@ export async function runOpsPrintModeAction(
         })
       }
       return { ok: true, requestId, controlPlane: result.value.controlPlane }
-    }, { isolationLevel: 'Serializable' })
+    // FINALIZE keeps checks, audit, mode CAS and every held-row CAS atomic.
+    // Sequential held materialization can exceed Prisma's default 5s budget.
+    }, input.action === 'FINALIZE_V3_ACTIVE'
+      ? { isolationLevel: 'Serializable', timeout: 10_000 }
+      : { isolationLevel: 'Serializable' })
   } catch (error) {
     if (error instanceof RejectedTransition) return error.result
     if (errorCode(error) === 'P2034') {
