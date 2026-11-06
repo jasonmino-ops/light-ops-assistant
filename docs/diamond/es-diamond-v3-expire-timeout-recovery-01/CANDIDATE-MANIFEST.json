@@ -33,7 +33,25 @@
     "typescript": "PASS",
     "build": "PASS",
     "scope": "PASS",
-    "core": "PENDING"
+    "core": {
+      "status": "BLOCKED",
+      "counts": {
+        "expected": 103,
+        "collected": 103,
+        "executed": 103,
+        "passed": 101,
+        "failed": 2,
+        "knownFailures": 0,
+        "newFailures": 2,
+        "recoveredFailures": 1,
+        "knownEnvironmentBlocked": 0,
+        "skipped": 0,
+        "uncollected": 0,
+        "environmentFailures": 0
+      },
+      "summarySha256": "c146d65f16ecbec7d47013cbe4388f65f2bb0931091114ee3c35771cae90cace",
+      "baselineComparison": "Cashier baseline PASS / candidate FAIL (new exact admission failure); customer-order-recovery baseline FAIL / candidate FAIL (unstubbed DB read)"
+    }
   },
   "originalFailureLogSha256": "10e59f70b711a885a538f55332b4c12f964ff39d950c81a02de9737eb837c54f",
   "compensationProposalSha256": "070284dda522ae71a3f08d746f0b3276f780017c0c5307e90aa0056e0c901f66",
