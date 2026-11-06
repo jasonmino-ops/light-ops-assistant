@@ -1,0 +1,266 @@
+{
+  "status": "DRAFT_NOT_AUTHORIZED_FOR_RELEASE",
+  "taskId": "ES-DIAMOND-V3-FINALIZE-TIMEOUT-RECOVERY-01",
+  "candidateSha": "b86ac6a953a3e98b602f820b016fe9c59e444eeb",
+  "trustedMain": "14dbe9783ae64966af316a33261b3fee7281dc1f",
+  "productionSha": "1427131e94aba6a19c52dee61f531fec2c9213b3",
+  "productionDeployment": "dpl_DEfKtkGEG1YTMzBeBr6YUjg33KQK",
+  "productPaths": {
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts": "97ab7b428ea560e032a16228f9befc00ea7387c2e5383d06665d404692d92339",
+    "tests/v3-print-control-plane-service.test.ts": "4d3e108567da12a38d0e62c5fef5a982332134f6df11db22e306e9f1e9ab69b4"
+  },
+  "scope": "FINALIZE_V3_ACTIVE outer Serializable transaction timeout10000ms only; no callback/REVIEW/EXPIRE change",
+  "externalMutations": false,
+  "releaseDraft": {
+    "sha": "dcda3b473c06b1f2fde3a99dad915df667096e30",
+    "tree": "9765fcbb0586fa36aecfd0bd8b587ff4b21a29cb",
+    "parent": "1427131e94aba6a19c52dee61f531fec2c9213b3",
+    "sourceCommit": "b86ac6a953a3e98b602f820b016fe9c59e444eeb",
+    "productHashesEqual": true,
+    "authorized": false,
+    "requiredAppCheck": "NOT_REQUESTED",
+    "sourceInMain": false
+  },
+  "governancePaths": [
+    "docs/freezes/ES-DIAMOND-V3-FINALIZE-TIMEOUT-RECOVERY-01.md",
+    "docs/change-gates/ES-DIAMOND-V3-FINALIZE-TIMEOUT-RECOVERY-01 CORE Admission Disposition.md",
+    "docs/diamond/ES-DIAMOND-V3-FINALIZE-TIMEOUT-ACCEPTANCE-001.md",
+    "docs/diamond/es-diamond-v3-finalize-timeout-recovery-01/CANDIDATE-MANIFEST.json"
+  ],
+  "core": {
+    "counts": {
+      "expected": 103,
+      "collected": 103,
+      "executed": 103,
+      "passed": 101,
+      "failed": 2,
+      "knownFailures": 0,
+      "newFailures": 2,
+      "recoveredFailures": 1,
+      "knownEnvironmentBlocked": 0,
+      "skipped": 0,
+      "uncollected": 0,
+      "environmentFailures": 0
+    },
+    "status": "BLOCKED",
+    "head": "b86ac6a953a3e98b602f820b016fe9c59e444eeb",
+    "rawLogSha256": "34076db37c0a8d4058e091ce0c3ba3c37e9e9b5b72ecb61584cc3a4473012290",
+    "summarySha256": "d398bfeb37826e3672794bba3481084e54db5d6121b0f19378cfbeaf0c587692",
+    "failures": [
+      {
+        "file": "tests/cashier-realtime-integration.test.ts",
+        "rawSection": "CORE-FAIL-cashier-realtime-integration.test.log",
+        "sha256": "a0d8cf284e8e70cff96fc35132ea7808ee1e18f1edcd49b7db5ff51188c3d2f5"
+      },
+      {
+        "file": "tests/customer-order-recovery.test.ts",
+        "rawSection": "CORE-FAIL-customer-order-recovery.test.log",
+        "sha256": "ac4fe7240a24a18e9d3fa9285bad2ee5cbbbd2ed094dda13bddaaf525d56aedb"
+      }
+    ],
+    "candidateChangedPaths": [
+      "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts",
+      "docs/change-gates/ES-DIAMOND-V3-FINALIZE-TIMEOUT-RECOVERY-01 CORE Admission Disposition.md",
+      "docs/diamond/ES-DIAMOND-V3-FINALIZE-TIMEOUT-ACCEPTANCE-001.md",
+      "docs/diamond/es-diamond-v3-finalize-timeout-recovery-01/CANDIDATE-MANIFEST.json",
+      "docs/freezes/ES-DIAMOND-V3-FINALIZE-TIMEOUT-RECOVERY-01.md",
+      "tests/v3-print-control-plane-service.test.ts"
+    ],
+    "cashierFailureIdentity": {
+      "line": 736,
+      "assertion": "Diamond trusted main may differ only by exact registrations and approved baseline fixes",
+      "reason": "service/test delta activates old isDiamond branch against a historical Stage1 baseline allowlist; trusted main has approved later drift",
+      "historicalBase": "67338b57bf2d872e2b0755c76820036f6f0743f4",
+      "actualBaselineDelta": [
+        "app/api/cashier/store/route.ts",
+        "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/route.ts",
+        "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts",
+        "app/api/products/route.ts",
+        "app/cashier/page.tsx",
+        "app/inventory/page.tsx",
+        "app/ops/[tenantId]/DiamondFounderRecoveryPanel.tsx",
+        "app/ops/[tenantId]/localFirstPresentation.ts",
+        "app/ops/[tenantId]/page.tsx",
+        "app/products/page.tsx",
+        "app/sale/page.tsx",
+        "docs/change-gates/ES-DIAMOND-V3-EXPIRE-TIMEOUT-RECOVERY-01 CORE Admission Disposition.md",
+        "docs/change-gates/ES-OPS-LOCAL-FIRST-UX-01 CORE Admission Disposition.md",
+        "docs/change-gates/exceptions/ES-DIAMOND-CASHIER-EXACT-BOUNDARY-01.json",
+        "docs/change-gates/exceptions/ES-DIAMOND-H5-MISSING-SEAL-SUCCESSOR-01.json",
+        "docs/change-gates/exceptions/ES-DIAMOND-P0-FOUNDER-QUEUE-RECOVERY-01.json",
+        "docs/change-gates/exceptions/ES-PRODUCT-COUNT-LIMIT-01.json",
+        "docs/diamond/ES-DIAMOND-V3-ACCEPTANCE-001 Timeout Compensation Acceptance Record V1.0.md",
+        "docs/diamond/es-diamond-v3-expire-timeout-recovery-01/BUSINESS-CONTINUITY-RESULT.md",
+        "docs/diamond/es-diamond-v3-expire-timeout-recovery-01/CANDIDATE-MANIFEST.json",
+        "docs/diamond/es-diamond-v3-expire-timeout-recovery-01/L3-REVIEW-RESULT.md",
+        "docs/diamond/es-diamond-v3-expire-timeout-recovery-01/ONE-TIME-COMPENSATION-PROPOSAL.md",
+        "docs/diamond/es-diamond-v3-expire-timeout-recovery-01/ONE-TIME-COMPENSATION-SEALED-DRAFT.json",
+        "docs/diamond/es-diamond-v3-expire-timeout-recovery-01/READINESS-AND-SCOPE.md",
+        "docs/diamond/es-diamond-v3-expire-timeout-recovery-01/RELEASE-AND-ROLLBACK-PLAN.md",
+        "docs/diamond/es-diamond-v3-expire-timeout-recovery-01/ROOT-CAUSE-AND-MINIMAL-FIX.md",
+        "docs/diamond/es-diamond-v3-expire-timeout-recovery-01/VALIDATION-AND-CORE-ADMISSION.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/BUILD-CI-EVIDENCE.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/CANDIDATE-MANIFEST.json",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/CHECKSUMS.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/COMMIT-SCOPE-AUDIT.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/FINAL-CANDIDATE-RESULT.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/FROZEN-SUCCESSOR-SEALED-DRAFT.json",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/KNOWN-RISKS.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/L3-CODE-REVIEW.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/L3-FROZEN-DRAFTS-LIMITED-REVIEW.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/PRODUCTION-RELEASE-PLAN.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/READINESS-AND-AUTHORIZATION.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REPOSITORY-OVERVIEW.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REVIEW-DISPOSITION.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/REVIEW-MANIFEST.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/SCOPE-BOUNDARY-AUDIT.md",
+        "docs/diamond/es-diamond-v3-timeout-compensation-01-review-evidence/TEST-COVERAGE-MATRIX.md",
+        "docs/freezes/ES-DIAMOND-P0-FOUNDER-QUEUE-RECOVERY-01.md",
+        "docs/freezes/ES-DIAMOND-V3-EXPIRE-TIMEOUT-COMPENSATION-01.md",
+        "docs/freezes/ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01.md",
+        "docs/freezes/ES-PRODUCT-COUNT-LIMIT-01-FROZEN-SUCCESSOR.md",
+        "lib/cashier-offline-db.ts",
+        "lib/customer-order-fulfillment.ts",
+        "scripts/test/manifests/root-core-tests.json",
+        "tests/cashier-realtime-integration.test.ts",
+        "tests/customer-order-fulfillment-db.test.ts",
+        "tests/diamond-founder-recovery-readout.test.ts",
+        "tests/es-tray-device-print-contract.test.ts",
+        "tests/es-tray-device-print-runtime.test.ts",
+        "tests/inventory-profit-ui.test.ts",
+        "tests/product-sku-search.test.ts",
+        "tests/v2-invariance-extension-points.test.cjs",
+        "tests/v2-invariance-service-regions.test.cjs",
+        "tests/v3-print-control-plane-contract.test.cjs",
+        "tests/v3-print-control-plane-service.test.ts",
+        "tests/v3-reprint-recovery.test.ts"
+      ],
+      "expectedBaselineDelta": [
+        "docs/change-gates/exceptions/ES-DIAMOND-CASHIER-EXACT-BOUNDARY-01.json",
+        "docs/change-gates/exceptions/ES-DIAMOND-H5-MISSING-SEAL-SUCCESSOR-01.json",
+        "lib/customer-order-fulfillment.ts",
+        "tests/customer-order-fulfillment-db.test.ts",
+        "tests/es-tray-device-print-runtime.test.ts"
+      ],
+      "baselineTest": "PASS (no changed paths, old branch inactive)",
+      "notBaselineProductFailure": true,
+      "downstreamAssertionsAfter736": "NOT EXECUTED (not PASS)"
+    },
+    "customerFailureIdentity": {
+      "assertions": [
+        "test.ts:91:503!=200",
+        "test.ts:109:503!=200",
+        "test.ts:127:999!=1",
+        "test.ts:152:503!=200"
+      ],
+      "source": "lib/customer-order-fulfillment.ts:374 unstubbed eshopTrayPrintJob.findUnique against synthetic unreachable fixture",
+      "baselineTest": "same four failures"
+    },
+    "disposition": "DRAFT_NOT_ACTIVE",
+    "previousDispositionInherited": false
+  },
+  "review": {
+    "codeStatus": "PASS",
+    "formalReleaseStatus": "BLOCKED",
+    "rawResultSha256": "28a12bf6cca0e1376ac9a033b57b1dfd15de03dfdf02d416c5deb48938bdd0d4",
+    "rawFile": "CLAUDE-L3-REVIEW.json",
+    "candidate": "b86ac6a953a3e98b602f820b016fe9c59e444eeb",
+    "release": "dcda3b473c06b1f2fde3a99dad915df667096e30",
+    "freshContext": true,
+    "readOnly": true,
+    "governanceClarification": "PASS for NOT ACTIVE draft preparation only; frozen test edits are optional separate repair, not mandatory current gate",
+    "nonBlocking": "fixed10s ceiling not structural arbitrary-backlog cure; old pre-type-cast run not separate exact diff proof, exact release and CORE run final code",
+    "governanceRawResultSha256": "42ccc2efdb605577865f9fd74e30beb5bd5204cbf9afd42b37943a0c0647ddb1",
+    "governanceRawFile": "CLAUDE-GOVERNANCE-REVIEW.json",
+    "missingReleaseGate": "New exact Founder Approval record + trusted main integration + fresh release checks + Production and recovery authority"
+  },
+  "verification": {
+    "typescript": {
+      "exitCode": 0,
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--incremental",
+        "false"
+      ],
+      "socketOnlyFixture": true,
+      "productionConnection": false
+    },
+    "build": {
+      "exitCode": 0,
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "socketOnlyFixture": true,
+      "productionConnection": false
+    },
+    "targeted": {
+      "exitCode": 0,
+      "command": [
+        "node",
+        "node_modules/tsx/dist/cli.mjs",
+        "--test",
+        "tests/v3-print-control-plane-service.test.ts",
+        "tests/v3-print-control-plane-contract.test.cjs",
+        "tests/diamond-founder-recovery-readout.test.ts",
+        "tests/v3-print-job-adapter.test.ts",
+        "tests/v3-reprint-recovery.test.ts",
+        "tests/es-tray-device-print-contract.test.ts",
+        "tests/v2-invariance-frozen-files.test.cjs",
+        "tests/v2-invariance-service-regions.test.cjs",
+        "tests/v2-invariance-extension-points.test.cjs"
+      ],
+      "socketOnlyFixture": true,
+      "productionConnection": false
+    },
+    "release-targeted": {
+      "exitCode": 0,
+      "command": [
+        "node",
+        "node_modules/tsx/dist/cli.mjs",
+        "--test",
+        "tests/v3-print-control-plane-service.test.ts",
+        "tests/v3-print-control-plane-contract.test.cjs",
+        "tests/diamond-founder-recovery-readout.test.ts",
+        "tests/v3-print-job-adapter.test.ts",
+        "tests/v3-reprint-recovery.test.ts",
+        "tests/es-tray-device-print-contract.test.ts",
+        "tests/v2-invariance-frozen-files.test.cjs",
+        "tests/v2-invariance-service-regions.test.cjs",
+        "tests/v2-invariance-extension-points.test.cjs"
+      ],
+      "socketOnlyFixture": true,
+      "productionConnection": false
+    },
+    "release-build": {
+      "exitCode": 0,
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "socketOnlyFixture": true,
+      "productionConnection": false
+    },
+    "sourceTargetedProvenance": "precommit runtime-identical run; subsequent changes were payload TS casts only; exact releaseSha rerun148PASS and CORE executed final source candidate service test"
+  },
+  "preservedInvariants": {
+    "onlyRuntimeDelta": "FINALIZE_V3_ACTIVE timeout10000 plus erased TS annotation/comment",
+    "reviewExpireByteEqual": true,
+    "callbackByteEqual": true,
+    "unchanged": {
+      "lib/v3-print-control-plane.ts": "ae2c872ce60efde7cbed31c4a3486ecb93b9cdad401c99278290348868696b47",
+      "lib/v3-print-job-adapter.ts": "31542879b2703153f4985af09033e78a390feef2aae853083d25bd1a4e34ca7e",
+      "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/route.ts": "3992c42d5271e2909632641dda989dba840b5daefde638da2cbd10b38215766b",
+      "lib/context.ts": "1147a0395ffdd42349d8a7c9bb2b287971852e7dfc35680a5c81f69589022d8c",
+      "lib/ops-auth.ts": "c496d5121cf0aea0cbb1be367a135537b18f548848480454ad16ec47ad5e4540",
+      "prisma/schema.prisma": "8c70351a1d9b12eb4b5a0f82ba39e001825ca0b9702cd2d25f729c410b85828b",
+      "tests/cashier-realtime-integration.test.ts": "4a76962e28336391d30810d4476d2bad3b94eb09c0496a1649b13d0cd4757dc3",
+      "scripts/test/manifests/root-core-tests.json": "be7b3d97d93f63ff6a09ee807621614a43f78b810a2ca0270050bd1e78d8d4a2"
+    }
+  },
+  "evidenceRoot": "desktop/release/ES-DIAMOND-V3-FINALIZE-TIMEOUT-RECOVERY-01/candidate-b86ac6a9"
+}
