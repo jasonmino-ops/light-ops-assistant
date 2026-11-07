@@ -1,6 +1,9 @@
+import { spawn } from 'node:child_process'
+import { EventEmitter } from 'node:events'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NoPayloadEndpointReadiness } from '../src/main/printing/endpointReadiness'
 import { createExecutionLedger } from '../src/main/printing/executionLedger'
@@ -13,6 +16,8 @@ import { WindowsUsbPrintBoundary } from '../src/main/printing/windowsUsbPrintBou
 import { V3PrintingRuntime } from '../src/main/printing/v3PrintingRuntime'
 import type { V3ControlPlaneRuntime } from '../src/main/printing/controlPlaneRuntime'
 import type { V3PrintJobClient } from '../src/main/printing/v3PrintJobClient'
+
+vi.mock('node:child_process', { spy: true })
 
 vi.mock('electron', () => ({
   safeStorage: {
@@ -86,6 +91,36 @@ async function runtime(boundary: WindowsUsbPrintBoundary, isOwner = () => true) 
 }
 
 describe('Diamond USB FRONT', () => {
+  it.each([
+    { replyAtMs: 3154, ready: true },
+    { replyAtMs: 5001, ready: false },
+  ])('admits only READY within the USB probe budget ($replyAtMs ms)', async ({ replyAtMs, ready }) => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      kill: vi.fn(),
+    })
+    const messages: string[] = []
+    child.stdin.on('data', (data) => messages.push(data.toString()))
+    vi.useFakeTimers()
+    vi.stubGlobal('process', Object.create(process, { platform: { value: 'win32' } }))
+    vi.stubEnv('SystemRoot', 'C:\\Windows')
+    vi.mocked(spawn).mockReturnValueOnce(child as unknown as ReturnType<typeof spawn>)
+    try {
+      const probe = new WindowsUsbPrintBoundary().isReady(key)
+      setTimeout(() => child.stdout.write('READY\n'), replyAtMs)
+      await vi.advanceTimersByTimeAsync(replyAtMs)
+      expect(await probe).toBe(ready)
+      expect(messages).toEqual([JSON.stringify({ endpoint: usb, mode: 'probe' }) + '\n'])
+      expect(child.kill).toHaveBeenCalledTimes(1)
+    } finally {
+      child.stdout.destroy()
+      vi.useRealTimers()
+      vi.unstubAllEnvs()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('restricts the encrypted endpoint to Diamond FRONT and preserves TCP KITCHEN', async () => {
     const root = await tempRoot()
     const authority = new LocalEndpointAuthority(root, identity, storage)
