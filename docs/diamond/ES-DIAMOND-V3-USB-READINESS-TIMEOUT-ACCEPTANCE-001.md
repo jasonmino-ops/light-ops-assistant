@@ -93,3 +93,31 @@ SEALED DRAFT. Scope is only Diamond, DESKTOP-N39GSA4 and the existing USB002 FRO
   }
 }
 ```
+
+
+## Founder Approval — limited registration PR #39
+
+The sealed draft above is retained verbatim. This append-only record registers the exact repository OWNER approval. It becomes operative after verified main integration.
+
+```json
+{
+  "status": "FOUNDER_APPROVED_LIMITED_REGISTRATION_PENDING_MAIN_INTEGRATION",
+  "authority": "Workflow V1 \u00a76.2 / ES-ENG-001 / Design Freeze V1.4 ESC-2",
+  "acceptanceSha256": "adf540213b0ea8316188aaf637113e824d69c28e548a46d07ba66a1e14767a7f",
+  "commentId": 6707022958,
+  "author": "jasonmino-ops",
+  "ownerId": 268623006,
+  "commentUrl": "https://github.com/jasonmino-ops/light-ops-assistant/pull/39#issuecomment-6707022958",
+  "signedAt": "2026-11-07T12:36:08Z",
+  "commentSha256": "28ed4b0daf7ea84c2b563cc195ad8eb04faaa22a38b5fb38f5edb0ef3a7d866c",
+  "sealedHead": "6d94d36d72b290641537b1c9f6bedb885d886312",
+  "product": "0e8d4d0a50ef6a47718896aae09e472668044d2f",
+  "installerSource": "ad4db0f476a574e7c60def0cca4fbfd624af181d",
+  "installerSha256": "275c5d87ce1a4912b5b8b309834f98953219b369642a41ab8015a49ae715b994",
+  "rollbackInstallerSha256": "4644f91e2aad10a26355487a0530d60d73518799d11b49125390f1235e7d0f54",
+  "deadlineExclusive": "2026-11-08T00:00:00Z",
+  "conditions": "Normal main integration and post-merge verification; original CORE BLOCKED retained; host and physical FIELD gates apply. Cloud release unchanged.",
+  "reviewedPrefixSha256": "adf540213b0ea8316188aaf637113e824d69c28e548a46d07ba66a1e14767a7f",
+  "reviewedPrefixBytes": 5356
+}
+```
