@@ -670,3 +670,89 @@ test('Cashier keeps the original path before V3 IPC when canonical order identit
   assert.match(cashier, /result\?\.status === 'V2_FALLBACK_REQUIRED' && result\.reason == null && acceptedRoles\.length === 0/)
   assert.doesNotMatch(cashier, /result\?\.status === 'V2_FALLBACK_REQUIRED' && acceptedRoles\.length === 0/)
 })
+
+
+// ES-DIAMOND-V3-FINALIZE-HELD-UPDATE-OPTIMIZATION-01: exact snapshot bulk CAS.
+async function heldFixture(count: number) {
+  const db = database()
+  await enqueueHeldV3PrintIntent(db as any, scope, intent(), expiresAt)
+  const template = structuredClone(db.jobs[0])
+  db.jobs.length = 0
+  for (let i = 0; i < count; i++) db.jobs.push({ ...structuredClone(template), id: `held-${i}`,
+    idempotencyKey: `held-key-${i}`, payload: intent({ printJobId: `held-key-${i}`, role: i % 2 ? 'KITCHEN' : 'FRONT' }),
+    expiresAt: i % 2 ? new Date(now.getTime()-1) : expiresAt })
+  return db
+}
+
+test('held V3 bulk release uses exact scoped snapshot CAS and bounded SQL chunks without a backlog cap', async () => {
+  const db = await heldFixture(2001)
+  const before = structuredClone(db.jobs)
+  const updates: any[] = []
+  const original = db.eshopTrayPrintJob.updateMany
+  db.eshopTrayPrintJob.updateMany = async (args: any) => { updates.push(args); return original(args) }
+  assert.equal(await materializeHeldV3PrintIntents(db as any, scope, 'V3_ACTIVE', now), 2001)
+  assert.deepEqual(updates.map(x => x.where.id.in.length), [1000, 1000, 1])
+  assert.deepEqual(updates.flatMap(x => x.where.id.in), before.map((x: any) => x.id))
+  for (const call of updates) {
+    assert.deepEqual(call.where, { ...scope, id: call.where.id, schemaVersion: 3,
+      status: 'PENDING', completedAt: null, resultMessage: 'V3_DURABLY_HELD' })
+    assert.deepEqual(call.data, { resultMessage: null, nextAttemptAt: now })
+  }
+  for (const [i, job] of db.jobs.entries()) assert.deepEqual(job, { ...before[i], resultMessage: null, nextAttemptAt: now })
+  assert.equal(await materializeHeldV3PrintIntents(db as any, scope, 'V3_ACTIVE', now), 0)
+  assert.equal(updates.length, 3, 'repeat/recovery scan never releases a job twice')
+})
+
+test('held V3 validates the complete snapshot before any chunk write', async () => {
+  const db = await heldFixture(1001)
+  db.jobs[1000].payload.payloadHash = '0'.repeat(64)
+  const before = structuredClone(db.jobs)
+  let writes = 0
+  db.eshopTrayPrintJob.updateMany = async () => { writes++; return { count: 1000 } }
+  await assert.rejects(materializeHeldV3PrintIntents(db as any, scope, 'V3_ACTIVE', now), /V3_HELD_INTENT_CORRUPT/)
+  assert.equal(writes, 0)
+  assert.deepEqual(db.jobs, before)
+})
+
+test('held V3 excludes late unvalidated arrivals and a later existing recovery scan releases only those arrivals', async () => {
+  const db = await heldFixture(2)
+  const findMany = db.eshopTrayPrintJob.findMany
+  let inserted = false
+  db.eshopTrayPrintJob.findMany = async (args: any) => {
+    const snapshot = await findMany(args)
+    if (!inserted) {
+      inserted = true
+      db.jobs.push({ ...structuredClone(db.jobs[0]), id: 'late-held', idempotencyKey: 'late-held-key',
+        payload: intent({ printJobId: 'late-held-key' }) })
+    }
+    return snapshot
+  }
+  assert.equal(await materializeHeldV3PrintIntents(db as any, scope, 'V3_ACTIVE', now), 2)
+  assert.equal(db.jobs[2].resultMessage, 'V3_DURABLY_HELD')
+  const firstReleased = structuredClone(db.jobs.slice(0,2))
+  assert.equal(await materializeHeldV3PrintIntents(db as any, scope, 'V3_ACTIVE', now), 1)
+  assert.deepEqual(db.jobs.slice(0,2), firstReleased)
+  assert.equal(db.jobs[2].resultMessage, null)
+  assert.equal(await materializeHeldV3PrintIntents(db as any, scope, 'V3_ACTIVE', now), 0)
+})
+
+for (const count of [0, 1, 3]) test(`held V3 rejects mismatched affected count ${count} for two validated ids`, async () => {
+  const db = await heldFixture(2)
+  db.eshopTrayPrintJob.updateMany = async () => ({ count })
+  await assert.rejects(materializeHeldV3PrintIntents(db as any, scope, 'V3_ACTIVE', now), /V3_HELD_MATERIALIZATION_RACE/)
+})
+
+test('held V3 empty, ACK, expired-terminal, unknown execution and other-scope rows are never selected', async () => {
+  const db = await heldFixture(1)
+  const template = structuredClone(db.jobs[0])
+  db.jobs.length = 0
+  for (const change of [{ status: 'SUCCEEDED', completedAt: now, effectBoundary: 'CROSSED' },
+    { status: 'EXPIRED', completedAt: now }, { status: 'EXECUTING', effectBoundary: 'CROSSING_UNKNOWN' },
+    { tenantId: 'other-tenant' }, { storeId: 'other-store' }]) db.jobs.push({ ...structuredClone(template), ...change })
+  const before = structuredClone(db.jobs)
+  let calls = 0
+  db.eshopTrayPrintJob.updateMany = async () => { calls++; return { count: 0 } }
+  assert.equal(await materializeHeldV3PrintIntents(db as any, scope, 'V3_ACTIVE', now), 0)
+  assert.equal(calls, 0)
+  assert.deepEqual(db.jobs, before)
+})
