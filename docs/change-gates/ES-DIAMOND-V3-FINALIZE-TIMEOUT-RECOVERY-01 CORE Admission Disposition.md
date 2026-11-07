@@ -174,3 +174,59 @@ Post-merge disappearance of the candidate-triggered admission failure is a recov
 
 ## Explicit Founder decision requested — no test edits
 The bounded proposal is to accept ONLY the exact two raw failures above as admission background for the sealed candidate/release before2026-11-08T00:00Z, while retaining CORE BLOCKED, all frozen test/assertion/KTF/manifest bytes and unexecuted-assertion truth. This is an ES-ENG-001 “Exception to a frozen baseline” / Workflow V1§6.2 formal asset decision, never an automatic waiver based on this chat or code PASS. A refreshed hardcoded test baseline is an alternative separate frozen-test change requiring its own exact authorization; it is NOT included in this candidate. If the Founder declines bounded red admission, the release stays BLOCKED. Previous approved EXPIRE registration is a mechanism precedent only; its SHA/expiry/role/job grant is NOT inherited.
+
+
+## FOUNDER APPROVAL — OPERATIVE LIMITED REGISTRATION (PR #34)
+
+The preceding reviewed draft is retained byte-for-byte as historical content. This additive registration supersedes only its NOT ACTIVE / preparation-only status upon the exact trusted-main integration condition below. Genuine external Founder signature, not executor self-approval: [jasonmino-ops comment 6699695536](https://github.com/jasonmino-ops/light-ops-assistant/pull/34#issuecomment-6699695536). It signs the exact original Acceptance body SHA256 0b428dc421ccb8a40e6bff0bd73fcdc179bf5eb97726d75ba5de5bec0f1ba544 and approves this task's bounded frozen successor/CORE disposition, controlled merge/release and subsequent conditional FINALIZE. No product code, previous approval, safety contract, failure result, deadline or task scope is changed. No formal gate is treated as already executed.
+
+```json
+{
+  "status": "FOUNDER_APPROVED_LIMITED_REGISTRATION_PENDING_MAIN_INTEGRATION",
+  "authorizationId": "ES-DIAMOND-V3-FINALIZE-TIMEOUT-RECOVERY-01-PR34",
+  "approvalAuthority": "Founder",
+  "recordedBy": "Codex executor, not approving Founder",
+  "formalApproval": {
+    "url": "https://github.com/jasonmino-ops/light-ops-assistant/pull/34#issuecomment-6699695536",
+    "commentId": 6699695536,
+    "author": "jasonmino-ops",
+    "authorId": 268623006,
+    "association": "OWNER",
+    "createdAt": "2026-11-07T00:36:55Z",
+    "updatedAt": "2026-11-07T00:36:55Z",
+    "rawCommentSha256": "736e0a0e8b6d13fa653a8e6c5800e3052d762850ab5763fa6a8bb615aec1d4d3",
+    "acceptanceBodySha256": "0b428dc421ccb8a40e6bff0bd73fcdc179bf5eb97726d75ba5de5bec0f1ba544"
+  },
+  "reviewedBodySha256": "425a4357a3864dcff7d58830adae7d2210e622bb300159b4e9ef558c32bbd397",
+  "reviewedBodyBytes": 12971,
+  "productCandidate": "b86ac6a953a3e98b602f820b016fe9c59e444eeb",
+  "reviewedGovernanceCommit": "6f53e8b07d615e8022edcaf34308b9b81587199e",
+  "productPathSha256": {
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts": "97ab7b428ea560e032a16228f9befc00ea7387c2e5383d06665d404692d92339",
+    "tests/v3-print-control-plane-service.test.ts": "4d3e108567da12a38d0e62c5fef5a982332134f6df11db22e306e9f1e9ab69b4"
+  },
+  "releaseCandidate": "dcda3b473c06b1f2fde3a99dad915df667096e30",
+  "releaseTree": "9765fcbb0586fa36aecfd0bd8b587ff4b21a29cb",
+  "productionParent": "1427131e94aba6a19c52dee61f531fec2c9213b3",
+  "baseOriginMainSha": "14dbe9783ae64966af316a33261b3fee7281dc1f",
+  "deadlineExclusive": "2026-11-08T00:00:00Z",
+  "codeReviewRawSha256": "28a12bf6cca0e1376ac9a033b57b1dfd15de03dfdf02d416c5deb48938bdd0d4",
+  "governanceDraftReviewRawSha256": "42ccc2efdb605577865f9fd74e30beb5bd5204cbf9afd42b37943a0c0647ddb1",
+  "rawCore": "103 executed /101 PASS /2 FAIL /0 SKIP /BLOCKED",
+  "rawCoreSummarySha256": "d398bfeb37826e3672794bba3481084e54db5d6121b0f19378cfbeaf0c587692",
+  "rawCoreLogSha256": "34076db37c0a8d4058e091ce0c3ba3c37e9e9b5b72ecb61584cc3a4473012290",
+  "effectiveCondition": "registration reviewed, committed and merged into trusted origin/main; exact approved product/prefix hashes; no extra failures or unreviewed scope; before exclusive cutoff",
+  "permittedAdmission": "only exact two enumerated raw CORE failure identities; not CORE PASS; unchanged frozen tests/assertions/KTF/manifests/registry; downstream unexecuted assertions remain unexecuted",
+  "integrationBinding": "later registration/merge SHA allowed only with candidate ancestry and unchanged product bytes, original draft prefixes and governance-only delta; release SHA/tree fixed; new required check on exact release SHA",
+  "noWindowExtension": true,
+  "noReviewExpireRepeat": true,
+  "runtimeGuards": "no waiver of SUPER_ADMIN/Installation/Owner/Lease/Fence, expected stateVersion, current queue/ACK/UNKNOWN/TTL/role protections; no automatic retry",
+  "fieldCondition": "Production READY and formal guards before actual FINALIZE; single owner, queue ACK and physical receipt confirmation required; no FIELD/CLOSED implied"
+}
+```
+
+### Acceptance Decision
+ACCEPTED WITH EXACT CONDITIONS by external Founder comment above. Recorder is Codex. Main integration, formal selective validator/new candidate-bound App SUCCESS and Production READY remain separately verified execution gates. No old PR/App status or expired admission is inherited. Cutoff is unchanged; expiry or code/tree/parent/hash drift fails closed.
+
+### Level 0 Compliance / Acceptance Conditions
+ES-ENG-001 formal Founder Approval record precedes merge; frozen activation follows verified trusted-main integration. Initial103/101/2/BLOCKED remains immutable. Post-merge actual outcomes are separately recorded; disappearance of candidate-triggered admission failure is recovery, not retroactive PASS. No extra failed identity is admitted. Existing route, CAS/checks/audit atomicity, REVIEW/EXPIRE, old terminal jobs, Owner/Lease/Fence/identity, adapter, Desktop, orders/payment/cashier and roles/TTL stay unchanged. No migration or direct Production SQL writes. Only then may existing authenticated normal FINALIZE be run under the explicit current approval; uncertain outcomes require read-only audit/state checks before a separately justified retry. Do not regrant compensation or re-execute REVIEW/EXPIRE.
