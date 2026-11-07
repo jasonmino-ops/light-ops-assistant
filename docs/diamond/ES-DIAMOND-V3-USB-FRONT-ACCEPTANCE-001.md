@@ -56,3 +56,46 @@ Recovery and rollback preserve the ledger, outbox, and unknown effects. Restore 
   "deviceInstanceSha256": "ff3bdd97d851ffe43a52f1f4758396a71e97b0a8c4a8d246e13785d668eef5cb"
 }
 ```
+
+
+## Founder Approval — Limited Registration (PR #38)
+
+The sealed draft above remains verbatim. The GitHub repository owner approved the exact Acceptance in a separate Conversation comment. The Founder separately confirmed the readable RAW test receipt on site. Formal admission depends on verified main integration and all remaining conditions.
+
+```json
+{
+  "status": "FOUNDER_APPROVED_LIMITED_REGISTRATION_PENDING_MAIN_INTEGRATION",
+  "authority": "Workflow V1 §6.2, ES-ENG-001, Design Freeze V1.4 ESC-2",
+  "acceptanceSha256": "04ca17c121455bcbd47eb6914bb45c2b2960c539e94b05904b1a1acc07f3d700",
+  "sealedGovernanceHead": "2448dac95590f1eee784eed58ee19ae358fee61e",
+  "author": "jasonmino-ops",
+  "authorId": 268623006,
+  "association": "OWNER",
+  "commentId": 6704559701,
+  "commentUrl": "https://github.com/jasonmino-ops/light-ops-assistant/pull/38#issuecomment-6704559701",
+  "commentCreatedAt": "2026-11-07T08:35:14Z",
+  "commentSha256": "c4de78591636b20f93f03e9d02e5bc036fed043eb4b93091c0cee3ea14a30047",
+  "deadlineExclusive": "2026-11-08T00:00:00Z",
+  "rawPhysicalField": {
+    "status": "PASS",
+    "witness": "Founder physical FIELD confirmation in the task conversation",
+    "jobId": 3,
+    "port": "USB002",
+    "readableLines": [
+      "DIAMOND FRONT USB RAW TEST",
+      "FIELD 83ed568e - NO SALE",
+      "USB002 - TEST RECEIPT ONLY"
+    ],
+    "spoolerEvidenceSha256": "45cefd7735f8312b7165cb5632de858c2e3a17468bee2084183331d343a6f87e",
+    "scope": "Synthetic standalone RAW receipt only"
+  },
+  "product": "83ed568e9b76da9b07218457696d26ae03e7e4f6",
+  "installerSource": "fb1826d709f528eb83a8e04e16b8e410c5054ec0",
+  "installerSha256": "4644f91e2aad10a26355487a0530d60d73518799d11b49125390f1235e7d0f54",
+  "rollbackInstallerSha256": "088e996ff7730fc292cfc9e812ae1769926cfbf5f527506398a540cc38f28ab7",
+  "core": "103 executed / 101 PASS / 2 FAIL / BLOCKED",
+  "conditions": "Only the two precisely recorded failures and the approved paths. Effective upon verified protected main integration. Fresh matching post-merge CORE, host readiness and exact installer checks are required before installation. The cloud release ref is outside scope.",
+  "reviewedPrefixSha256": "04ca17c121455bcbd47eb6914bb45c2b2960c539e94b05904b1a1acc07f3d700",
+  "reviewedPrefixBytes": 4736
+}
+```
