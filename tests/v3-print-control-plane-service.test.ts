@@ -1107,9 +1107,9 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
           if (name === 'eshopTrayPrintJob') return { ...inner.eshopTrayPrintJob,
             updateMany: async (args: Prisma.EshopTrayPrintJobUpdateManyArgs) => {
               heldWrites++
-              // Some held rows and audit/CAS have already been written when
-              // the injected delay or CAS failure occurs; all must roll back.
-              if (heldWrites === 11) {
+              // The mode CAS and audit precede the bulk held write; every
+              // failure must still roll back the entire transaction.
+              if (heldWrites === 1) {
                 if (options.delayMs) await new Promise(resolve => setTimeout(resolve, options.delayMs))
                 if (options.failHeldCas) return { count: 0 }
               }
@@ -1125,12 +1125,12 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
   const finalizeWith = (db: OpsPrintControlDb) => runOpsPrintModeAction(db, finalizeInput, startedAt)
   const expiredTransaction = (error: unknown) => !!error && typeof error === 'object' && 'code' in error && error.code === 'P2028'
 
-  await t.test('FINALIZE reproduces default 5s expiry mid-held-loop and rolls back audit, mode and partial held writes', async () => {
+  await t.test('FINALIZE reproduces default 5s expiry before bulk held write and rolls back audit and mode', async () => {
     await resetFinalize()
     const before = await finalizeSnapshot()
     const delayed = finalizeDb({ delayMs: 5_700, legacyBudget: true })
     await assert.rejects(finalizeWith(delayed.db), expiredTransaction)
-    assert.equal(delayed.heldWrites(), 11)
+    assert.equal(delayed.heldWrites(), 1)
     assert.deepEqual(await finalizeSnapshot(), before)
   })
   await t.test('FINALIZE commits a slow 21-held transition atomically and duplicate requests have no side effects', async () => {
@@ -1140,7 +1140,7 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
     const result = await finalizeWith(delayed.db)
     assert.ok(result.ok, JSON.stringify(result))
     assert.deepEqual(delayed.budgets, [{ isolationLevel: 'Serializable', timeout: 10_000 }])
-    assert.equal(delayed.heldWrites(), 21)
+    assert.equal(delayed.heldWrites(), 1)
     const after = await finalizeSnapshot()
     assert.equal(after.plane[0].mode, 'V3_ACTIVE')
     assert.equal(after.plane[0].stateVersion, 10)
@@ -1167,7 +1167,7 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
     const newVersionDuplicate = await runOpsPrintModeAction(delayed.db, { ...finalizeInput, expectedStateVersion: 10 }, startedAt)
     assert.equal(newVersionDuplicate.ok, false)
     if (!newVersionDuplicate.ok) assert.equal(newVersionDuplicate.code, 'ACTION_NOT_AVAILABLE')
-    assert.equal(delayed.heldWrites(), 21)
+    assert.equal(delayed.heldWrites(), 1)
     assert.deepEqual(await finalizeSnapshot(), after)
   })
   await t.test('FINALIZE remains bounded at 10s and rolls back all partial materialization', async () => {
@@ -1176,7 +1176,7 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
     await assert.rejects(finalizeWith(finalizeDb({ delayMs: 10_300 }).db), expiredTransaction)
     assert.deepEqual(await finalizeSnapshot(), before)
   })
-  await t.test('FINALIZE audit failure, mode CAS failure and mid-held CAS failure preserve every row', async () => {
+  await t.test('FINALIZE audit failure, mode CAS failure and bulk held CAS failure preserve every row', async () => {
     for (const options of [{ failAudit: true }, { failModeCas: true }, { failHeldCas: true }]) {
       await resetFinalize()
       const before = await finalizeSnapshot()
@@ -1203,6 +1203,65 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
     assert.equal(after.jobs.filter(job => heldIds.includes(job.id) && job.resultMessage === null).length, 21)
     assert.equal(after.jobs.filter(job => job.status === 'EXPIRED' && job.effectBoundary === 'NOT_CROSSED').length, 3)
   })
+
+  // Bulk boundaries must preserve the same atomicity as the former per-row loop.
+  async function addSecondHeldChunk() {
+    const template = await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: heldIds[0] } })
+    const rows = Array.from({ length: 980 }, (_, i) => {
+      const id = `held-extra-${String(i).padStart(4, '0')}`
+      return { ...template, id, idempotencyKey: id,
+        payload: { ...(template.payload as Prisma.InputJsonObject), printJobId: id } }
+    })
+    await prisma.eshopTrayPrintJob.createMany({ data: rows })
+  }
+  function secondChunkDb(failure: 'count' | 'throw' | 'disconnect' | 'timeout' | 'none') {
+    let calls = 0
+    const db = new Proxy(prisma, { get(target, key) {
+      if (key !== '$transaction') return Reflect.get(target, key)
+      return (work: (tx: Prisma.TransactionClient) => Promise<unknown>, config: any) =>
+        target.$transaction(async tx => work(new Proxy(tx, { get(inner, name) {
+          if (name !== 'eshopTrayPrintJob') return Reflect.get(inner, name)
+          return { ...inner.eshopTrayPrintJob, updateMany: async (args: Prisma.EshopTrayPrintJobUpdateManyArgs) => {
+            calls++
+            if (calls === 2) {
+              if (failure === 'throw') throw new Error('INJECTED_INTERRUPTION_AFTER_FIRST_CHUNK')
+              if (failure === 'disconnect') {
+                const [backend] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`
+                await pool.query('SELECT pg_terminate_backend($1)', [backend.pid])
+              }
+              if (failure === 'timeout') await new Promise(resolve => setTimeout(resolve, 10_300))
+              if (failure === 'count') {
+                // Real partial UPDATE, not just a forged count: omit one validated id.
+                const ids = (args.where!.id as { in: string[] }).in
+                return inner.eshopTrayPrintJob.updateMany({ ...args, where: { ...args.where, id: { in: ids.slice(1) } } })
+              }
+            }
+            return inner.eshopTrayPrintJob.updateMany(args)
+          } }
+        } })), config)
+    } }) as unknown as OpsPrintControlDb
+    return { db, calls: () => calls }
+  }
+  for (const failure of ['count', 'throw', 'disconnect', 'timeout'] as const) {
+    await t.test(`FINALIZE second held chunk ${failure} rolls back earlier chunks, mode, audit and permits safe retry`, async () => {
+      await resetFinalize(); await addSecondHeldChunk()
+      const before = await finalizeSnapshot()
+      const failing = secondChunkDb(failure)
+      await assert.rejects(finalizeWith(failing.db), failure === 'count' ? /V3_HELD_MATERIALIZATION_RACE/
+        : failure === 'throw' ? /INJECTED_INTERRUPTION_AFTER_FIRST_CHUNK/ : () => true)
+      assert.equal(failing.calls(), 2)
+      assert.deepEqual(await finalizeSnapshot(), before)
+      // A fresh request after known rollback sees the original snapshot, never partial release.
+      const recovered = secondChunkDb('none')
+      assert.ok((await finalizeWith(recovered.db)).ok)
+      assert.equal(recovered.calls(), 2)
+      const after = await finalizeSnapshot()
+      assert.equal(after.audits.length, 1)
+      assert.equal(after.plane[0].mode, 'V3_ACTIVE')
+      assert.equal(after.jobs.filter(j => j.resultMessage === null && j.status === 'PENDING').length, 1001)
+      assert.equal(after.jobs.filter(j => j.status === 'EXPIRED' && j.effectBoundary === 'NOT_CROSSED').length, 3)
+    })
+  }
 
   // Real isolated PostgreSQL transactions. Delay is injected at the same
   // boundary as the Production failure: after job writes, before SUCCESS audit.

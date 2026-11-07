@@ -84,6 +84,7 @@ export function parseV3PrintIntent(value: unknown): V3Intent | null {
 }
 
 const HELD_MARKER = 'V3_DURABLY_HELD'
+const HELD_RELEASE_CHUNK_SIZE = 1000
 
 export async function enqueueHeldV3PrintIntent(db: Db, scope: { tenantId: string; storeId: string }, intent: V3Intent, expiresAt: Date) {
   const ownedScope = persistenceScope(scope)
@@ -109,16 +110,24 @@ export async function materializeHeldV3PrintIntents(
   const jobs = await (db.eshopTrayPrintJob as any).findMany({ where: {
     ...ownedScope, schemaVersion: 3, status: 'PENDING', completedAt: null, resultMessage: HELD_MARKER,
   } }) as EshopTrayPrintJob[]
+  if (target === 'V3_ACTIVE') {
+    // Validate the entire snapshot before releasing anything. Exact ids exclude
+    // later arrivals; every chunk keeps the original row CAS in the caller's
+    // transaction. A short count aborts mode, audit and all preceding chunks.
+    for (const job of jobs) if (!parse(job.payload)) throw new Error('V3_HELD_INTENT_CORRUPT')
+    // Bound SQL parameters, not backlog size; all chunks share the same commit.
+    for (let offset = 0; offset < jobs.length; offset += HELD_RELEASE_CHUNK_SIZE) {
+      const ids = jobs.slice(offset, offset + HELD_RELEASE_CHUNK_SIZE).map(job => job.id)
+      const updated = await db.eshopTrayPrintJob.updateMany({ where: {
+        ...ownedScope, id: { in: ids }, schemaVersion: 3, status: 'PENDING', completedAt: null, resultMessage: HELD_MARKER,
+      }, data: { resultMessage: null, nextAttemptAt: now } })
+      if (updated.count !== ids.length) throw new Error('V3_HELD_MATERIALIZATION_RACE')
+    }
+    return jobs.length
+  }
   for (const job of jobs) {
     const intent = parse(job.payload)
     if (!intent) throw new Error('V3_HELD_INTENT_CORRUPT')
-    if (target === 'V3_ACTIVE') {
-      const updated = await db.eshopTrayPrintJob.updateMany({ where: {
-        id: job.id, schemaVersion: 3, status: 'PENDING', completedAt: null, resultMessage: HELD_MARKER,
-      }, data: { resultMessage: null, nextAttemptAt: now } })
-      if (updated.count !== 1) throw new Error('V3_HELD_MATERIALIZATION_RACE')
-      continue
-    }
     const payload: EshopTrayPrintRequest | NetworkRequest = intent.payloadKind === 'NETWORK_REQUEST'
       ? intent.networkRequest
       : {
