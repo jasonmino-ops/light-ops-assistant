@@ -7,7 +7,7 @@ import { WINDOWS_USB_SPOOLER_SCRIPT } from './windowsUsbSpoolerScript'
 import { logger } from '../logger'
 
 const MAX_BYTES = 3 * 1024 * 1024
-const PROBE_TIMEOUT_MS = 3_000
+const PROBE_TIMEOUT_MS = 5_000
 const SUBMISSION_TIMEOUT_MS = 10_000
 const ENCODED_SCRIPT = Buffer.from(WINDOWS_USB_SPOOLER_SCRIPT, 'utf16le').toString('base64')
 
