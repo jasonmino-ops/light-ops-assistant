@@ -2,10 +2,11 @@ import { safeStorage } from 'electron'
 import { mkdir, open, readFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ActivationSecretSafeStorage } from '../activation/activationTypes'
+import { isDiamondUsbIdentity, parseWindowsUsbEndpoint, windowsUsbEndpointKey, type WindowsUsbEndpoint } from './windowsUsbEndpoint'
 
 export type PrinterRole = 'FRONT' | 'KITCHEN'
 export type LocalEndpointIdentity = { storeId: string; deviceId: string }
-export type LocalEndpoint = { host: string; port: number }
+export type LocalEndpoint = { host: string; port: number } | WindowsUsbEndpoint
 export type ConfiguredLocalEndpoint = { role: PrinterRole; endpointKey: string }
 type EndpointDocument = {
   schemaVersion: 1
@@ -30,6 +31,10 @@ function endpoint(value: unknown): LocalEndpoint | null {
   if (!(a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168))) return null
   return { host: row.host, port: Number(row.port) }
 }
+function endpointKey(endpoint: LocalEndpoint): string {
+  return 'kind' in endpoint ? windowsUsbEndpointKey(endpoint) : `${endpoint.host}:${endpoint.port}`
+}
+
 function document(value: unknown): EndpointDocument | null {
   const row = record(value), identity = record(row?.identity), endpoints = record(row?.endpoints)
   if (!row || Object.keys(row).sort().join(',') !== 'endpoints,identity,revision,schemaVersion' || row.schemaVersion !== 1 ||
@@ -39,7 +44,9 @@ function document(value: unknown): EndpointDocument | null {
   const parsed: Partial<Record<PrinterRole, LocalEndpoint>> = {}
   for (const role of ROLES) {
     if (!(role in endpoints)) continue
-    const value = endpoint(endpoints[role])
+    const tcp = endpoint(endpoints[role])
+    const value = tcp ?? (role === 'FRONT' && isDiamondUsbIdentity(identity.storeId, identity.deviceId)
+      ? parseWindowsUsbEndpoint(endpoints[role]) : null)
     if (!value) return null
     parsed[role] = value
   }
@@ -60,7 +67,7 @@ export class LocalEndpointAuthority {
     const loaded = await this.read()
     if (!loaded.ok) return loaded
     const selected = loaded.value.endpoints[role]
-    return selected ? { ok: true, endpointKey: `${selected.host}:${selected.port}` } : { ok: false, code: `ENDPOINT_${role}_MISSING` }
+    return selected ? { ok: true, endpointKey: endpointKey(selected) } : { ok: false, code: `ENDPOINT_${role}_MISSING` }
   }
 
   public async configuredForRecovery(): Promise<
@@ -70,7 +77,7 @@ export class LocalEndpointAuthority {
     if (!loaded.ok) return loaded
     const endpoints = [...ROLES].flatMap((role) => {
       const selected = loaded.value.endpoints[role]
-      return selected ? [{ role, endpointKey: `${selected.host}:${selected.port}` }] : []
+      return selected ? [{ role, endpointKey: endpointKey(selected) }] : []
     })
     return endpoints.length > 0 ? { ok: true, endpoints } : { ok: false, code: 'ENDPOINT_CONFIG_EMPTY' }
   }

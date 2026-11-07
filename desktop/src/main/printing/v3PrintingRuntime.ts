@@ -7,6 +7,8 @@ import { createExecutionLedger, type ExecutionLedger } from './executionLedger'
 import { ExecutionOutbox } from './executionOutbox'
 import { EndpointMutex } from './endpointMutex'
 import { RawTcpEffectBoundary } from './rawTcpEffectBoundary'
+import { WindowsUsbPrintBoundary } from './windowsUsbPrintBoundary'
+import { isWindowsUsbEndpointKey } from './windowsUsbEndpoint'
 import { SharedPrintingCore, type SharedPrintIdentity } from './sharedPrintingCore'
 import type { V3ControlPlaneRuntime } from './controlPlaneRuntime'
 import type { ExecutionBatchProjection } from './controlPlaneClient'
@@ -80,9 +82,11 @@ export class V3PrintingRuntime {
     await outbox.open()
     const releaseBlocked = await hasDurableCrossingUnknown(options.userDataPath) ||
       outbox.list().some(({ outcome }) => outcome === 'CROSSING_UNKNOWN')
-    const shared = new SharedPrintingCore(
+    const tcp = new RawTcpEffectBoundary(options.tcpTimeoutMs ?? 10_000)
+    const usb = new WindowsUsbPrintBoundary()
+    const shared = new SharedPrintingCore<Uint8Array>(
       ledger,
-      new RawTcpEffectBoundary(options.tcpTimeoutMs ?? 10_000),
+      { cross: (input) => isWindowsUsbEndpointKey(input.endpointKey) ? usb.cross(input) : tcp.cross(input) },
       new EndpointMutex({ root: options.userDataPath, staleRecovery: recovery }),
     )
     const authority = {
@@ -104,7 +108,8 @@ export class V3PrintingRuntime {
     } }
     const runtime = new V3PrintingRuntime(ledger, new LocalFirstPrintCoordinator(authority, shared, outbox, mode), options.controlPlane,
       new LocalEndpointAuthority(options.userDataPath, { storeId: options.storeId, deviceId: options.deviceId }), outbox,
-      options.cloud ?? null, options.cloudPollIntervalMs ?? 2_000, new V3NetworkRenderer(), releaseBlocked)
+      options.cloud ?? null, options.cloudPollIntervalMs ?? 2_000, new V3NetworkRenderer(), releaseBlocked,
+      new NoPayloadEndpointReadiness(undefined, undefined, (key) => usb.isReady(key)))
     return runtime
   }
 

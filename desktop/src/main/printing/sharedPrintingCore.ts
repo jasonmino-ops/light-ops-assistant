@@ -1,3 +1,7 @@
+export type CrossingProof =
+  | { allBytesWritten: true; flushAndFinConfirmed: true }
+  | { spoolerJobId: number; rawDocumentCommitted: true };
+
 export type SharedLedgerState =
   | "NOT_CROSSED"
   | "CROSSING_UNKNOWN"
@@ -44,18 +48,16 @@ export interface SharedPrintingLedgerPort {
     zeroBytesSent: true;
     lastErrorCode?: string;
   }): Promise<PortResult<SharedLedgerRecord>>;
-  markCrossed(proof: {
+  markCrossed(proof: CrossingProof & {
     printJobId: string;
     expectedExecutionId: string;
     expectedStateVersion: number;
-    allBytesWritten: true;
-    flushAndFinConfirmed: true;
   }): Promise<PortResult<SharedLedgerRecord>>;
 }
 
 export type EffectBoundaryResult =
   | { outcome: "NOT_CROSSED"; zeroBytesSent: true; errorCode?: string }
-  | { outcome: "CROSSED"; allBytesWritten: true; flushAndFinConfirmed: true }
+  | ({ outcome: "CROSSED" } & CrossingProof)
   | { outcome: "UNKNOWN"; reason: string };
 
 export interface PrintingEffectBoundary<TPayload> {
@@ -196,11 +198,10 @@ export class SharedPrintingCore<TPayload> {
         : { status: "REJECTED", error: completed.error };
     }
 
-    const completed = await this.ledger.markCrossed({
-      ...guard(crossing.value.record),
-      allBytesWritten: true,
-      flushAndFinConfirmed: true,
-    });
+    const proof: CrossingProof = "spoolerJobId" in outcome
+      ? { spoolerJobId: outcome.spoolerJobId, rawDocumentCommitted: outcome.rawDocumentCommitted }
+      : { allBytesWritten: outcome.allBytesWritten, flushAndFinConfirmed: outcome.flushAndFinConfirmed };
+    const completed = await this.ledger.markCrossed({ ...guard(crossing.value.record), ...proof });
     return completed.ok
       ? { status: "CROSSED", record: completed.value }
       : { status: "REJECTED", error: completed.error };
