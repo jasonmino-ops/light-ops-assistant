@@ -1,0 +1,82 @@
+browser POS customer display entry tests passed
+✔ tests/browser-pos-customer-display-entry.test.ts (233.66625ms)
+customer display adapter tests passed
+✔ tests/customer-display-adapter.test.ts (314.980875ms)
+customer display cart sync static tests passed
+✔ tests/customer-display-cart-sync-static.test.ts (232.997ms)
+customer display panel state tests passed
+✔ tests/customer-display-panel-state.test.ts (220.681959ms)
+customer display persistent panel static tests passed
+✔ tests/customer-display-persistent-panel-static.test.ts (231.601417ms)
+customer display public entry URL tests passed
+✔ tests/customer-display-public-entry-url.test.ts (208.892ms)
+customer display realtime channel tests passed
+✔ tests/customer-display-realtime-channel.test.ts (219.604375ms)
+customer display session/current static KHQR tests passed
+✔ tests/customer-display-session-current-static.test.ts (230.504542ms)
+✔ purpose identity preserves both historical canonical keys and isolates unpaid FRONT; no raw-text downgrade (1.953042ms)
+✔ kitchen intent is unpaid, explicit-route only, and hash/length use the same bytes (0.382875ms)
+✔ kitchen decision separates the store switch from immutable item markers (0.081541ms)
+✔ front intent refuses unpaid orders and maps QR only to the canonical KHQR label (0.122917ms)
+✔ PaymentIntent payload preserves offline H5 actor and canonical payment semantics (0.085416ms)
+✔ renderer gate keeps durable intent visible and prevents unapproved delivery (0.829958ms)
+✔ terminal no-print intents are not misreported as cancellation races (0.807875ms)
+✔ test-only presealed raster exercises create, cancel, and repeat idempotency (1.14675ms)
+✔ home consumes business and print outcomes without exposing raw queue diagnostics (0.929584ms)
+✔ C: JSON key order changes do not change producer identity or association (0.589666ms)
+✔ C: existing job rejects changed tenant (0.387ms)
+✔ C: existing job rejects changed store (0.291375ms)
+✔ C: existing job rejects changed key (0.289208ms)
+✔ C: existing job rejects changed schema (0.228666ms)
+✔ C: existing job rejects changed order (0.193209ms)
+✔ C: existing job rejects changed role (0.184292ms)
+✔ C: existing job rejects changed source (0.16625ms)
+✔ C: existing job rejects changed payloadKey (0.179625ms)
+✔ C: existing job rejects changed payloadSchema (0.286708ms)
+✔ C: existing job rejects changed payloadVersion (0.233417ms)
+✔ C: existing job rejects changed payloadKind (0.173041ms)
+✔ C: existing job rejects changed bytes (0.16875ms)
+✔ C: existing job rejects changed length (0.12675ms)
+✔ C: existing job rejects changed sha (0.128042ms)
+✔ C: existing job rejects changed base64 (0.128334ms)
+✔ C: existing job rejects changed requestHash (0.128333ms)
+✔ B: rollback failures persist increasing backoff once per creation and stop at 12 (2.821583ms)
+✔ B: P2002 rolls back provisional attempt and only defers identity reconciliation (0.36075ms)
+✔ B: rollback accounting cannot overwrite another worker's linked result (0.3065ms)
+✔ B: rollback accounting cannot overwrite another worker's cancelled result (0.266416ms)
+✔ B: rollback accounting cannot overwrite another worker's revision result (0.158709ms)
+✔ B: unavailable failure-accounting transaction stays a runtime failure (0.220834ms)
+✔ B: deadline crossing during a failed attempt expires without refreshing the deadline (0.463208ms)
+✔ B: association CAS failure rolls the inserted job back before failure accounting (0.21675ms)
+[customer-order] submission transaction failed { code: 'UNKNOWN' }
+[customer-order] post-commit wake scheduling failed
+[customer-order] post-commit owner notification failed
+[customer-order] submission transaction failed { code: 'P2010' }
+[customer-order] submission transaction failed { code: 'P2010' }
+[customer-order] submission transaction failed { code: 'P2010' }
+[customer-order] submission transaction failed { code: 'P2010' }
+[customer-order] submission transaction failed { code: 'P2002' }
+✔ real public POST preserves original/discount prices, quantities and kitchen fields with coupons and immutable retries (74.995042ms)
+✔ real public POST uses full price when discount is disabled or absent and caps coupon at the discounted subtotal (1.337542ms)
+✔ real public POST applies percentage and minimum-spend rules to the discounted subtotal, not the original subtotal (0.646292ms)
+✔ public submission requires UUID key before any database call (0.331875ms)
+✔ coupon CAS conflict is explicitly not committed, unlike an accepted-key identity conflict (0.612292ms)
+✔ same normalized request and reordered object keys replay immutable receipt; fresh key permits additional order (0.614375ms)
+✔ same key rejects changed consumed fields without mutation or repeat notifications (0.85275ms)
+✔ coupon, receipt and order roll back together; retry reuses key; committed coupon replay is not re-redeemed (1.481458ms)
+✔ post-commit scheduling/owner failures do not turn accepted order into 500 (0.342958ms)
+✔ numeric sequence preserves >9999 without wrap; orderNo P2002 retries outside failed transaction (0.488042ms)
+✔ structured retryable errors preserve same-key instruction; unrelated SQL errors stay failures (0.861208ms)
+✔ submission-key unique conflict without a verifiable receipt is not invented success; unknown constraints not swallowed (0.458417ms)
+product discount V0.1 static checks passed
+✔ tests/product-discount-v01-static.test.ts (410.28875ms)
+product recommendation and kitchen routing attributes: cases passed
+✔ tests/product-recommendation-v01.test.ts (240.646958ms)
+ℹ tests 56
+ℹ suites 0
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 458.10525

@@ -1,0 +1,10 @@
+{
+  "mode": "local replay of prior read-only Production snapshot; in-memory query adapter; not live DB/HTTP latency",
+  "snapshotObservedAt": "2026-11-05T13:43:16.681165+00:00",
+  "expected": 2096,
+  "returned": 2096,
+  "missing": 0,
+  "previouslyOmittedRecovered": 1896,
+  "batches": 11,
+  "elapsedMs": 3.516291999999993
+}
