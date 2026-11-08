@@ -28,8 +28,8 @@ export async function generateRecordNo(
   tenantId: string,
   storeId: string,
   storeCode: string,
+  now = new Date(),
 ): Promise<string> {
-  const now = new Date()
   const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '') // yyyyMMdd UTC
 
   const startOfDay = new Date(now)
