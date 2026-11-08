@@ -42,9 +42,13 @@ export type PublicMenuDatabase = {
   }
   product: {
     findMany(args: {
-      where: { tenantId: string; status: 'ACTIVE' }
+      where: {
+        tenantId: string
+        status: 'ACTIVE'
+        OR?: [{ name: { gt: string } }, { name: string; id: { gt: string } }]
+      }
       select: typeof PRODUCT_SELECT
-      orderBy: { name: 'asc' }
+      orderBy: [{ name: 'asc' }, { id: 'asc' }]
       take: number
     }): Promise<MenuProductRecord[]>
   }
@@ -54,6 +58,31 @@ export type PublicMenuDatabase = {
       select: typeof CATEGORY_SELECT
       orderBy: Array<{ sortOrder: 'asc' } | { name: 'asc' }>
     }): Promise<PublicMenuCategory[]>
+  }
+}
+
+const PRODUCT_PAGE_SIZE = 200
+
+async function loadActiveProducts(tenantId: string, db: PublicMenuDatabase): Promise<MenuProductRecord[]> {
+  const products: MenuProductRecord[] = []
+  let after: { name: string; id: string } | undefined
+  for (;;) {
+    const where: Parameters<PublicMenuDatabase['product']['findMany']>[0]['where'] = {
+      tenantId, status: 'ACTIVE',
+    }
+    if (after) where.OR = [{ name: { gt: after.name } }, { name: after.name, id: { gt: after.id } }]
+    const page = await db.product.findMany({
+      where,
+      select: PRODUCT_SELECT,
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: PRODUCT_PAGE_SIZE,
+    })
+    products.push(...page)
+    // This bounds each query, never the catalog. Do not return a partial
+    // success if a later query fails. The id tie-breaker retains same-name rows.
+    if (page.length < PRODUCT_PAGE_SIZE) return products
+    const last = page[page.length - 1]
+    after = { name: last.name, id: last.id }
   }
 }
 
@@ -79,12 +108,7 @@ export async function loadPublicMenuCatalog(
   // Stores within one tenant intentionally share this catalog; no storeId
   // product ownership or second menu catalog is introduced here.
   const [products, categories] = await Promise.all([
-    db.product.findMany({
-      where: { tenantId: store.tenantId, status: 'ACTIVE' },
-      select: PRODUCT_SELECT,
-      orderBy: { name: 'asc' },
-      take: 200,
-    }),
+    loadActiveProducts(store.tenantId, db),
     db.productCategory.findMany({
       where: { tenantId: store.tenantId },
       select: CATEGORY_SELECT,

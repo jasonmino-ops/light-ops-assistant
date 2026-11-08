@@ -1,0 +1,29 @@
+✔ public URL/code validation is exact, bounded and independent of merchant identity (0.662459ms)
+✔ unknown and inactive stores fail before catalog reads; active empty store remains valid (0.950791ms)
+✔ store selection isolates tenant catalog and preserves same-tenant sharing with store-specific presentation (0.29025ms)
+✔ shared catalog selects existing columns and completes every query batch without changing the public projection (0.686125ms)
+✔ actual legacy GET and shared display projection have identical catalog, discount and stored-media projections (3.614042ms)
+✔ complete catalogs cross exact batch boundaries and grow past the audited 2096 products without a total cap (77.756417ms)
+✔ a failure after the first catalog batch rejects both public endpoints rather than succeeding with missing products (1.24125ms)
+✔ large catalogs complete independently for different tenants while same-tenant stores still share the catalog (4.500709ms)
+✔ both actual public routes return all 2096 eligible IDs with unchanged prices, details, categories and privacy (16.454666ms)
+✔ legacy GET preserves its complete store, binding, marketing and catalog response (0.737541ms)
+✔ both endpoints use identical public catalog queries while the display excludes legacy-only reads and fields (0.512417ms)
+✔ legacy GET keeps its existing missing-code, lookup, selector and failure behavior (3.578417ms)
+✔ grouping retains product/category order, iced-coffee priority and every orphan product (0.2315ms)
+✔ three-language display falls back exactly to Chinese and original catalog values (0.112958ms)
+✔ GET rejects ambiguous selectors and malformed codes before any query, with no-store errors (0.898833ms)
+✔ anonymous repeat GET refreshes data without writes or identity-based selection (0.447292ms)
+✔ database failures produce generic retryable errors without leaking internal details (0.277334ms)
+product discount V0.1 static checks passed
+✔ tests/product-discount-v01-static.test.ts (320.7045ms)
+product recommendation and kitchen routing attributes: cases passed
+✔ tests/product-recommendation-v01.test.ts (268.994ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 432.008834

@@ -1,0 +1,8 @@
+{
+  "reviewer": "Claude",
+  "is_error": true,
+  "result": "Credit balance is too low",
+  "num_turns": 1,
+  "reviewPass": false,
+  "modelSubstitution": false
+}
