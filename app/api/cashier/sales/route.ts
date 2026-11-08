@@ -7,6 +7,7 @@
  *
  * Body: { storeCode, items: [{barcode, quantity}], paymentMethod: 'CASH'|'KHQR' }
  */
+import { setTimeout as delay } from 'node:timers/promises'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
@@ -36,6 +37,17 @@ function sugarZh(sugar: string): string {
   if (sugar === '75')       return '少糖 75%'
   if (sugar === '100')      return '正常糖 100%'
   return sugar
+}
+
+function recordNoAtOffset(firstRecordNo: string, offset: number) {
+  if (offset === 0) return firstRecordNo
+
+  const separatorIndex = firstRecordNo.lastIndexOf('-')
+  const firstSequence = Number(firstRecordNo.slice(separatorIndex + 1))
+  if (separatorIndex < 0 || !Number.isSafeInteger(firstSequence)) {
+    throw new Error('INVALID_GENERATED_RECORD_NO')
+  }
+  return `${firstRecordNo.slice(0, separatorIndex + 1)}${String(firstSequence + offset).padStart(4, '0')}`
 }
 
 export async function POST(req: NextRequest) {
@@ -168,45 +180,68 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      const orderNo = await generateRecordNo(tx, 'S', store.tenantId, store.id, store.code)
-      let totalAmount = 0
-      let firstCreatedAt: Date | null = null
-      let isFirst = true
-      const snapshotItems: NetworkSnapshot['items'] = []
-      const kitchenItems: NetworkSnapshot['items'] = []
+    const writeSale = () => prisma.$transaction(async (tx) => {
+      const recordClock = new Date()
+      // Preserve receipt order without backdating a line into a prior numbering or reporting day.
+      const cambodiaOffsetMs = 7 * 3_600_000
+      const utcDayStartMs = new Date(recordClock).setUTCHours(0, 0, 0, 0)
+      const reportDayStartMs = new Date(recordClock.getTime() + cambodiaOffsetMs).setUTCHours(0, 0, 0, 0) - cambodiaOffsetMs
+      const lineSpanMs = saleLines.length - 1
+      const firstLineMs = Math.max(utcDayStartMs, reportDayStartMs, recordClock.getTime() - lineSpanMs)
+      const lastLineMs = firstLineMs + lineSpanMs
+      // Release the transaction before waiting at a day boundary. No numbers or rows have been written.
+      if (lastLineMs > recordClock.getTime()) return { lineTimesReadyAt: lastLineMs } as const
 
-      for (const [index, line] of saleLines.entries()) {
-        const item = items[index]
+      const orderNo = await generateRecordNo(tx, 'S', store.tenantId, store.id, store.code, recordClock)
+      let totalAmount = 0
+      const saleRecordData = saleLines.map((line, index) => {
         const product = line.product
         totalAmount += line.lineAmount.toNumber()
+        const sugar = items[index].sugar
+        const sugarLabel = sugar ? sugarZh(sugar) : null
 
-        const recordNo = isFirst
-          ? orderNo
-          : await generateRecordNo(tx, 'S', store.tenantId, store.id, store.code)
-        isFirst = false
-
-        const sugarLabel = item.sugar ? sugarZh(item.sugar) : null
-        const specSnapshot = [product.spec ?? null, sugarLabel].filter(Boolean).join(' / ') || null
-
-        const record = await tx.saleRecord.create({
-          data: {
-            tenantId: store.tenantId,
-            storeId: store.id,
-            operatorUserId: posAuth.operatorUserId,
-            recordNo,
-            orderNo,
-            saleType: 'SALE',
-            status: 'COMPLETED',
-            productId: product.id,
-            productNameSnapshot: product.name,
-            specSnapshot,
-            ...productUnitSnapshot(line),
-            remark: khqrFallback ? '电脑收银台-KHQR兜底' : '电脑收银台',
-          },
-        })
-        if (!firstCreatedAt) firstCreatedAt = record.createdAt
-        if (network) {
+        return {
+          tenantId: store.tenantId,
+          storeId: store.id,
+          operatorUserId: posAuth.operatorUserId,
+          recordNo: recordNoAtOffset(orderNo, index),
+          orderNo,
+          createdAt: new Date(firstLineMs + index),
+          saleType: 'SALE' as const,
+          status: 'COMPLETED' as const,
+          productId: product.id,
+          productNameSnapshot: product.name,
+          specSnapshot: [product.spec ?? null, sugarLabel].filter(Boolean).join(' / ') || null,
+          ...productUnitSnapshot(line),
+          remark: khqrFallback ? '电脑收银台-KHQR兜底' : '电脑收银台',
+        }
+      })
+      const records = await tx.saleRecord.createManyAndReturn({
+        data: saleRecordData,
+        select: {
+          recordNo: true,
+          createdAt: true,
+          productNameSnapshot: true,
+          specSnapshot: true,
+          sellingUnitNameSnapshot: true,
+          sellingQuantity: true,
+          quantity: true,
+          unitPrice: true,
+          lineAmount: true,
+        },
+      })
+      const recordsByRecordNo = new Map(records.map((record) => [record.recordNo, record]))
+      const firstRecord = recordsByRecordNo.get(orderNo)
+      if (!firstRecord || recordsByRecordNo.size !== saleRecordData.length) {
+        throw new Error('SALE_RECORD_BATCH_RESULT_MISMATCH')
+      }
+      const createdAt = firstRecord.createdAt.toISOString()
+      const snapshotItems: NetworkSnapshot['items'] = []
+      const kitchenItems: NetworkSnapshot['items'] = []
+      if (network) {
+        for (const [index, { recordNo }] of saleRecordData.entries()) {
+          const record = recordsByRecordNo.get(recordNo)
+          if (!record) throw new Error('SALE_RECORD_BATCH_RESULT_MISMATCH')
           const snapshotItem: NetworkSnapshot['items'][number] = {
             name: record.productNameSnapshot,
             spec: [record.specSnapshot, record.sellingUnitNameSnapshot].filter(Boolean).join(' / ') || null,
@@ -214,7 +249,7 @@ export async function POST(req: NextRequest) {
             price: Number(record.unitPrice), lineAmount: Number(record.lineAmount),
           }
           snapshotItems.push(snapshotItem)
-          if (product.printKitchenTicket) kitchenItems.push(snapshotItem)
+          if (saleLines[index].product.printKitchenTicket) kitchenItems.push(snapshotItem)
         }
       }
 
@@ -227,6 +262,8 @@ export async function POST(req: NextRequest) {
         manualPaymentConfirmed === true,
       )
       const isPaid = paymentIntentStatus === 'PAID'
+      const paidAt = isPaid ? new Date() : null
+      if (paidAt && paidAt.getTime() < lastLineMs) throw new Error('SALE_RECORD_CLOCK_NOT_READY')
       const pi = await tx.paymentIntent.create({
         data: {
           tenantId: store.tenantId,
@@ -239,7 +276,7 @@ export async function POST(req: NextRequest) {
           khqrPayload,
           provider: khqrConfig?.provider ?? null,
           merchantConfigId: khqrConfig?.id ?? null,
-          paidAt: isPaid ? new Date() : null,
+          paidAt,
         },
       })
 
@@ -247,7 +284,7 @@ export async function POST(req: NextRequest) {
         tenantId: store.tenantId, storeId: store.id,
       }, {
         storeCode: store.code, storeName: store.name, orderNo,
-        createdAt: firstCreatedAt!.toISOString(), cashierName: 'Desktop POS',
+        createdAt, cashierName: 'Desktop POS',
         paymentMethod: paymentMethod as 'CASH' | 'KHQR', currencyCode: store.currencyCode,
         totalAmount, lang: effectivePrinting!.lang, items: snapshotItems,
       }, effectivePrinting!.mode, store.printKitchenTicket ? kitchenItems : []) : undefined
@@ -256,7 +293,7 @@ export async function POST(req: NextRequest) {
         orderNo,
         totalAmount,
         itemCount: items.length,
-        createdAt: firstCreatedAt!.toISOString(),
+        createdAt,
         paymentMethod,
         paymentIntentId: pi.id,
         khqrFallback,
@@ -264,6 +301,14 @@ export async function POST(req: NextRequest) {
       }
     })
 
+    let result = await writeSale()
+    if (result.lineTimesReadyAt !== undefined) {
+      const remainingMs = result.lineTimesReadyAt - Date.now()
+      if (remainingMs >= saleLines.length) throw new Error('SALE_RECORD_CLOCK_NOT_READY')
+      if (remainingMs >= 0) await delay(remainingMs + 1)
+      result = await writeSale()
+      if (result.lineTimesReadyAt !== undefined) throw new Error('SALE_RECORD_CLOCK_NOT_READY')
+    }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[POST /api/cashier/sales]', err)
