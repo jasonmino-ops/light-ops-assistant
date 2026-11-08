@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "taskId": "TASK-CASHIER-SALES-TX-TIMEOUT-01",
+  "featureBranch": "codex/cashier-sales-tx-timeout-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "cf255a1b3d0ec302e2ccc0e832160a43be849652",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/api/cashier/sales/route.ts",
+    "lib/record-no.ts"
+  ],
+  "authorizedPathSha256": {
+    "app/api/cashier/sales/route.ts": "5a3a4a8a739fb811df67daddb6279170ab761ac58b5709f1142b798a84447ccb",
+    "lib/record-no.ts": "16030c67a8724f7f23d85f62cc1a3f457d694d63e1577db47acee6d0275a19e1"
+  },
+  "reason": "Authorize only the exact cashier transaction batch draft and optional clock anchor; keep SaleRecord, PaymentIntent and print job atomicity and preserve historical receipt ordering.",
+  "prohibitedChanges": [
+    "Production data or checkout",
+    "Database schema or migration",
+    "Candidate push or feature merge",
+    "Preview or Production deployment",
+    "Release branch changes"
+  ],
+  "closeAfter": "FEATURE_MERGE",
+  "approvedBy": "Founder",
+  "createdAt": "2026-11-08T04:56:15Z",
+  "approvedAt": "2026-11-08T04:56:15Z",
+  "approvalSource": {
+    "source": "Founder explicit authorization in this task",
+    "statement": "授权通过治理分支、PR 和合并，仅将本任务的例外 JSON 注册到可信 origin/main。",
+    "scopeStatement": "Exact sealed SHA256SUMS for the two named files on codex/cashier-sales-tx-timeout-01; isolated implementation and testing only.",
+    "approvedAtMeaning": "Registration timestamp for the authorization already received in the task."
+  }
+}
