@@ -789,6 +789,27 @@ async function main() {
         assert.equal(sha256(committed), digest, `Diamond committed content changed: ${path}`)
       }
     }
+  } else if (currentBranch === 'codex/cashier-sales-tx-timeout-01' && diamondChanged.length > 0) {
+    // This successor only admits the exact checkout package under the trusted active grant.
+    const taskId = 'TASK-CASHIER-SALES-TX-TIMEOUT-01'
+    const paths = ['app/api/cashier/sales/route.ts', 'lib/record-no.ts', 'tests/cashier-realtime-integration.test.ts']
+    const exceptionPath = `docs/change-gates/exceptions/${taskId}.json`
+    const exception = JSON.parse(gitPaths('show', `origin/main:${exceptionPath}`).join('\n'))
+    assert.ok(gitIsAncestor('origin/main', 'HEAD'), 'Cashier timeout candidate must descend from trusted main')
+    assert.deepEqual([...exception.authorizedPaths].sort(), paths, 'Cashier timeout grant must name only this package')
+    assert.deepEqual([...diamondChanged].sort(), paths, 'Cashier timeout candidate must contain exactly the sealed paths')
+    assertBoundary(diamondChanged, new Set(paths))
+    execFileSync(process.execPath, [
+      'scripts/guards/check-change-scope.js', '--task-id', taskId, '--files', paths.join(','),
+    ], { cwd: root, stdio: 'inherit' })
+    const staged = gitPaths('diff', '--cached', '--no-renames', '--name-only', 'HEAD')
+    for (const [ref, files] of [['', staged], ['HEAD', diamondCommitted]] as const) {
+      for (const path of files) {
+        const bytes = execFileSync('git', ['show', `${ref}:${path}`], { cwd: root })
+        assert.equal(createHash('sha256').update(bytes).digest('hex'), exception.authorizedPathSha256[path],
+          `Cashier timeout ${ref || 'index'} SHA-256 mismatch: ${path}`)
+      }
+    }
   } else {
     // ES-CASHIER-COST-01 exclusions and the existing H5/Dine-in approved set
     // retain their prior semantics. Closed historical grants are not reopened.
