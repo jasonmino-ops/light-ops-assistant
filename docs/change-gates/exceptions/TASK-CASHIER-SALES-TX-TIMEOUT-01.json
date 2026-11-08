@@ -3,19 +3,21 @@
   "taskId": "TASK-CASHIER-SALES-TX-TIMEOUT-01",
   "featureBranch": "codex/cashier-sales-tx-timeout-01",
   "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-  "baseOriginMainSha": "cf255a1b3d0ec302e2ccc0e832160a43be849652",
+  "baseOriginMainSha": "190d0fe40e21040a6e86c2b96207f6777e4af1d5",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
   "status": "ACTIVE",
   "authorizedPaths": [
     "app/api/cashier/sales/route.ts",
-    "lib/record-no.ts"
+    "lib/record-no.ts",
+    "tests/cashier-realtime-integration.test.ts"
   ],
   "authorizedPathSha256": {
-    "app/api/cashier/sales/route.ts": "5a3a4a8a739fb811df67daddb6279170ab761ac58b5709f1142b798a84447ccb",
-    "lib/record-no.ts": "16030c67a8724f7f23d85f62cc1a3f457d694d63e1577db47acee6d0275a19e1"
+    "app/api/cashier/sales/route.ts": "f1035a0a311cd475efd41ce58d30f63f19c9ae7460ec107c96f8456bc726cd88",
+    "lib/record-no.ts": "16030c67a8724f7f23d85f62cc1a3f457d694d63e1577db47acee6d0275a19e1",
+    "tests/cashier-realtime-integration.test.ts": "d10fd1cf16c1c9b142ca76742e31a5928ba514384c4a347fea5d7630bb0bc3b8"
   },
-  "reason": "Authorize only the exact cashier transaction batch draft and optional clock anchor; keep SaleRecord, PaymentIntent and print job atomicity and preserve historical receipt ordering.",
+  "reason": "Register revised checkout batch and the exact task-bound legacy CORE scope compatibility test without expanding its historical allowlist.",
   "prohibitedChanges": [
     "Production data or checkout",
     "Database schema or migration",
@@ -24,13 +26,21 @@
     "Release branch changes"
   ],
   "closeAfter": "FEATURE_MERGE",
-  "approvedBy": "Founder",
   "createdAt": "2026-11-08T04:56:15Z",
-  "approvedAt": "2026-11-08T04:56:15Z",
+  "supersedes": {
+    "previousMainSha": "190d0fe40e21040a6e86c2b96207f6777e4af1d5",
+    "previousPathSha256": {
+      "app/api/cashier/sales/route.ts": "5a3a4a8a739fb811df67daddb6279170ab761ac58b5709f1142b798a84447ccb",
+      "lib/record-no.ts": "16030c67a8724f7f23d85f62cc1a3f457d694d63e1577db47acee6d0275a19e1"
+    },
+    "reason": "Formal candidate day boundary and exact legacy CORE compatibility findings"
+  },
+  "approvedBy": "Founder",
+  "approvedAt": "2026-11-08T05:38:53Z",
   "approvalSource": {
-    "source": "Founder explicit authorization in this task",
-    "statement": "授权通过治理分支、PR 和合并，仅将本任务的例外 JSON 注册到可信 origin/main。",
-    "scopeStatement": "Exact sealed SHA256SUMS for the two named files on codex/cashier-sales-tx-timeout-01; isolated implementation and testing only.",
-    "approvedAtMeaning": "Registration timestamp for the authorization already received in the task."
+    "source": "Founder explicit v4 authorization in this task",
+    "statement": "批准 TASK-CASHIER-SALES-TX-TIMEOUT-01 按已封存 v4 清单继续实施与验证，并批准仅针对本任务例外 JSON 的治理分支、PR、合并操作。",
+    "scopeStatement": "Only these exact three file digests, unchanged approved lib/record-no.ts digest, and governance-only JSON registration. No feature merge, deploy, migration, real order payment or installation.",
+    "approvedAtMeaning": "Registration time for the explicit v4 authorization already received."
   }
 }
