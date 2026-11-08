@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "task": "ES-ELIFE-PRODUCT-CATALOG-FIX-01",
+  "risk": "L2",
+  "base": "aa7f7a8f7be6b4af350cce959c877f5273d2e3d5",
+  "baseTree": "820e6eea6cfbbfcbbb9d1502d64e64ec5a121d9b",
+  "releaseBase": "faf25ecb1c9e16a97325c504ce59a753d0f38e0a",
+  "candidate": "2e25bb2e3f00788878dcebd177b6025de5c88fb2",
+  "candidateTree": "71689e42d774d8410c662783da5ea39f27fc7970",
+  "documentation": "df173c3cbdf0149e4614bcb24a4ef7be1fb10c90",
+  "product": "12dcf170e6646b0d9f4be6092fea850bfae9600c",
+  "expiresAt": "2026-11-15T08:00:00Z",
+  "paths": {
+    "docs/e-life/ES-ELIFE-PRODUCT-CATALOG-FIX-01-AUTHORIZATION.md": "ec66d4e3e4bfaf71a1d818acdfc8387369c22ddbec3b5fd089cf3d941cdc3355",
+    "docs/e-life/ES-ELIFE-PRODUCT-CATALOG-FIX-01-IMPLEMENTATION.md": "d34439b0149616237bf00ad8c4f3c24f0da91640cfe659fcf7b0e9ca2455e698",
+    "docs/e-life/ES-ELIFE-PRODUCT-CATALOG-FIX-01-READINESS.md": "849fd411f542d84cda4ae41faeeb33165a18fa7abba3190f4a2ce537a68fed4d",
+    "docs/e-life/catalog-fix-01-review-evidence/BUILD-CI-EVIDENCE.md": "b343566d2c7b2b27d5e0d2e308ad8cd036b0fca5985692f1302e28871b9b48ea",
+    "docs/e-life/catalog-fix-01-review-evidence/CHECKSUMS.md": "44b20f6aa54cf325d0ba4972c0b8cf63551a9d95a56dc841392d6e328c1d3d52",
+    "docs/e-life/catalog-fix-01-review-evidence/COMMIT-SCOPE-AUDIT.md": "e536ef64bbde4e0c5e567a54d727d0623e96e27c2a3dc09603bb894899b0c6f2",
+    "docs/e-life/catalog-fix-01-review-evidence/KNOWN-RISKS.md": "6b3f6c68d028c168e174c2dc0388eda1813e38eee3543bbbd4460c1b6790c56b",
+    "docs/e-life/catalog-fix-01-review-evidence/REPOSITORY-OVERVIEW.md": "a0850bfe66ec8b07986176c202194c1ae3ebee86a5556a0d71b89b7312737a2f",
+    "docs/e-life/catalog-fix-01-review-evidence/REVIEW-MANIFEST.md": "10cf6fe825bc25b34b2ecc2e035c06bdda09ee13c5cfbb1935ebd0248f831e8a",
+    "docs/e-life/catalog-fix-01-review-evidence/SCOPE-BOUNDARY-AUDIT.md": "28a94b0c2ef0f3809d1500aa0da0cb98a855715d806475a16b1608efb6be1c9d",
+    "docs/e-life/catalog-fix-01-review-evidence/TEST-COVERAGE-MATRIX.md": "f0871b9857fda25fbfc28be58e8eee3b8ab7e986c72e5c1b575d83153ac059d9",
+    "docs/e-life/catalog-fix-01-review-evidence/audit-replay.json": "9ae9740435f8b4cc59b7a6d4a36ce5c23f800c93cb74724b442f3a1b8145afec",
+    "docs/e-life/catalog-fix-01-review-evidence/baseline-order-comparison.json": "ecdd8632989bddfe669a6c86b30da9a866ed5875cb2e3f05f567f20c438b34c0",
+    "docs/e-life/catalog-fix-01-review-evidence/broader-checks.json": "ff68b1c97214b13099e9823d0b0e3c030983bbd4613e2dae412a28459d87d588",
+    "docs/e-life/catalog-fix-01-review-evidence/browser-performance.json": "8b8bec8f2409c92f3c354578f5a07c8dd02731a65b4ec2a349670a66475dba32",
+    "docs/e-life/catalog-fix-01-review-evidence/build.txt": "4875def0a0ee50b3e66ac513af49ea42f4f8d491390230f4998c02950a5fe73d",
+    "docs/e-life/catalog-fix-01-review-evidence/candidate-order-comparison.json": "ecdd8632989bddfe669a6c86b30da9a866ed5875cb2e3f05f567f20c438b34c0",
+    "docs/e-life/catalog-fix-01-review-evidence/catalog-tests.txt": "6b68d76409a4753690f4d98132a7c91bd9b11cc5b712c986c884fb9811c7792a",
+    "docs/e-life/catalog-fix-01-review-evidence/claude-review-status.json": "8030b019806486a01c136b15ea0ed58283f98c5fe1c39377c40c831fc616adc1",
+    "docs/e-life/catalog-fix-01-review-evidence/lineage.txt": "188c199926025bc78aee1eeeeec533d46aac7362f525d6085d9d517c3d226de6",
+    "docs/e-life/catalog-fix-01-review-evidence/protected-regressions.txt": "a8c08cb6f9d1885830b5d6254fa08b46a9b5042e785eb2fc27a5b3b273c4e8d9",
+    "docs/e-life/catalog-fix-01-review-evidence/scope-runtime.txt": "cd7d38ad69957e4ed8a7624f917ec030e7c8b20d33e618af1c4876ed77f4b498",
+    "docs/e-life/catalog-fix-01-review-evidence/typecheck.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/e-life/catalog-fix-01-review-evidence/unchanged-browser-proof.json": "c44132cc48cdf0253bbfde18259a5a39a0980fdf2e85feb4e903d9b756a0224c",
+    "lib/public-menu-data.ts": "26923d80842b66ee81a47e81c24599f848fa98d933e0f809b9f8b440c9288b1e",
+    "tests/e-life-product-catalog.browser.spec.ts": "8e5427f4e75b58bb25445d02b51b5227de519872d415fa9d669a3a50e32cda30",
+    "tests/electronic-menu-data.test.ts": "b2b780a00cc97f2c0ac1293d6d35723874f88c046bb8d32adb56284b9cd43655"
+  },
+  "productPaths": {
+    "lib/public-menu-data.ts": "26923d80842b66ee81a47e81c24599f848fa98d933e0f809b9f8b440c9288b1e",
+    "tests/e-life-product-catalog.browser.spec.ts": "8e5427f4e75b58bb25445d02b51b5227de519872d415fa9d669a3a50e32cda30",
+    "tests/electronic-menu-data.test.ts": "b2b780a00cc97f2c0ac1293d6d35723874f88c046bb8d32adb56284b9cd43655"
+  },
+  "unchanged": {
+    "tests/cashier-realtime-integration.test.ts": "d10fd1cf16c1c9b142ca76742e31a5928ba514384c4a347fea5d7630bb0bc3b8",
+    "docs/change-gates/exceptions/TASK-CASHIER-SALES-TX-TIMEOUT-01.json": "b45ef24069d0c2299095d20c931158ade7b2483f44d54fcf76e9ff3a7c3121ba",
+    "docs/change-gates/gate-config.json": "0410ac1629d87ea99d4089ef38184617a657e866282c0cc5c5048ce607fabd9f",
+    "scripts/guards/check-change-scope.js": "5081a836751f7bdcc0272e28e099e3a31ed9960b7a9254cb65c5108a1d502283",
+    "scripts/test/run-root-full-suite.mjs": "58d38e5a58fc6b76f5aa5fa74e2d000b354378992de5eec880cdd3bf1a35f221",
+    "scripts/test/manifests/root-core-tests.json": "be7b3d97d93f63ff6a09ee807621614a43f78b810a2ca0270050bd1e78d8d4a2",
+    "scripts/test/manifests/root-integration-tests.json": "740b7adb093b0a2a91814621da51b46fabec9c7bd59a1137b8fa0e5c221c7656",
+    "docs/change-gates/ES-PRINT-RC7-KNOWN-TEST-FAILURES.md": "7276b7901c643299abda73e10c6d24465909a7a2790bad63edf40dfbce67ee99",
+    "package-lock.json": "8e9e9c97cea6468bd0f6a5eefc1f46871fb3097226b30cdbd6e81142bb571a33"
+  },
+  "catalogEvidence": {
+    "docs/e-life/catalog-fix-01-review-evidence/audit-replay.json": "9ae9740435f8b4cc59b7a6d4a36ce5c23f800c93cb74724b442f3a1b8145afec",
+    "docs/e-life/catalog-fix-01-review-evidence/catalog-tests.txt": "6b68d76409a4753690f4d98132a7c91bd9b11cc5b712c986c884fb9811c7792a",
+    "docs/e-life/catalog-fix-01-review-evidence/protected-regressions.txt": "a8c08cb6f9d1885830b5d6254fa08b46a9b5042e785eb2fc27a5b3b273c4e8d9",
+    "docs/e-life/catalog-fix-01-review-evidence/browser-performance.json": "8b8bec8f2409c92f3c354578f5a07c8dd02731a65b4ec2a349670a66475dba32"
+  },
+  "evidence": {
+    "core-failures.json": "eb487be77dc5f74a7f06b6e6203821d5df2dc9907b374944c8b085d005d7b5a0",
+    "core-environment.json": "e232e747b14dba0e2c4f4e45d35c045a09a00d79af9d1a0caf9fe67db5b3e42b",
+    "core-baseline-raw.log": "db5a4b8dcd831bf58bc749f4a198307209d830c3533d10b01da2598a92f9b008",
+    "core-baseline-summary.json": "6de0697dc1220206441089661eb0b57f91e56ebc5ea3799cac75658936e38828",
+    "core-candidate-raw.log": "1af2bc3c4bb16b4e2fce2831db41da72a79d45060c51e0d8e7655a7cefedae21",
+    "core-candidate-summary.json": "ef540ea4d07efca96f885ce22ae94a7b4d30c0c42747a77509fe4e977726bdc5",
+    "integration-failures.json": "e803bec872625e0a5b18f5106da2308bec49470c3543a84377334156329cff9b",
+    "integration-environment.json": "b712c7ae2e35cd1ee9815b89f24f9e6a4963a453a5c9e0f15fe13fec7d21cc53",
+    "integration-baseline-raw.log": "bcc96f760206d21d078eb25a06c1cbca740e7cfa8f7fc405fbc9bc91c5fe3b2a",
+    "integration-baseline-summary.json": "53ce01c51e7259ee209d1e600e1b89cc55718c7e94ead1fc077ca27dc8522e24",
+    "integration-candidate-raw.log": "00e885d2ff380be203d8882c8da086f22009dbe08dfbe8e8cd9a4efdffbf2e65",
+    "integration-candidate-summary.json": "fae53eafb3092f3f60b966277834ca842167495d78a704fd06f4134de73a1d8f",
+    "core-disposition.json": "a1d7a3465fde65a3f7a62fa9001767bb7ce12cb93a35c558f3365df9e1d3ac76",
+    "integration-disposition.json": "ff8fe4d83791fb2002dbd74fd6ffb77e159f082294869f9255064260d24ee618",
+    "catalog-browser-result.json": "e5799697231586f79440645b72fe1425e8a0a80ed0df2c03c696a7a2b9030df0",
+    "catalog-browser-exit.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "candidate-build.txt": "8679394cb5a20084664f1e8ac668bfc8595170b0ae32acb54593a56f477238cb",
+    "evidence-reuse-readback.json": "130b21e078e99dcfc05a7c7c209faf28101a16c6b123d0744a7e427f2e33f170",
+    "core-code-review.md": "f0070bfeba3112d5934486f65473c0671e58e191bfdc4bb4a035eb1874f54b48",
+    "core-disposition-review.md": "56fec7635e9c19af37870c32607c71064687d3bef7a9b7bf448b33cb9809fc4f",
+    "integration-disposition-review.md": "6c6df8b7efb19e6908154c14d9e3a420f6ac9bd03fb273e7349fb02d49c0acb7",
+    "integration-isolation.log": "9e4e4f616eb1de21cbfbbc5885e6f6f0c02789b934a9f2f31f91c85082da4e66"
+  },
+  "lanes": {
+    "CORE": {
+      "baseline": {
+        "runIdentity": "20261108T082819Z-aa7f7a8f7be6",
+        "headSha": "aa7f7a8f7be6b4af350cce959c877f5273d2e3d5",
+        "manifestPath": "scripts/test/manifests/root-core-tests.json",
+        "manifestSha256": "be7b3d97d93f63ff6a09ee807621614a43f78b810a2ca0270050bd1e78d8d4a2",
+        "baselineSha256": "7276b7901c643299abda73e10c6d24465909a7a2790bad63edf40dfbce67ee99",
+        "raw": "core-baseline-raw.log",
+        "summary": "core-baseline-summary.json"
+      },
+      "candidate": {
+        "runIdentity": "20261108T082820Z-2e25bb2e3f00",
+        "headSha": "2e25bb2e3f00788878dcebd177b6025de5c88fb2",
+        "manifestPath": "scripts/test/manifests/root-core-tests.json",
+        "manifestSha256": "be7b3d97d93f63ff6a09ee807621614a43f78b810a2ca0270050bd1e78d8d4a2",
+        "baselineSha256": "7276b7901c643299abda73e10c6d24465909a7a2790bad63edf40dfbce67ee99",
+        "raw": "core-candidate-raw.log",
+        "summary": "core-candidate-summary.json"
+      }
+    },
+    "INTEGRATION": {
+      "baseline": {
+        "runIdentity": "20261108T091221Z-aa7f7a8f7be6",
+        "headSha": "aa7f7a8f7be6b4af350cce959c877f5273d2e3d5",
+        "manifestPath": "scripts/test/manifests/root-integration-tests.json",
+        "manifestSha256": "740b7adb093b0a2a91814621da51b46fabec9c7bd59a1137b8fa0e5c221c7656",
+        "baselineSha256": "7276b7901c643299abda73e10c6d24465909a7a2790bad63edf40dfbce67ee99",
+        "raw": "integration-baseline-raw.log",
+        "summary": "integration-baseline-summary.json"
+      },
+      "candidate": {
+        "runIdentity": "20261108T090819Z-2e25bb2e3f00",
+        "headSha": "2e25bb2e3f00788878dcebd177b6025de5c88fb2",
+        "manifestPath": "scripts/test/manifests/root-integration-tests.json",
+        "manifestSha256": "740b7adb093b0a2a91814621da51b46fabec9c7bd59a1137b8fa0e5c221c7656",
+        "baselineSha256": "7276b7901c643299abda73e10c6d24465909a7a2790bad63edf40dfbce67ee99",
+        "raw": "integration-candidate-raw.log",
+        "summary": "integration-candidate-summary.json"
+      }
+    }
+  },
+  "adoptionFiles": {
+    "docs/change-gates/source-admission/ES-ELIFE-PRODUCT-CATALOG-FIX-01.md": "21e261fa55e0d8c162380592ecf0fc0be2aaa29ab4a8d1b05674db05df9824f3",
+    "scripts/governance/es-elife-task-source-admission.test.mjs": "59356968c0d8fe6dd52a877965f8c988e5e83eb470831c1c8f98733fda9c639f"
+  }
+}
