@@ -29,7 +29,7 @@ afterEach(() => {
 const storeCode = 'STORE-A'
 const usb = { kind: 'windows-usb' as const, queueName: 'Front USB', portName: 'USB002', deviceInstanceId: 'USB\\VID_1234&PID_5678\\EXAMPLE' }
 const kitchen = { host: '192.168.1.22', port: 9100 }
-const batch = { id: 'batch-a', deviceId: 'device-a', storeId: 'store-a', ownerEpoch: 2, leaseId: 'lease-a' }
+const batch = { id: 'batch-a', ownerDeviceId: 'device-a', storeId: 'store-a', ownerEpoch: 2, leaseId: 'lease-a' }
 const read = { action: 'read', storeCode } as const
 const queues = { action: 'queues', storeCode } as const
 const test = { action: 'test', storeCode, revision: 4 } as const
@@ -52,14 +52,21 @@ function harness() {
   const outbox = { list: vi.fn((): { outcome: string }[] => []), listReportable: vi.fn(() => []) }
   const cloud = { receive: vi.fn(), report: vi.fn(), holdLocal: vi.fn() }
   const runTest = vi.fn(async (_request, _endpoint, validate) => {
-    if (!validate().ok) throw new Error('test authorization')
+    if (!(await validate()).ok) throw new Error('test authorization')
     return { status: 'CROSSED' }
   })
   const discover = vi.fn(async () => [usb])
+  const prove = vi.fn(async (endpoint: typeof kitchen) => ({
+    ...endpoint, localAddress: '192.168.1.10', network: 'route', mac: '02-12-34-56-78-aa',
+  }))
+  const runTcp = vi.fn(async (_role, _target, _revision, validate) => {
+    expect(await validate()).toEqual({ ok: true })
+    return { status: 'CROSSED' }
+  })
   const runtime = new (V3PrintingRuntime as any)({}, {}, controlPlane, endpoints, outbox, cloud, 60_000,
-    {}, false, undefined, undefined, runTest, storeCode, discover) as V3PrintingRuntime
+    {}, false, undefined, undefined, runTest, storeCode, discover, runTcp, prove) as V3PrintingRuntime
   Object.assign(runtime, { running: true, settingsReady: true, lifecycleGeneration: 1 })
-  return { runtime, controlPlane, endpoints, outbox, cloud, discover, runTest, complete, validateExecution }
+  return { runtime, controlPlane, endpoints, outbox, cloud, discover, runTest, complete, validateExecution, prove, runTcp }
 }
 
 describe('native device printing settings', () => {
@@ -73,6 +80,7 @@ describe('native device printing settings', () => {
     expect(h.endpoints.provision).not.toHaveBeenCalled()
     expect(h.cloud.receive).not.toHaveBeenCalled()
     expect(h.runTest).not.toHaveBeenCalled()
+    expect(h.prove).not.toHaveBeenCalled()
     expect(await h.runtime.printSettings({ ...read, storeCode: 'OTHER' })).toEqual({
       ok: false, code: 'PRINT_SETTINGS_STORE_MISMATCH',
     })
@@ -168,6 +176,89 @@ describe('settings IPC', () => {
     expect(await invoke(management, test)).toEqual({ ok: true, code: 'USB_TEST_SPOOLED' })
     expect(ipc.showMessageBox).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ defaultId: 0, cancelId: 0 }))
     expect(h.runTest).toHaveBeenCalledTimes(1)
+    expect(ipc.showMessageBox).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      detail: expect.stringContaining('FRONT · USB · Front USB (USB002)'),
+    }))
+  })
+
+  it.each(['FRONT', 'KITCHEN'] as const)('confirms the exact saved TCP %s target and uses the existing execution lifecycle', async (role) => {
+    const h = harness()
+    const front = { host: '192.168.1.15', port: 9200 }
+    h.endpoints.readSettings.mockResolvedValue({ ok: true, revision: 4, endpoints: { FRONT: front, KITCHEN: kitchen } } as never)
+    const selected = role === 'FRONT' ? front : kitchen
+    setV3PrintingRuntimeProvider(() => h.runtime)
+    registerIpcHandlers({ getRole: () => 'employee', getEmployeeWindow: () => ({
+      isDestroyed: () => false, webContents: { id: 1 },
+    }) } as unknown as WindowManager)
+    const handler = ipc.handle.mock.calls.find(([channel]) => channel === IPC_CHANNELS.V3_PRINT_SETTINGS)![1]
+    const mainFrame = { url: 'https://test.invalid/management' }
+    const event = { sender: { id: 1, mainFrame }, senderFrame: mainFrame } as IpcMainInvokeEvent
+    const input = { action: 'test-role', storeCode, revision: 4, role, transport: 'TCP' } as const
+    for (const invalid of [{ ...input, host: selected.host }, { ...input, role: 'KITCHEN', transport: 'USB' }]) {
+      expect(await handler(event, invalid)).toEqual({ ok: false, code: 'PRINT_SETTINGS_INPUT_INVALID' })
+    }
+    expect(await h.runtime.printSettings(input)).toEqual({ ok: false, code: 'PRINT_TEST_CONFIRMATION_REQUIRED' })
+    ipc.showMessageBox.mockResolvedValueOnce({ response: 0 })
+    expect(await handler(event, input)).toEqual({ ok: false, code: 'PRINT_SETTINGS_CANCELLED' })
+    expect(h.controlPlane.beginExecutionLifecycle).not.toHaveBeenCalled()
+    expect(h.runTcp).not.toHaveBeenCalled()
+    ipc.showMessageBox.mockResolvedValueOnce({ response: 1 })
+    h.controlPlane.validateAdmittedExecution.mockImplementation(() => {
+      expect(h.controlPlane.beginExecutionLifecycle).toHaveBeenCalledWith(batch)
+      return { ok: true }
+    })
+    expect(await handler(event, input)).toEqual({ ok: true, code: 'TCP_TEST_SENT' })
+    expect(ipc.showMessageBox).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
+      defaultId: 0, cancelId: 0, detail: expect.stringContaining(`${role} · TCP · ${selected.host}:${selected.port}`),
+    }))
+    expect(h.runTcp).toHaveBeenCalledWith(role, expect.objectContaining(selected), 4, expect.any(Function))
+    expect(h.complete).toHaveBeenCalledWith({ releaseSafe: true })
+    expect(h.runTest).not.toHaveBeenCalled()
+    expect(h.endpoints.provision).not.toHaveBeenCalled()
+    expect(h.cloud.receive).not.toHaveBeenCalled()
+    expect(h.cloud.report).not.toHaveBeenCalled()
+  })
+
+  it('rejects a changed TCP revision or endpoint and blocks both roles after UNKNOWN', async () => {
+    const h = harness()
+    const request = { action: 'test-role', storeCode, revision: 4, role: 'KITCHEN', transport: 'TCP' } as const
+    const prepared = await h.runtime.preparePrintTest(request)
+    if (!prepared.ok) throw Error(prepared.code)
+    h.endpoints.readSettings.mockResolvedValue({ ok: true, revision: 5, endpoints: { FRONT: usb, KITCHEN: kitchen } })
+    expect(await h.runtime.printSettings(request, prepared.test)).toEqual({ ok: false, code: 'ENDPOINT_CONFIG_REVISION_STALE' })
+    h.endpoints.readSettings.mockResolvedValue({ ok: true, revision: 4, endpoints: { FRONT: usb, KITCHEN: { ...kitchen, port: 9101 } } })
+    expect(await h.runtime.printSettings(request, prepared.test)).toEqual({ ok: false, code: 'PRINT_TEST_TARGET_CHANGED' })
+    expect(h.runTcp).not.toHaveBeenCalled()
+    h.endpoints.readSettings.mockResolvedValue({ ok: true, revision: 4, endpoints: { FRONT: usb, KITCHEN: kitchen } })
+    const next = await h.runtime.preparePrintTest(request)
+    if (!next.ok) throw Error(next.code)
+    h.runTcp.mockResolvedValueOnce({ status: 'CROSSING_UNKNOWN' })
+    expect(await h.runtime.printSettings(request, next.test)).toEqual({ ok: false, code: 'LOCAL_EFFECT_AMBIGUITY' })
+    expect(h.complete).toHaveBeenCalledWith({ releaseSafe: false })
+    expect(await h.runtime.printSettings(test)).toEqual({ ok: false, code: 'LOCAL_EFFECT_AMBIGUITY' })
+    expect(await h.runtime.preparePrintTest(request)).toEqual({ ok: false, code: 'LOCAL_EFFECT_AMBIGUITY' })
+    expect(h.runTcp).toHaveBeenCalledOnce()
+  })
+
+  it('rejects an expired confirmation, changed lease and cross-transport request before execution', async () => {
+    const h = harness()
+    const request = { action: 'test-role', storeCode, revision: 4, role: 'KITCHEN', transport: 'TCP' } as const
+    const old = vi.spyOn(performance, 'now').mockReturnValue(1000)
+    try {
+      const prepared = await h.runtime.preparePrintTest(request)
+      if (!prepared.ok) throw Error(prepared.code)
+      old.mockReturnValue(301000)
+      expect(await h.runtime.printSettings(request, prepared.test)).toEqual({ ok: false, code: 'PRINT_TEST_CONFIRMATION_EXPIRED' })
+    } finally {
+      old.mockRestore()
+    }
+    const next = await h.runtime.preparePrintTest(request)
+    if (!next.ok) throw Error(next.code)
+    h.controlPlane.current.mockReturnValue({ controlPlane: { mode: 'V3_ACTIVE' }, batch: { ...batch, leaseId: 'rotated' } })
+    expect(await h.runtime.printSettings(request, next.test)).toEqual({ ok: false, code: 'PRINT_SETTINGS_AUTHORITY_REQUIRED' })
+    expect(await h.runtime.preparePrintTest({ ...request, role: 'FRONT' })).toEqual({ ok: false, code: 'PRINT_TEST_TARGET_CHANGED' })
+    expect(h.runTcp).not.toHaveBeenCalled()
+    expect(h.controlPlane.beginExecutionLifecycle).not.toHaveBeenCalled()
   })
 })
 

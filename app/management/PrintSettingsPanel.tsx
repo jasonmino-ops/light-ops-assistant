@@ -29,6 +29,13 @@ const statusKeys: Record<string, string> = {
   USB_TEST_EXECUTION_UNVERIFIABLE: 'unknown',
   SETTINGS_SAVED: 'saved',
   USB_TEST_SPOOLED: 'spooled',
+  TCP_TEST_SENT: 'tcpSent',
+  TCP_TEST_FAILED_NOT_CROSSED: 'tcpNotSent',
+  TCP_TEST_UNAVAILABLE: 'tcpTestUnavailable',
+  TCP_TEST_TARGET_UNVERIFIED: 'tcpUnverified',
+  PRINT_TEST_TARGET_CHANGED: 'testTargetChanged',
+  PRINT_TEST_CONFIRMATION_REQUIRED: 'testRefreshFirst',
+  PRINT_TEST_CONFIRMATION_EXPIRED: 'testConfirmationExpired',
 }
 
 const additionalCodes = new Set([
@@ -68,7 +75,7 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
   const [saveFeedback, setSaveFeedback] = useState<Partial<Record<Role, SaveFeedback>>>({})
   const [needsRefresh, setNeedsRefresh] = useState(false)
   const [unknownCode, setUnknownCode] = useState<string | null>(null)
-  const [testLocked, setTestLocked] = useState(false)
+  const [testLocked, setTestLocked] = useState<Partial<Record<Role, boolean>>>({})
 
   const savedFront = state?.front
   const savedKitchen = state?.kitchen
@@ -119,6 +126,7 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
     setBusy(true)
     setStatus(null)
     if (request.action === 'save') updateSave(request.role)
+    const testRole = request.action === 'test-role' ? request.role : request.action === 'test' ? 'FRONT' : null
     try {
       const reply = await bridge.request(request)
       if (!reply.ok) {
@@ -126,7 +134,7 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
         if (request.action === 'read' || code === 'ENDPOINT_CONFIG_REVISION_STALE' || statusKeys[code] === 'authority') {
           setNeedsRefresh(true)
         }
-        if (code === 'LOCAL_EFFECT_AMBIGUITY' || (request.action === 'test' &&
+        if (code === 'LOCAL_EFFECT_AMBIGUITY' || (testRole &&
           ['USB_TEST_EXECUTION_UNVERIFIABLE', 'PRINT_SETTINGS_UNAVAILABLE'].includes(code))) {
           setUnknownCode(code)
         } else if (request.action === 'save') {
@@ -145,9 +153,9 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
         setSaveFeedback({})
       }
       if ('queues' in reply) setQueues(reply.queues)
-      if ('code' in reply && reply.code === 'USB_TEST_SPOOLED') {
+      if (testRole && 'code' in reply && (reply.code === 'USB_TEST_SPOOLED' || reply.code === 'TCP_TEST_SENT')) {
         setStatus(reply.code)
-        setTestLocked(true)
+        setTestLocked((previous) => ({ ...previous, [testRole]: true }))
       }
       if (request.action === 'save' && 'code' in reply && reply.code === 'SETTINGS_SAVED') {
         const refreshed = await bridge.request({ action: 'read', storeCode: request.storeCode }).catch(() => null)
@@ -161,8 +169,8 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
         }
       }
     } catch {
-      if (request.action === 'test') {
-        setUnknownCode('USB_TEST_EXECUTION_UNVERIFIABLE')
+      if (testRole) {
+        setUnknownCode('LOCAL_EFFECT_AMBIGUITY')
       } else if (request.action === 'save') {
         setNeedsRefresh(true)
         updateSave(request.role, { kind: 'unconfirmed', code: 'PRINT_SETTINGS_UNAVAILABLE' })
@@ -184,21 +192,36 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
   const noticeKey = isUnknown ? 'unknown' : effectiveStatus && effectiveStatus !== 'USB_QUEUE_DISCOVERY_FAILED'
     ? statusKeys[effectiveStatus] ?? 'failed' : null
   const noticeTone = noticeKey === 'unknown' || noticeKey === 'invalid' || noticeKey === 'failed'
-    ? 'error' : noticeKey === 'spooled' ? 'success' : 'notice'
+    ? 'error' : (noticeKey === 'spooled' || noticeKey === 'tcpSent') ? 'success' : 'notice'
   const testBlockReason = (role: Role) => {
     if (isUnknown) return 'unknownTitle'
     if (busy) return 'busy'
     if (state?.blockedCode) return statusKeys[statusCode(state.blockedCode)] ?? 'failed'
     if (status && statusKeys[status] === 'authority') return 'authority'
     if (needsRefresh) return 'testRefreshFirst'
-    if (role === 'KITCHEN' || frontKind === 'TCP') return 'tcpTestUnavailable'
-    if (frontDirty || !savedFront) return 'testSaveFirst'
-    if (testLocked) return 'testLockedHelp'
-    if (!state?.usbSupported || !savedQueue || (draftQueue && selected?.key !== savedQueue.key)) return 'testFindSavedUsb'
-    return null
+    const endpoint = role === 'FRONT' ? savedFront : savedKitchen
+    if (!endpoint || (role === 'FRONT' ? frontDirty : kitchenDirty)) return 'testSaveFirst'
+    if (testLocked[role]) return 'testLockedHelp'
+    if (endpoint.kind === 'TCP') {
+      if (!state?.roleTests) return 'tcpTestUnavailable'
+      return state.roleTests.tcpReady[role] ? null : 'tcpNotReady'
+    }
+    return state?.usbSupported && savedQueue && (!draftQueue || selected?.key === savedQueue.key) ? null : 'testFindSavedUsb'
   }
   const frontTestBlock = testBlockReason('FRONT')
   const kitchenTestBlock = testBlockReason('KITCHEN')
+  function startTest(role: Role) {
+    if (!canEdit || !state || !storeCode || testBlockReason(role)) return
+    const { revision } = state
+    if (role === 'KITCHEN') {
+      void run({ action: 'test-role', storeCode, revision, role, transport: 'TCP' })
+    } else if (savedFront && state.roleTests) {
+      void run({ action: 'test-role', storeCode, revision, role, transport: savedFront.kind })
+    } else if (savedFront?.kind === 'USB') {
+      void run({ action: 'test', storeCode, revision })
+    }
+  }
+
   const frontFieldError = saveFeedback.FRONT?.kind === 'failed' ? saveFeedback.FRONT.code : undefined
   const kitchenFieldError = saveFeedback.KITCHEN?.kind === 'failed' ? saveFeedback.KITCHEN.code : undefined
 
@@ -317,9 +340,7 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
                   void run({ action: 'save', role: 'FRONT', storeCode, revision: state.revision, target: frontKind === 'USB' && selected
                     ? { kind: 'USB', ...selected } : { kind: 'TCP', host: frontHost.trim(), port: Number(frontPort) } })
                 }}>{t('printSettings.save')}</button>
-                <button type="button" style={button()} disabled={!!frontTestBlock || !canEdit} aria-describedby="front-test-help" onClick={() => {
-                  if (!frontTestBlock && canEdit) void run({ action: 'test', storeCode, revision: state.revision })
-                }}>{t('printSettings.frontTest')}</button>
+                <button type="button" style={button()} disabled={!!frontTestBlock || !canEdit} aria-describedby="front-test-help" onClick={() => startTest('FRONT')}>{t('printSettings.frontTest')}</button>
               </div>
               <p id="front-test-help" style={styles.description}>
                 {frontTestBlock ? t(`printSettings.${frontTestBlock}`) : `${t('printSettings.testDestination')} ${configured(savedFront ?? null)} · FRONT TEST - NO SALE`}
@@ -356,9 +377,9 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
                   void run({ action: 'save', role: 'KITCHEN', storeCode, revision: state.revision,
                     target: { kind: 'TCP', host: kitchenHost.trim(), port: Number(kitchenPort) } })
                 }}>{t('printSettings.save')}</button>
-                <button type="button" style={button()} disabled aria-describedby="kitchen-test-help">{t('printSettings.kitchenTest')}</button>
+                <button type="button" style={button()} disabled={!!kitchenTestBlock || !canEdit} aria-describedby="kitchen-test-help" onClick={() => startTest('KITCHEN')}>{t('printSettings.kitchenTest')}</button>
               </div>
-              <p id="kitchen-test-help" style={styles.description}>{t(`printSettings.${kitchenTestBlock ?? 'tcpTestUnavailable'}`)}</p>
+              <p id="kitchen-test-help" style={styles.description}>{kitchenTestBlock ? t(`printSettings.${kitchenTestBlock}`) : `${t('printSettings.testDestination')} ${configured(savedKitchen ?? null)} · KITCHEN TEST - NO SALE`}</p>
             </div>
           </fieldset>
         </div>
@@ -383,6 +404,7 @@ const noticeTitles: Record<string, string> = {
   unknown: 'unknownTitle',
   saved: 'savedTitle',
   spooled: 'spooledTitle',
+  tcpSent: 'spooledTitle',
 }
 
 const noticeStyles = {

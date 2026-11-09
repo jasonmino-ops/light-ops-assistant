@@ -160,8 +160,11 @@ export function registerIpcHandlers(windowManager: WindowManager) {
     if (!employee || employee.isDestroyed() || employee.webContents.id !== event.sender.id) {
       return { ok: false, code: 'PRINT_SETTINGS_ACCESS_DENIED' }
     }
-    const request = readPrintSettingsRequest(payload)
-    if (!request) return { ok: false, code: 'PRINT_SETTINGS_INPUT_INVALID' }
+    const parsed = readPrintSettingsRequest(payload)
+    if (!parsed) return { ok: false, code: 'PRINT_SETTINGS_INPUT_INVALID' }
+    const request = parsed.action === 'test'
+      ? { ...parsed, action: 'test-role', role: 'FRONT', transport: 'USB' } as const
+      : parsed
     const runtime = v3PrintingRuntimeProvider()
     if (!runtime) return { ok: false, code: 'PRINT_SETTINGS_UNAVAILABLE' }
     try {
@@ -174,13 +177,20 @@ export function registerIpcHandlers(windowManager: WindowManager) {
         if (!('state' in state) || state.state.mode !== 'V3') return { ok: false, code: 'PRINT_SETTINGS_AUTHORITY_REQUIRED' }
         if (state.state.blockedCode) return { ok: false, code: state.state.blockedCode }
         if (state.state.revision !== request.revision) return { ok: false, code: 'ENDPOINT_CONFIG_REVISION_STALE' }
-        const { response } = await dialog.showMessageBox(employee, printSettingsConfirmation(request, config.lang))
+        const prepared = request.action === 'test-role' ? await runtime.preparePrintTest(request) : undefined
+        if (prepared && !prepared.ok) return prepared
+        const stillAuthorized = () => {
+          const frame = event.senderFrame
+          return authorize(windowManager, event, IPC_CHANNELS.V3_PRINT_SETTINGS, 'invoke') === 'employee' &&
+            !employee.isDestroyed() && frame && frame === event.sender.mainFrame &&
+            isAllowedNavigation(frame.url, config) && new URL(frame.url).pathname === '/management' &&
+            runtime === v3PrintingRuntimeProvider()
+        }
+        if (!stillAuthorized()) return { ok: false, code: 'PRINT_SETTINGS_ACCESS_DENIED' }
+        const { response } = await dialog.showMessageBox(employee, printSettingsConfirmation(request, config.lang, prepared?.test.display))
         if (response !== 1) return { ok: false, code: 'PRINT_SETTINGS_CANCELLED' }
-        const frame = event.senderFrame
-        if (employee.isDestroyed() || !frame || frame !== event.sender.mainFrame ||
-            !isAllowedNavigation(frame.url, config) || new URL(frame.url).pathname !== '/management' ||
-            runtime !== v3PrintingRuntimeProvider()) return { ok: false, code: 'PRINT_SETTINGS_ACCESS_DENIED' }
-        return await runtime.printSettings(request)
+        if (!stillAuthorized()) return { ok: false, code: 'PRINT_SETTINGS_ACCESS_DENIED' }
+        return await runtime.printSettings(request, prepared?.test)
       } finally {
         settingsConfirmationOpen = false
       }

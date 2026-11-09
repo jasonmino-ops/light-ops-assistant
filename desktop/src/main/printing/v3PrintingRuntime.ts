@@ -20,11 +20,32 @@ import type { LocalEndpoint } from './localEndpointAuthority'
 import { V3PrintJobClient } from './v3PrintJobClient'
 import { V3NetworkRenderer } from './v3NetworkRenderer'
 import { NoPayloadEndpointReadiness, type RoleReadinessMask } from './endpointReadiness'
+import { proveTcpDiagnosticTarget, type ProveTcpDiagnosticTarget, type TcpDiagnosticTarget } from './tcpDiagnosticTarget'
+import { createTcpDiagnosticBoundary, executeTcpPrinterTest, makeTcpTestIdentity } from './tcpPrinterTest'
 import { logger } from '../logger'
-import type { PrintSettingsEndpoint, PrintSettingsReply, PrintSettingsRequest } from '../../shared/v3PrintSettings'
+import type { PrintSettingsEndpoint, PrintSettingsReply, PrintSettingsRequest, PrintRoleTestRequest } from '../../shared/v3PrintSettings'
 
 const PRINT_ROLES: readonly PrinterRole[] = ['FRONT', 'KITCHEN']
 type RunUsbFrontTest = (request: UsbFrontTestRequest, endpointKey: string, validate: ExecutionSafetyCheck) => Promise<SharedExecutionResult>
+
+type RunTcpTest = (role: PrinterRole, target: TcpDiagnosticTarget, revision: number,
+  validate: ExecutionSafetyCheck) => Promise<SharedExecutionResult>
+type PreparedPrintTest = {
+  request: PrintRoleTestRequest
+  display: string
+  endpointKey: string
+  tcpTarget: TcpDiagnosticTarget | null
+  generation: number
+  ownerEpoch: number
+  leaseId: string
+  expiresAt: number
+}
+
+function matchesConfirmedEndpoint(endpoint: LocalEndpoint | undefined, test: PreparedPrintTest): boolean {
+  if (!endpoint) return false
+  const key = 'kind' in endpoint ? windowsUsbEndpointKey(endpoint) : `${endpoint.host}:${endpoint.port}`
+  return key === test.endpointKey
+}
 
 const NO_ROLES_READY: RoleReadinessMask = Object.freeze({ FRONT: false, KITCHEN: false })
 
@@ -73,6 +94,7 @@ export class V3PrintingRuntime {
   private timer: ReturnType<typeof setInterval> | null = null
   private pumpPromise: Promise<void> | null = null
   private usbTestPromise: Promise<PrintSettingsReply> | null = null
+  private readonly preparedPrintTests = new WeakSet<PreparedPrintTest>()
   private settingsReady = false
   private settingsPromise: Promise<PrintSettingsReply> | null = null
   private localExecutions = 0
@@ -98,6 +120,8 @@ export class V3PrintingRuntime {
     private readonly usbFrontTest?: RunUsbFrontTest,
     private readonly settingsStoreCode?: string,
     private readonly listUsbQueues = discoverWindowsUsbQueues,
+    private readonly tcpTest?: RunTcpTest,
+    private readonly proveTcpTarget: ProveTcpDiagnosticTarget = proveTcpDiagnosticTarget,
   ) {}
 
   public static async open(options: {
@@ -128,17 +152,24 @@ export class V3PrintingRuntime {
       { cross: (input) => isWindowsUsbEndpointKey(input.endpointKey) ? usb.cross(input) : tcp.cross(input) },
       mutex,
     )
-    const usbFrontTest: RunUsbFrontTest = async (request, endpointKey, validate) => {
+    const withTestLedger = async (execute: (ledger: ExecutionLedger) => Promise<SharedExecutionResult>): Promise<SharedExecutionResult> => {
       await fs.mkdir(testLedgerPath, { recursive: true, mode: 0o700 })
       const testLedger = createExecutionLedger({ userDataPath: testLedgerPath, staleLockRecovery: recovery })
       const opened = await testLedger.open()
       try {
         if (!opened.ok) return { status: 'REJECTED', error: opened.error }
-        return await executeUsbFrontTest(new SharedPrintingCore(testLedger, usb, mutex), request, endpointKey, validate)
+        return await execute(testLedger)
       } finally {
         const closed = await testLedger.close()
         if (!closed.ok) throw new Error(closed.error.code)
       }
+    }
+    const usbFrontTest: RunUsbFrontTest = (request, endpointKey, validate) =>
+      withTestLedger((testLedger) => executeUsbFrontTest(new SharedPrintingCore(testLedger, usb, mutex), request, endpointKey, validate))
+    const tcpTest: RunTcpTest = (role, target, revision, validate) => {
+      const boundary = createTcpDiagnosticBoundary(target, proveTcpDiagnosticTarget, options.tcpTimeoutMs ?? 10_000)
+      return withTestLedger((testLedger) => executeTcpPrinterTest(new SharedPrintingCore(testLedger, boundary, mutex),
+        role, target, revision, makeTcpTestIdentity(role), validate))
     }
     const authority = {
       canAdmit: (candidate: { batchId: string; storeId: string; deviceId: string; ownerEpoch: number; leaseId: string; batchExpiresAt: string }) => {
@@ -161,7 +192,7 @@ export class V3PrintingRuntime {
       new LocalEndpointAuthority(options.userDataPath, { storeId: options.storeId, deviceId: options.deviceId }), outbox,
       options.cloud ?? null, options.cloudPollIntervalMs ?? 2_000, new V3NetworkRenderer(), releaseBlocked,
       new NoPayloadEndpointReadiness(undefined, undefined, (key) => usb.isReady(key)), undefined,
-      usbFrontTest, options.storeCode)
+      usbFrontTest, options.storeCode, undefined, tcpTest)
     return runtime
   }
 
@@ -198,7 +229,7 @@ export class V3PrintingRuntime {
     }
   }
 
-  private async runUsbTest(request: UsbFrontTestRequest, generation: number): Promise<PrintSettingsReply> {
+  private async runUsbTest(request: UsbFrontTestRequest, generation: number, confirmed?: PreparedPrintTest): Promise<PrintSettingsReply> {
     const reject = (code: string) => {
       logger.warn('v3-print-usb.test-rejected', { requestId: request.printJobId, code })
       return rejectSettings(code)
@@ -207,6 +238,7 @@ export class V3PrintingRuntime {
     if (this.releaseBlocked) return reject('LOCAL_EFFECT_AMBIGUITY')
     const endpoint = await this.endpoints.resolve('FRONT')
     if (!endpoint.ok || !isWindowsUsbEndpointKey(endpoint.endpointKey)) return reject('USB_FRONT_NOT_CONFIGURED')
+    if (confirmed && endpoint.endpointKey !== confirmed.endpointKey) return reject('PRINT_TEST_TARGET_CHANGED')
     if (!this.running || generation !== this.lifecycleGeneration) return reject('RUNTIME_STOPPED')
     const batch = this.controlPlane.current().batch
     if (!batch) return reject('NO_OWNER_SCOPED_BATCH')
@@ -215,7 +247,7 @@ export class V3PrintingRuntime {
 
     let releaseSafe = false
     try {
-      const result = await this.usbFrontTest(request, endpoint.endpointKey, () => {
+      const validate: ExecutionSafetyCheck = () => {
         if (!this.running || generation !== this.lifecycleGeneration) {
           return { ok: false, error: { code: 'RUNTIME_STOPPED', message: 'Printing runtime stopped.' } }
         }
@@ -223,7 +255,9 @@ export class V3PrintingRuntime {
           batchId: batch.id, storeId: batch.storeId, deviceId: batch.ownerDeviceId,
           ownerEpoch: batch.ownerEpoch, leaseId: batch.leaseId, batchExpiresAt: batch.expiresAt,
         })
-      })
+      }
+      const result = await this.usbFrontTest(request, endpoint.endpointKey,
+        confirmed ? this.confirmedTestCheck(confirmed, batch) : validate)
       releaseSafe = releaseSafeExecutionResult(result)
       logger.info('v3-print-usb.test-result', {
         requestId: request.printJobId,
@@ -241,7 +275,91 @@ export class V3PrintingRuntime {
     }
   }
 
-  public async printSettings(request: PrintSettingsRequest): Promise<PrintSettingsReply> {
+  public async preparePrintTest(request: PrintRoleTestRequest): Promise<
+    { ok: true; test: PreparedPrintTest } | { ok: false; code: string }
+  > {
+    if (!this.settingsReady || process.platform !== 'win32') return rejectSettings('PRINT_SETTINGS_UNAVAILABLE')
+    if (request.storeCode !== this.settingsStoreCode) return rejectSettings('PRINT_SETTINGS_STORE_MISMATCH')
+    const generation = this.lifecycleGeneration
+    const batch = this.controlPlane.current().batch
+    const blocked = this.settingsBlockedCode()
+    if (blocked) return rejectSettings(blocked)
+    if (!batch || this.controlPlane.current().controlPlane?.mode !== 'V3_ACTIVE') return rejectSettings('PRINT_SETTINGS_AUTHORITY_REQUIRED')
+    const config = await this.endpoints.readSettings()
+    if (!config.ok) return config
+    if (config.revision !== request.revision) return rejectSettings('ENDPOINT_CONFIG_REVISION_STALE')
+    const endpoint = config.endpoints[request.role]
+    if (!endpoint || ('kind' in endpoint ? 'USB' : 'TCP') !== request.transport) return rejectSettings('PRINT_TEST_TARGET_CHANGED')
+    let target: Pick<PreparedPrintTest, 'display' | 'endpointKey' | 'tcpTarget'>
+    if ('kind' in endpoint) {
+      if (!this.usbFrontTest || request.role !== 'FRONT') return rejectSettings('USB_TEST_UNAVAILABLE')
+      target = { display: `${endpoint.queueName} (${endpoint.portName})`, endpointKey: windowsUsbEndpointKey(endpoint), tcpTarget: null }
+    } else {
+      if (!this.tcpTest) return rejectSettings('TCP_TEST_UNAVAILABLE')
+      const proof = await this.proveTcpTarget(endpoint)
+      if (!proof) return rejectSettings('TCP_TEST_TARGET_UNVERIFIED')
+      const endpointKey = `${endpoint.host}:${endpoint.port}`
+      target = { display: endpointKey, endpointKey, tcpTarget: proof }
+    }
+    const test = {
+      ...target, request, generation, ownerEpoch: batch.ownerEpoch, leaseId: batch.leaseId,
+      expiresAt: performance.now() + 5 * 60_000,
+    }
+    const code = await this.confirmedTestError(test) ?? this.settingsBlockedCode()
+    if (code) return rejectSettings(code)
+    this.preparedPrintTests.add(test)
+    return { ok: true, test }
+  }
+
+  private async confirmedTestError(test: PreparedPrintTest): Promise<string | null> {
+    const config = await this.endpoints.readSettings()
+    if (!config.ok) return config.code
+    if (config.revision !== test.request.revision) return 'ENDPOINT_CONFIG_REVISION_STALE'
+    if (!matchesConfirmedEndpoint(config.endpoints[test.request.role], test)) return 'PRINT_TEST_TARGET_CHANGED'
+    if (performance.now() >= test.expiresAt) return 'PRINT_TEST_CONFIRMATION_EXPIRED'
+    const snapshot = this.controlPlane.current()
+    if (!this.running || test.generation !== this.lifecycleGeneration || snapshot.controlPlane?.mode !== 'V3_ACTIVE' ||
+        snapshot.batch?.ownerEpoch !== test.ownerEpoch || snapshot.batch?.leaseId !== test.leaseId) return 'PRINT_SETTINGS_AUTHORITY_REQUIRED'
+    return this.releaseBlocked ? 'LOCAL_EFFECT_AMBIGUITY' : null
+  }
+
+  private confirmedTestCheck(test: PreparedPrintTest, batch: ExecutionBatchProjection): ExecutionSafetyCheck {
+    return async () => {
+      const code = await this.confirmedTestError(test)
+      if (code) return { ok: false, error: { code, message: 'Confirmed print target or authority changed.' } }
+      return this.controlPlane.validateAdmittedExecution({
+        batchId: batch.id, storeId: batch.storeId, deviceId: batch.ownerDeviceId,
+        ownerEpoch: batch.ownerEpoch, leaseId: batch.leaseId, batchExpiresAt: batch.expiresAt,
+      })
+    }
+  }
+
+  private async runTcpTest(test: PreparedPrintTest): Promise<PrintSettingsReply> {
+    if (!this.tcpTest || !test.tcpTarget) return rejectSettings('TCP_TEST_UNAVAILABLE')
+    const batch = this.controlPlane.current().batch
+    if (!batch) return rejectSettings('NO_OWNER_SCOPED_BATCH')
+    const validate = this.confirmedTestCheck(test, batch)
+    const lifecycle = this.controlPlane.beginExecutionLifecycle(batch)
+    if (!lifecycle.ok) return rejectSettings(lifecycle.error.code)
+
+    let releaseSafe = false
+    try {
+      const result = await this.tcpTest(test.request.role, test.tcpTarget, test.request.revision, validate)
+      releaseSafe = releaseSafeExecutionResult(result)
+      logger.info('v3-print-tcp.test-result', { role: test.request.role, status: result.status,
+        code: result.status === 'REJECTED' ? result.error.code : undefined,
+        reason: 'reason' in result ? result.reason : undefined })
+      if (!releaseSafe) return rejectSettings('LOCAL_EFFECT_AMBIGUITY')
+      return result.status === 'CROSSED' ? { ok: true, code: 'TCP_TEST_SENT' } : rejectSettings('TCP_TEST_FAILED_NOT_CROSSED')
+    } catch {
+      return rejectSettings('LOCAL_EFFECT_AMBIGUITY')
+    } finally {
+      if (!releaseSafe) this.releaseBlocked = true
+      await lifecycle.guard.complete({ releaseSafe })
+    }
+  }
+
+  public async printSettings(request: PrintSettingsRequest, prepared?: PreparedPrintTest): Promise<PrintSettingsReply> {
     if (!this.settingsReady || process.platform !== 'win32') return rejectSettings('PRINT_SETTINGS_UNAVAILABLE')
     if (!this.settingsStoreCode || request.storeCode !== this.settingsStoreCode) return rejectSettings('PRINT_SETTINGS_STORE_MISMATCH')
     const mode = this.controlPlane.current().controlPlane?.mode
@@ -256,6 +374,7 @@ export class V3PrintingRuntime {
       return { ok: true, state: { mode: 'V3', revision: config.revision,
         front: settingsEndpoint(config.endpoints.FRONT), kitchen: kitchen?.kind === 'TCP' ? kitchen : null,
         usbSupported: !!this.usbFrontTest, blockedCode: this.settingsBlockedCode(),
+        ...(this.tcpTest && { roleTests: { tcpReady: this.roleReadiness } }),
       } }
     }
     if (mode !== 'V3_ACTIVE') return rejectSettings('PRINT_SETTINGS_AUTHORITY_REQUIRED')
@@ -271,7 +390,7 @@ export class V3PrintingRuntime {
     const blocked = this.settingsBlockedCode()
     if (blocked) return rejectSettings(blocked)
     const generation = this.lifecycleGeneration
-    this.settingsPromise = this.changePrintSettings(request, generation)
+    this.settingsPromise = this.changePrintSettings(request, generation, prepared)
     try { return await this.settingsPromise } finally { this.settingsPromise = null }
   }
 
@@ -284,7 +403,7 @@ export class V3PrintingRuntime {
   }
 
   private async changePrintSettings(
-    request: Extract<PrintSettingsRequest, { action: 'save' | 'test' }>, generation: number,
+    request: Extract<PrintSettingsRequest, { action: 'save' | 'test' | 'test-role' }>, generation: number, prepared?: PreparedPrintTest,
   ): Promise<PrintSettingsReply> {
     const validate = () => {
       if (!this.running || generation !== this.lifecycleGeneration) throw new Error('PRINT_SETTINGS_AUTHORITY_REQUIRED')
@@ -295,6 +414,17 @@ export class V3PrintingRuntime {
       const config = await this.endpoints.readSettings()
       if (!config.ok) return config
       if (config.revision !== request.revision) return rejectSettings('ENDPOINT_CONFIG_REVISION_STALE')
+      if (request.action === 'test-role') {
+        if (!prepared || prepared.request !== request || !this.preparedPrintTests.delete(prepared)) {
+          return rejectSettings('PRINT_TEST_CONFIRMATION_REQUIRED')
+        }
+        const code = await this.confirmedTestError(prepared)
+        if (code) return rejectSettings(code)
+        validate()
+        if (request.transport === 'TCP') return await this.runTcpTest(prepared)
+        const test = readUsbFrontTestRequest([`--v3-usb-front-test=${Date.now()}:${randomUUID()}`])
+        return await this.runUsbTest(test!, generation, prepared)
+      }
       if (request.action === 'test') {
         validate()
         const test = readUsbFrontTestRequest([`--v3-usb-front-test=${Date.now()}:${randomUUID()}`])
