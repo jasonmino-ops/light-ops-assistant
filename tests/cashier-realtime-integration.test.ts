@@ -9,6 +9,7 @@ import { notifyCashierGateway } from '../lib/cashier-realtime-notify'
 
 const root = process.cwd()
 const { readUsbFrontSuccessor } = createRequire(resolve(root, 'package.json'))('./scripts/governance/es-print-usb-baseline-01.cjs')
+const { readUnifiedPrintSuccessor } = createRequire(resolve(root, 'package.json'))('./scripts/governance/es-print-unified-integration-01.cjs')
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8')
 
 async function main() {
@@ -816,7 +817,9 @@ async function main() {
     // ES-CASHIER-COST-01 exclusions and the existing H5/Dine-in approved set
     // retain their prior semantics. Closed historical grants are not reopened.
     const usb = readUsbFrontSuccessor(root)
-    assertBoundary(changed, usb?.productPaths ?? approved)
+    const unified = usb ? null : readUnifiedPrintSuccessor(root)
+    const exactPaths = unified?.corePaths(changed, changed.filter(path => !approved.has(path)))
+    assertBoundary(changed, usb?.productPaths ?? exactPaths ?? approved)
   }
 
   console.log('cashier realtime Stage 1F integration and regression checks passed')

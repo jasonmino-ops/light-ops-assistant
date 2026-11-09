@@ -17,6 +17,7 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const { evaluateFile, validateException } = require('../../scripts/guards/check-change-scope.js')
 const { readUsbFrontSuccessor } = require('../../scripts/governance/es-print-usb-baseline-01.cjs')
+const { readUnifiedPrintSuccessor } = require('../../scripts/governance/es-print-unified-integration-01.cjs')
 const { validateRegister, validatePilot, validatePilotSourcePaths } = require('../../scripts/governance/delivery-classification.cjs')
 
 const scriptDir = resolve(fileURLToPath(new URL('.', import.meta.url)))
@@ -425,6 +426,7 @@ async function runPolicy(options) {
   const baseline = options.baseline ?? BASELINE_FREEZE_TAG
   const allowAuthorizedSuccessors = options.baseline == null
   const usb = allowAuthorizedSuccessors ? readUsbFrontSuccessor(repoRoot) : null
+  const unified = allowAuthorizedSuccessors && !usb ? readUnifiedPrintSuccessor(repoRoot) : null
   const frozenBoundary = []
   for (const group of FROZEN_BOUNDARY_GROUPS) {
     const changed = git(['diff', '--name-only', baseline, '--', ...group.paths])
@@ -437,9 +439,11 @@ async function runPolicy(options) {
       gitIsAncestor(successorSnapshot, 'HEAD') &&
       git(['diff', '--name-only', successorSnapshot, '--', ...group.paths]) === ''
     const exactUsb = usb?.evaluateReleaseGroup(group.label, successorSnapshot ?? baseline, group.paths)
+    const exactStartup = unified?.admitsStartup(group.label, successorSnapshot, group.paths)
     frozenBoundary.push({
       label: group.label,
-      status: changed.length === 0 || matchesAuthorizedSuccessor || exactUsb?.admitted ? 'PASS' : 'FAIL',
+      status: changed.length === 0 || matchesAuthorizedSuccessor || exactUsb?.admitted || exactStartup ? 'PASS' : 'FAIL',
+      ...(exactStartup ? { unifiedPrintSuccessor: 'EXACT_STARTUP_GATE' } : {}),
       ...(exactUsb ? { usbFrontHistoricalPaths: exactUsb.paths } : {}),
       changed,
       ...(matchesAuthorizedSuccessor ? { authorizedSuccessorSnapshot: successorSnapshot } : {}),
