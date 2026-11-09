@@ -3021,14 +3021,15 @@ export default function CashierPage() {
     await loadShiftReport()
   }
 
-  async function handlePrintShiftReport() {
-    const report = shiftReport ?? await loadShiftReport()
-    if (!report) return
+  function handlePrintShiftReport() {
+    if (!shiftReport || shiftReportLoading || shiftReportError) return
     try {
-      printShiftReport(report, lang as 'zh' | 'en' | 'km')
+      printShiftReport(shiftReport, lang as 'zh' | 'en' | 'km')
     } catch (err) {
       console.warn('[cashier:shift] print failed', err)
-      showToast('无法打开交班单打印窗口，请检查浏览器弹窗权限')
+      showToast(lang === 'en' ? 'Could not open shift report printing.'
+        : lang === 'km' ? 'មិនអាចបើកការបោះពុម្ពរបាយការណ៍ប្តូរវេនបានទេ។'
+        : '无法打开交班单打印')
     }
   }
 
@@ -5601,7 +5602,7 @@ export default function CashierPage() {
                 type="button"
                 style={s.secondaryBtn}
                 onClick={handlePrintShiftReport}
-                disabled={shiftReportLoading}
+                disabled={shiftReportLoading || !!shiftReportError || !shiftReport}
               >
                 {d.printShift}
               </button>

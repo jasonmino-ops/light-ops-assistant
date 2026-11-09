@@ -287,10 +287,67 @@ export function ShiftReportPrint({ report, lang = 'zh' }: { report: ShiftReportD
   )
 }
 
-export function printShiftReport(report: ShiftReportData, lang: Lang = 'zh') {
-  const win = window.open('', '_blank', 'width=420,height=640')
-  if (!win) throw new Error('PRINT_WINDOW_BLOCKED')
+const SHIFT_PRINT_ROOT_ID = 'eshop-shift-report-print'
 
+function printShiftReportInDesktop(styles: string, markup: string) {
+  if (document.readyState !== 'complete') throw new Error('SHIFT_PRINT_DOCUMENT_NOT_READY')
+
+  const root = document.createElement('section')
+  root.id = SHIFT_PRINT_ROOT_ID
+  root.innerHTML = markup
+  const style = document.createElement('style')
+  const selector = `#${SHIFT_PRINT_ROOT_ID}`
+  style.textContent = `
+    ${selector} { display: none; }
+    @media print {
+      @page { margin: 4mm; }
+      html:has(body > ${selector}), body:has(> ${selector}) {
+        margin: 0 !important;
+        padding: 0 !important;
+        min-height: 0 !important;
+        height: auto !important;
+        overflow: visible !important;
+        background: white !important;
+      }
+      body:has(> ${selector}) > :not(${selector}) { display: none !important; }
+      ${selector} {
+        display: block;
+        max-width: 72mm;
+        margin: 0 auto;
+        font-family: system-ui, -apple-system, sans-serif;
+        color: #111827;
+        overflow-wrap: anywhere;
+        ${styles}
+      }
+      ${selector} :is(.row, .detail-row) { break-inside: avoid; }
+    }
+  `
+
+  const cleanup = () => {
+    window.removeEventListener('afterprint', cleanup)
+    root.remove()
+    style.remove()
+  }
+  let started = false
+  const markStarted = () => { started = true }
+  window.addEventListener('beforeprint', markStarted, { once: true })
+  window.addEventListener('afterprint', cleanup, { once: true })
+  try {
+    document.head.appendChild(style)
+    document.body.appendChild(root)
+    window.print()
+    if (!started) throw new Error('SHIFT_PRINT_DIALOG_NOT_STARTED')
+  } catch (error) {
+    cleanup()
+    throw error
+  } finally {
+    window.removeEventListener('beforeprint', markStarted)
+  }
+}
+
+export function printShiftReport(report: ShiftReportData, lang: Lang = 'zh') {
+  const isDesktop = window.eshopDesktopRuntime?.isDesktop === true
+  if (isDesktop && document.getElementById(SHIFT_PRINT_ROOT_ID)) return
   const t = copy(lang)
   const rows = reportRows(report, lang)
   const summary = summaryText(report, lang)
@@ -305,14 +362,7 @@ export function printShiftReport(report: ShiftReportData, lang: Lang = 'zh') {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;')
 
-  win.document.write(`<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(t.title)}</title>
-  <style>
-    @page { size: 80mm auto; margin: 6mm; }
-    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; color: #111827; }
+  const styles = `
     .title { text-align: center; font-size: 18px; font-weight: 900; margin-bottom: 4px; }
     .sub { text-align: center; font-size: 13px; color: #64748b; margin-bottom: 14px; }
     .rows { border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
@@ -330,9 +380,8 @@ export function printShiftReport(report: ShiftReportData, lang: Lang = 'zh') {
     .detail-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid #e5e7eb; }
     .detail-row:last-child { border-bottom: none; font-weight: 900; }
     .source { color: #64748b; font-size: 11px; margin-top: 2px; }
-  </style>
-</head>
-<body>
+  `
+  const markup = `
   <div class="title">${escapeHtml(report.storeName || t.storeFallback)}</div>
   <div class="sub">${escapeHtml(t.title)}</div>
   <div class="hero">
@@ -351,6 +400,29 @@ export function printShiftReport(report: ShiftReportData, lang: Lang = 'zh') {
     <div class="detail-row"><div>${escapeHtml(t.detailsTotal)}</div><div>${escapeHtml(fmtMoney(otherDetailsTotal))}</div></div>
   </div>` : ''}
   <div class="hint">${escapeHtml(lang === 'en' ? 'Only this device local shift is counted. Offline pending and holds are not included in sales.' : lang === 'km' ? 'គិតតែវេនលើឧបករណ៍នេះប៉ុណ្ណោះ។ រង់ចាំ sync offline និងមាត់ស្នើមិនគិតចូលការលក់។' : '仅统计本设备本地班次；离线待同步和挂单不计入销售额。')}</div>
+  `
+
+  if (isDesktop) {
+    printShiftReportInDesktop(styles, markup)
+    return
+  }
+
+  const win = window.open('', '_blank', 'width=420,height=640')
+  if (!win) throw new Error('PRINT_WINDOW_BLOCKED')
+
+  win.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(t.title)}</title>
+  <style>
+    @page { size: 80mm auto; margin: 6mm; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; color: #111827; }
+${styles}
+  </style>
+</head>
+<body>
+${markup}
   <script>
     window.onload = function() {
       window.focus();
