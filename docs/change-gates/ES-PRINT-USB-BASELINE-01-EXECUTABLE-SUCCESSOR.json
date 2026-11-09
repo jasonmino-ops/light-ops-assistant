@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-PRINT-USB-BASELINE-01",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "registrationCommit": "d95fc930dfaf6169961f60ae5fcb1faca547c896",
+  "productCommit": "c50bd967c59452b3ecae602f0624dccf10244127",
+  "requestSha256": "a53cbad30f822934cfac20af9182871fd1dfa5402a07e6b7c78b0b05fa57c44a",
+  "executableCommit": "f2a4e34a88855b150ad40f635298da2d055bc58c",
+  "deadlineExclusive": "2026-11-16T16:00:00Z",
+  "executablePathsSha256": {
+    "desktop/scripts/release-foundation.mjs": "f1007a45cdfbc38b1b592eb604ddfee2fa26dd93d29adc283f3f25123e4a94ca",
+    "desktop/tests/es-print-usb-baseline-01.test.ts": "98e8d3b973f4e0ef7f29274f7f9f48ef551612c6962d1fcd1d2ed0d62b357abc",
+    "scripts/governance/es-print-usb-baseline-01.cjs": "67e7dc7340f2b2082349918a0abe365763b67e2e2f0e5e5a65d588fdac15d6ac",
+    "tests/cashier-realtime-integration.test.ts": "ccad9c0a1c3fb485871966a4c5aa9fcd7acfe7fdc9f9e567b0ff19d686235b60"
+  },
+  "historicalPathsSha256": {
+    "prisma/migrations/20261014000000_add_desktop_print_child_identity/migration.sql": "6408870bb82159df6483037937cbc4c74e0242cd1502ba57837a84e055a0ef69",
+    "prisma/migrations/20261101090000_add_retail_multi_unit/migration.sql": "077df39c3557e048288de36a94eb247bc057e0335122955d00cc542c135f53f5",
+    "prisma/schema.prisma": "8c70351a1d9b12eb4b5a0f82ba39e001825ca0b9702cd2d25f729c410b85828b",
+    "app/api/sales/lookup/route.ts": "25814dd178c3c0887ed3e93be48dacffd0292331426cf851c528895060e7e367",
+    "app/api/sales/route.ts": "0d256d55ee77963678c7cc5b820bb401cac195ebe851b675a2edb983ab9ebb2e",
+    "app/sale/page.tsx": "6818f8b63ba25031a2501947baa0ca9a8e03959ee5d47a245ddad13f3a00980f",
+    "app/cashier/page.tsx": "8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6",
+    "app/records/page.tsx": "ea5d384ef42d51668e4641a2f6be5e0dfd17f0a8c6f407f420bc9390b9ed664a"
+  }
+}
