@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-PRINT-UNIFIED-INTEGRATION-01",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "reviewedBy": "Claude",
+  "priorMain": "1e35d4d5a52c89602037c7952e7bb181bfd6335f",
+  "dependencyCommit": "072221f5dd115e91094df0c52752781196408d49",
+  "dependencyTree": "8c716842db45f82e04c5fbc81e7b9873594ecfb0",
+  "dependencyPathsSha256": {
+    ".github/workflows/desktop-release-pilot.yml": "87c9e1f022229e406365d558873cb8302c677dd022c9a8379645deb7b53de0d3",
+    ".github/workflows/desktop-windows-build.yml": "e4542f0ffed26056cfc6db95c4dda4a3863f11623703aafc1be5d48a4cb6e04d",
+    "app/ops/[tenantId]/page.tsx": "64a0d9a0bbaed119e0428791536cb8a6714c7f5ecf48aabc55c81d2ad4ce5fae",
+    "desktop/scripts/release-foundation.mjs": "0878a41ed039d23c8857d54838c0c9d5eaf2eb0eba754d79351e07f00e943330",
+    "desktop/tests/release-foundation.test.ts": "a7b89f6b136029f40ce05538cec23f241d358db46ecd0071b6f87c9811c0dd1e",
+    "scripts/governance/es-print-unified-integration-01.cjs": "862e678954b7f970b5945aa2e29a5b89fc83c222de4fd91204827fe75f933513",
+    "tests/customer-order-recovery.test.ts": "edd9fd05453d47b347e641bdd6622047be14db3878a76ee565d7451a00c69c58",
+    "tests/v3-print-control-plane-contract.test.cjs": "1b9a1298b63d9f0ad6acc37339e7f0e5ea5f9d2d92bd17c205d26efbad9a3777"
+  },
+  "productCommit": "a8c13b2da80ce3311945cb6ad3f4ab1672c7b044",
+  "productTree": "85a84d6a888421bfadb5e7e6813edb3fd54961e2",
+  "deadlineExclusive": "2026-11-18T16:00:00Z",
+  "requestSha256": "4a170b71015bc2a03774c2faec7dd20edc2215dbad7b10b992f47c9783ccdebf",
+  "reviewSha256": "63c6969993a979d38ee8e7118644a861a125ed990078dc61e5cc010702db76fb"
+}
