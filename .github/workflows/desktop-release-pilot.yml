@@ -14,6 +14,11 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    # Preserve committed bytes for the installer checks and exact Git gates.
+    env:
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: "false"
     permissions:
       contents: read
     defaults:
@@ -45,15 +50,6 @@ jobs:
           "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
           "BUILD_TIMESTAMP=$((Get-Date).ToUniversalTime().ToString("o"))" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Checkout Windows Provider artifact source
-        uses: actions/checkout@v4
-        with:
-          repository: jasonmino-ops/eshop-windows-provider
-          ref: 7785be145d5259991038d17839d322e2694e338c
-          token: ${{ secrets.EP_MB3_PROVIDER_REPO_TOKEN }}
-          path: ep-mb3-provider
-          persist-credentials: false
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -70,30 +66,6 @@ jobs:
 
       - name: Install Desktop dependencies
         run: npm ci
-
-      - name: Install Provider dependencies
-        run: npm ci
-        working-directory: ep-mb3-provider
-
-      - name: Verify exact Provider commit
-        shell: pwsh
-        working-directory: ep-mb3-provider
-        run: |
-          $actual = git rev-parse HEAD
-          if ($actual -ne "7785be145d5259991038d17839d322e2694e338c") {
-            throw "Unexpected Provider commit: $actual"
-          }
-
-      - name: Build Provider artifact
-        run: npm run package
-        working-directory: ep-mb3-provider
-
-      - name: Stage Provider artifact for Desktop packaging
-        shell: pwsh
-        working-directory: .
-        run: |
-          New-Item -ItemType Directory -Force -Path ..\eshop-windows-provider | Out-Null
-          Copy-Item -Recurse -Force ep-mb3-provider\artifacts ..\eshop-windows-provider\
 
       - name: Clean Desktop build outputs
         shell: pwsh
@@ -128,6 +100,40 @@ jobs:
 
       - name: Release foundation policy
         run: npm run release:foundation:policy
+
+      # The nested checkout must follow checks that require a clean worktree.
+      - name: Checkout Windows Provider artifact source
+        uses: actions/checkout@v4
+        with:
+          repository: jasonmino-ops/eshop-windows-provider
+          ref: 7785be145d5259991038d17839d322e2694e338c
+          token: ${{ secrets.EP_MB3_PROVIDER_REPO_TOKEN }}
+          path: ep-mb3-provider
+          persist-credentials: false
+
+      - name: Install Provider dependencies
+        run: npm ci
+        working-directory: ep-mb3-provider
+
+      - name: Verify exact Provider commit
+        shell: pwsh
+        working-directory: ep-mb3-provider
+        run: |
+          $actual = git rev-parse HEAD
+          if ($actual -ne "7785be145d5259991038d17839d322e2694e338c") {
+            throw "Unexpected Provider commit: $actual"
+          }
+
+      - name: Build Provider artifact
+        run: npm run package
+        working-directory: ep-mb3-provider
+
+      - name: Stage Provider artifact for Desktop packaging
+        shell: pwsh
+        working-directory: .
+        run: |
+          New-Item -ItemType Directory -Force -Path ..\eshop-windows-provider | Out-Null
+          Copy-Item -Recurse -Force ep-mb3-provider\artifacts ..\eshop-windows-provider\
 
       - name: Electron safeStorage smoke
         shell: pwsh
