@@ -206,9 +206,57 @@ test('N1/N4/N7: setup copy, single display mapping and evidence accessible names
   const page = read('app/ops/[tenantId]/page.tsx')
   const founder = read('app/ops/[tenantId]/DiamondFounderRecoveryPanel.tsx')
   const labels = read('lib/i18n/zh.ts')
-  assert.match(page, /管理中心 → 打印设置/)
-  assert.doesNotMatch(page, /管理中心 → 打印配置|PRINT_MODE_META/)
-  assert.match(labels, /printConfig:\s*['"]打印设置['"]/)
+  const management = read('app/management/page.tsx')
+  assert.match(page, /import zh from '@\/lib\/i18n\/zh'/)
+  assert.match(page, /\{zh\.management\.title\} → \{zh\.management\.system\} → \{zh\.management\.printConfig\}/)
+  assert.doesNotMatch(page, /管理中心 → (?:系统 → )?打印(?:设置|配置)|PRINT_MODE_META/)
+  const managementTree = ts.createSourceFile('management.tsx', management, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const labelsTree = ts.createSourceFile('zh.ts', labels, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  const find = (root, matches) => {
+    const found = []
+    function visit(node) { if (matches(node)) found.push(node); ts.forEachChild(node, visit) }
+    visit(root)
+    return found
+  }
+  const value = (object, key) => object && ts.isObjectLiteralExpression(object) ? object.properties.find(
+    property => ts.isPropertyAssignment(property) && property.name.getText() === key,
+  )?.initializer : undefined
+  const system = find(managementTree, node => value(node, 'key')?.text === 'system')
+  assert.equal(system.length, 1)
+  assert.equal(value(system[0], 'title')?.getText(), "t('management.system')")
+  const entries = value(system[0], 'entries')
+  assert.ok(entries && ts.isArrayLiteralExpression(entries))
+  const printEntry = entries.elements.filter(entry => value(entry, 'action')?.text === 'printing')
+  assert.equal(printEntry.length, 1)
+  assert.equal(value(printEntry[0], 'label')?.getText(), "t('management.printConfig')")
+  assert.equal(value(printEntry[0], 'desktopOnly')?.kind, ts.SyntaxKind.TrueKeyword)
+
+  const dictionaries = find(labelsTree, node => ts.isVariableDeclaration(node) && node.name.getText() === 'zh')
+  assert.equal(dictionaries.length, 1)
+  const dictionary = dictionaries[0].initializer
+  const chineseManagement = value(ts.isAsExpression(dictionary) ? dictionary.expression : dictionary, 'management')
+  assert.equal(value(chineseManagement, 'title')?.text, '管理中心')
+  assert.equal(value(chineseManagement, 'system')?.text, '系统')
+
+  // Distinguish the actual guarded native panel from legacy Desktop, not comments or imports.
+  const native = find(managementTree, node =>
+    (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && node.tagName.getText() === 'PrintSettingsPanel',
+  )
+  const nativeBridge = find(managementTree, node => ts.isPropertyAccessExpression(node)
+    && node.expression.getText() === 'window' && node.name.text === 'eshopDesktopV3PrintSettings')
+  assert.equal(native.length, nativeBridge.length ? 1 : 0)
+  if (native.length) {
+    let branch = ts.isJsxOpeningElement(native[0]) ? native[0].parent : native[0]
+    while (ts.isParenthesizedExpression(branch.parent)) branch = branch.parent
+    assert.ok(ts.isConditionalExpression(branch.parent) && branch.parent.whenTrue === branch
+      && nativeBridge.includes(branch.parent.condition), 'native print panel must be guarded by the V3 bridge')
+    const surface = find(managementTree, node => ts.isJsxElement(node) && node.openingElement.tagName.getText() === 'section'
+      && node.openingElement.attributes.properties.some(attr => ts.isJsxAttribute(attr)
+        && attr.name.getText() === 'data-printing-info-surface' && attr.initializer?.text === 'desktop-only'))
+    assert.equal(surface.length, 1)
+    assert.ok(find(surface[0], node => node === native[0]).length, 'native panel must be inside Desktop print settings')
+  }
+  assert.equal(value(chineseManagement, 'printConfig')?.text, native.length ? '打印配置' : '打印设置')
   assert.match(page, /\{presentation\.label\}/)
   for (const label of ['Windows 本地采集证据（JSON）','目标电脑 Installation ID（安装身份）']) {
     assert.ok(founder.includes('>' + label + '</label>'))

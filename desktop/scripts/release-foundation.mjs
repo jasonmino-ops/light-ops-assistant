@@ -96,6 +96,15 @@ const FROZEN_BOUNDARY_SUCCESSORS = new Map([
   ['cashier/customer/mobile business', '8fdf9b310a9b23e1e3c9e02cf88ec2790a9f879c'],
 ])
 
+// Four independent historical anchors take effect only in the exact,
+// newly authorized software-closure composition.
+const SOFTWARE_CLOSURE_FOUNDATION_SUCCESSORS = new Map([
+  ['Scanner', '5211e38dd2d3c1636f76673ab3dd2816a9657b12'],
+  ['Prisma', '52bdd9836327505623177b4624920fb6d0a277ed'],
+  ['Payment', '52bdd9836327505623177b4624920fb6d0a277ed'],
+  ['cashier/customer/mobile business', '5211e38dd2d3c1636f76673ab3dd2816a9657b12'],
+])
+
 function parseArgs(argv) {
   const args = {}
   for (let index = 0; index < argv.length; index += 1) {
@@ -432,7 +441,12 @@ async function runPolicy(options) {
     const changed = git(['diff', '--name-only', baseline, '--', ...group.paths])
       .split('\n')
       .filter(Boolean)
-    const successorSnapshot = allowAuthorizedSuccessors ? FROZEN_BOUNDARY_SUCCESSORS.get(group.label) : undefined
+    const softwareClosureSnapshot = unified?.allowsFoundationHistory()
+      ? SOFTWARE_CLOSURE_FOUNDATION_SUCCESSORS.get(group.label)
+      : undefined
+    const successorSnapshot = allowAuthorizedSuccessors
+      ? softwareClosureSnapshot ?? FROZEN_BOUNDARY_SUCCESSORS.get(group.label)
+      : undefined
     const matchesAuthorizedSuccessor =
       changed.length > 0 &&
       successorSnapshot != null &&

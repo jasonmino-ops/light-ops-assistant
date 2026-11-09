@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import QRCode from 'react-qr-code'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
+import zh from '@/lib/i18n/zh'
 import DiamondFounderRecoveryPanel, { type DiamondRecoveryReadout } from './DiamondFounderRecoveryPanel'
 import { describePrintMode, LOCAL_FIRST_TONES } from './localFirstPresentation'
 
@@ -643,7 +644,7 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
       <details style={{ marginTop: 12, fontSize: 14, color: '#334155', lineHeight: 1.6 }}>
         <summary style={{ cursor: 'pointer', minHeight: 32 }}>设置与现场检查指引</summary>
         <p>设备绑定：由对应门店老板使用既有电脑管理与激活入口。</p>
-        <p>Windows 运行状态：系统托盘 → 查看运行状态；网络打印 Add-on 设置：管理中心 → 打印设置。</p>
+        <p>Windows 运行状态：系统托盘 → 查看运行状态；E-Shop Desktop 打印入口：{zh.management.title} → {zh.management.system} → {zh.management.printConfig}。</p>
         <p>V3 前台／厨房使用独立配置，不能把 Add-on 已配置当成 V3 已就绪；目前需授权人员现场核对。</p>
         <p>历史健康记录位于 Ops 健康页，仅作历史排障参考。</p>
       </details>

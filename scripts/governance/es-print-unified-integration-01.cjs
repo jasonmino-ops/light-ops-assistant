@@ -15,6 +15,23 @@ const PRODUCT_DIFF = '510665a0eaa23c56c523e107f0f2ea32df4270dd4529373ac58a9c6af5
 const RECORD = `docs/freezes/${TASK}.md`
 const RECORD_SHA = '321c9ed4494c5f80b336823fa656e74d2af97049ccb862092c1cf4148c1fa766'
 const ACTIVATION = `docs/change-gates/${TASK}-EXECUTABLE-SUCCESSOR.json`
+const CLOSURE_BASE = '1e35d4d5a52c89602037c7952e7bb181bfd6335f'
+const CLOSURE_ACTIVATION = `docs/change-gates/${TASK}-SOFTWARE-CLOSURE.json`
+const CLOSURE_DEPENDENCIES = [
+  '.github/workflows/desktop-release-pilot.yml',
+  '.github/workflows/desktop-windows-build.yml',
+  'app/ops/[tenantId]/page.tsx',
+  'desktop/scripts/release-foundation.mjs',
+  'desktop/tests/release-foundation.test.ts',
+  'scripts/governance/es-print-unified-integration-01.cjs',
+  'tests/customer-order-recovery.test.ts',
+  'tests/v3-print-control-plane-contract.test.cjs',
+]
+const CLOSURE_ACTIVATION_KEYS = [
+  'approvedBy', 'deadlineExclusive', 'dependencyCommit', 'dependencyTree', 'dependencyPathsSha256',
+  'priorMain', 'productCommit', 'productTree', 'requestSha256', 'reviewSha256', 'reviewedBy',
+  'schemaVersion', 'status', 'taskId',
+]
 const CORE = 'tests/cashier-realtime-integration.test.ts'
 const CORE_SHA = 'ccad9c0a1c3fb485871966a4c5aa9fcd7acfe7fdc9f9e567b0ff19d686235b60'
 const RUNTIME = 'desktop/src/main/printing/v3PrintingRuntime.ts'
@@ -63,30 +80,62 @@ function readUnifiedPrintSuccessor(root) {
     if (text('status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none') ||
         /^[a-zS] /m.test(text('ls-files', '-v'))) return null
 
-    // Only the exact activation in trusted main (or its exact first parent
-    // after the product merge) can supply an approval. Local files never can.
-    const activation = JSON.parse(blob(first, ACTIVATION))
-    if (!samePaths(Object.keys(activation), ACTIVATION_KEYS) || activation.schemaVersion !== 1 ||
-        activation.taskId !== TASK || activation.status !== 'ACTIVE' || activation.approvedBy !== 'Founder' ||
-        activation.reviewedBy !== 'Claude' ||
-        activation.registrationCommit !== REGISTRATION || activation.productCommit !== PRODUCT ||
-        activation.productTree !== PRODUCT_TREE || !isSha(activation.requestSha256) || !isSha(activation.reviewSha256) ||
-        !isCurrentDeadline(activation.deadlineExclusive) || !isCommit(activation.executableCommit)) return null
-    const executable = activation.executableCommit
-    if (text('rev-list', '--parents', '-1', first) !== `${first} ${executable}` ||
-        text('rev-list', '--parents', '-1', executable) !== `${executable} ${REGISTRATION}` ||
-        text('diff', '--no-renames', '--name-status', executable, first) !== `A\t${ACTIVATION}` ||
-        !samePaths(changed(REGISTRATION, executable), EXECUTABLE_PATHS) ||
-        !samePaths(Object.keys(activation.executablePathsSha256), EXECUTABLE_PATHS)) return null
-
     const matchesTree = (ref, path, expected) =>
       isSha(expected) && digest(ref, path) === expected &&
       git('ls-tree', ref, '--', path).equals(git('ls-tree', head, '--', path)) &&
       digest(head, path) === expected && digest('', path) === expected &&
       sha(readFileSync(resolve(root, path))) === expected
+
+    // A software-closure authorization is a new trusted-main record, added
+    // alone after the reviewed dependency commit. The prior record remains
+    // evidence and cannot authorize the new first parent.
+    const closureEntry = text('ls-tree', first, '--', CLOSURE_ACTIVATION)
+    const closure = closureEntry ? JSON.parse(blob(first, CLOSURE_ACTIVATION)) : null
+    let approvalBase = first
+    if (closureEntry) {
+      if (!closure || !samePaths(Object.keys(closure), CLOSURE_ACTIVATION_KEYS) ||
+          closure.schemaVersion !== 1 || closure.taskId !== TASK || closure.status !== 'ACTIVE' ||
+          closure.approvedBy !== 'Founder' || closure.reviewedBy !== 'Claude' ||
+          closure.priorMain !== CLOSURE_BASE || closure.productCommit !== PRODUCT || closure.productTree !== PRODUCT_TREE ||
+          !isSha(closure.requestSha256) || !isSha(closure.reviewSha256) ||
+          !isCurrentDeadline(closure.deadlineExclusive) || !isCommit(closure.dependencyCommit) ||
+          !isCommit(closure.dependencyTree) ||
+          text('rev-list', '--parents', '-1', first) !== `${first} ${closure.dependencyCommit}` ||
+          text('rev-list', '--parents', '-1', closure.dependencyCommit) !== `${closure.dependencyCommit} ${CLOSURE_BASE}` ||
+          text('rev-parse', `${closure.dependencyCommit}^{tree}`) !== closure.dependencyTree ||
+          text('diff', '--no-renames', '--name-status', closure.dependencyCommit, first) !== `A\t${CLOSURE_ACTIVATION}` ||
+          !samePaths(changed(CLOSURE_BASE, closure.dependencyCommit), CLOSURE_DEPENDENCIES) ||
+          !samePaths(Object.keys(closure.dependencyPathsSha256), CLOSURE_DEPENDENCIES) ||
+          !matchesTree(first, CLOSURE_ACTIVATION, digest(first, CLOSURE_ACTIVATION))) return null
+      for (const path of CLOSURE_DEPENDENCIES) {
+        if (!matchesTree(closure.dependencyCommit, path, closure.dependencyPathsSha256[path]) ||
+            !git('ls-tree', closure.dependencyCommit, '--', path).equals(git('ls-tree', first, '--', path))) return null
+      }
+      approvalBase = CLOSURE_BASE
+    }
+
+    // The original activation keeps its exact chain. Only the independent
+    // approval above can bind a new first parent and expiry.
+    const activation = JSON.parse(blob(approvalBase, ACTIVATION))
+    if (!samePaths(Object.keys(activation), ACTIVATION_KEYS) || activation.schemaVersion !== 1 ||
+        activation.taskId !== TASK || activation.status !== 'ACTIVE' || activation.approvedBy !== 'Founder' ||
+        activation.reviewedBy !== 'Claude' ||
+        activation.registrationCommit !== REGISTRATION || activation.productCommit !== PRODUCT ||
+        activation.productTree !== PRODUCT_TREE || !isSha(activation.requestSha256) || !isSha(activation.reviewSha256) ||
+        !isCurrentDeadline(closure?.deadlineExclusive ?? activation.deadlineExclusive) || !isCommit(activation.executableCommit)) return null
+    const executable = activation.executableCommit
+    if (text('rev-list', '--parents', '-1', approvalBase) !== `${approvalBase} ${executable}` ||
+        text('rev-list', '--parents', '-1', executable) !== `${executable} ${REGISTRATION}` ||
+        text('diff', '--no-renames', '--name-status', executable, approvalBase) !== `A\t${ACTIVATION}` ||
+        !samePaths(changed(REGISTRATION, executable), EXECUTABLE_PATHS) ||
+        !samePaths(Object.keys(activation.executablePathsSha256), EXECUTABLE_PATHS)) return null
+
     for (const path of EXECUTABLE_PATHS) {
       const expected = activation.executablePathsSha256[path]
-      if (!matchesTree(executable, path, expected) ||
+      if (closure && CLOSURE_DEPENDENCIES.includes(path)) {
+        if (!isSha(expected) || digest(executable, path) !== expected ||
+            !git('ls-tree', executable, '--', path).equals(git('ls-tree', approvalBase, '--', path))) return null
+      } else if (!matchesTree(executable, path, expected) ||
           !git('ls-tree', executable, '--', path).equals(git('ls-tree', first, '--', path))) return null
     }
 
@@ -113,12 +162,15 @@ function readUnifiedPrintSuccessor(root) {
           patch(anchor, head, path) !== diff || !samePaths(changed(anchor, head, path), [path])) return null
     }
     return {
+      allowsFoundationHistory() {
+        return closure !== null && isCurrentDeadline(closure.deadlineExclusive)
+      },
       corePaths(candidatePaths, rejectedPaths) {
-        return isCurrentDeadline(activation.deadlineExclusive) && samePaths(candidatePaths, paths) &&
+        return isCurrentDeadline(closure?.deadlineExclusive ?? activation.deadlineExclusive) && samePaths(candidatePaths, paths) &&
           samePaths(rejectedPaths, paths) ? new Set(paths) : null
       },
       admitsStartup(label, anchor, groupPaths) {
-        return isCurrentDeadline(activation.deadlineExclusive) && label === 'main startup gate' &&
+        return isCurrentDeadline(closure?.deadlineExclusive ?? activation.deadlineExclusive) && label === 'main startup gate' &&
           anchor === STARTUP_ANCHOR && samePaths(groupPaths, [STARTUP])
       },
     }
