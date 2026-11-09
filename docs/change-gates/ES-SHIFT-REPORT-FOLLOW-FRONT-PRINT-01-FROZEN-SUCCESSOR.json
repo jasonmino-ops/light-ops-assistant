@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-SHIFT-REPORT-FOLLOW-FRONT-PRINT-01",
+  "status": "FOUNDER_APPROVED_LIMITED_REGISTRATION",
+  "approvedBy": "Founder",
+  "trustedMainSha": "2269d34bfabfa808f7d3e5e7caaf5c77b6425fb5",
+  "baseProductionSha": "d441b55c8014642eb1b26b90d7bf5ce1b2df7941",
+  "sourceDraftTreeSha": "db59bb27ac129c62ddc0b596fe891bd35092caa2",
+  "sourceCommit": null,
+  "sealedProductPatchSha256": "64291f345bc69d6ae9fd02c7403161ad33960dde513015bcb04c774be2aa8be9",
+  "paths": {
+    "app/cashier/page.tsx": {
+      "before": "8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6",
+      "after": "5698c31fb723a498ba3b4775aca4d547ff6d80cb201e2d9a6124e3f70d9e251f"
+    },
+    "app/components/ShiftReportPrint.tsx": {
+      "before": "fbf5d9db1c13205624c2c414f08872b5e3c9ea3f67045cabaad9390fe016be72",
+      "after": "8837662bc20f2950f15cfc971c06570d30611b5418a889517748c7dfe9962c5e"
+    }
+  },
+  "freezeBoundary": "LEG-PRT-001 / Cashier print source exact boundaries",
+  "exactDispositionsRequested": [
+    {
+      "path": "tests/es-tray-device-print-contract.test.ts",
+      "checkerSha256": "563b06d5f9cc8e325c6c9b98ade5178dca2197d5af0c8851e1a77a8b3e0cec33",
+      "assertion": "cashier page remains byte-identical to its merged exact governance approval",
+      "line": "469",
+      "expected": "8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6",
+      "actual": "5698c31fb723a498ba3b4775aca4d547ff6d80cb201e2d9a6124e3f70d9e251f",
+      "rawResult": "BLOCKED",
+      "rawExit": 1,
+      "rawEvidence": "candidate-es-tray-device-print-contract.log",
+      "rawEvidenceSha256": "9337c5a11d5b8fa6cf6ad938057ccd0ea9fa9a3206209cde36c19add4db15089",
+      "priorRawEvidenceSha256": "77c2aa403473273dde142293b665f3ff914c363faeb5da5e9aaeecc44241a703",
+      "baselineExit": 0,
+      "baselineEvidence": "baseline-es-tray-device-print-contract.log",
+      "baselineEvidenceSha256": "78b2f9205e88530ae8ee69aac88045f5d572ab40ceb722e8fa7ce6e5b13bd00a"
+    },
+    {
+      "path": "tests/v3-reprint-recovery.test.ts",
+      "checkerSha256": "d403c6200677499541b91c66db2ce8583b8cf942b45dada40df3600a75ae3a28",
+      "assertion": "protected Cashier and Records blobs match the exact active authorization",
+      "line": "841",
+      "expected": "8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6",
+      "actual": "5698c31fb723a498ba3b4775aca4d547ff6d80cb201e2d9a6124e3f70d9e251f",
+      "rawResult": "BLOCKED",
+      "rawExit": 1,
+      "rawEvidence": "candidate-v3-reprint-recovery.log",
+      "rawEvidenceSha256": "8e44ba57094a83c587a16c6ff4100183890fea0284df0b5f0c088d3db96a9870",
+      "priorRawEvidenceSha256": "7f280ca7514910d351785e737b8f5510ca6df53feeb755dfa0f3b8c6c4e85599",
+      "baselineExit": 0,
+      "baselineEvidence": "baseline-v3-reprint-recovery.log",
+      "baselineEvidenceSha256": "8e017502a3f46c90fe85eb9821f7137526c3b763b8df6010fc11ad9412f8f067"
+    },
+    {
+      "path": "tests/cashier-realtime-integration.test.ts",
+      "checkerSha256": "7cdb477bc1957232f5bb02d3cfe541e8165466c467f52b8671f52037b4c9b585",
+      "assertion": "assertBoundary",
+      "line": "286 (caller 822)",
+      "expected": [],
+      "actual": [
+        "app/components/ShiftReportPrint.tsx"
+      ],
+      "rawResult": "BLOCKED",
+      "rawExit": 1,
+      "rawEvidence": "candidate-cashier-realtime-integration.log",
+      "rawEvidenceSha256": "c984b4cf76491744ee0918407316d47400d5f8c014454fd8fbbc6dcf25690bfb",
+      "priorRawEvidenceSha256": "adaa7db169e33a66238c06ff0a07f6114e9586ab1066b4f33a973e76f9910ffb",
+      "baselineExit": 0,
+      "baselineEvidence": "baseline-cashier-realtime-integration.log",
+      "baselineEvidenceSha256": "907ddfab753eb474337fd295cf32cf3900d916fba68c32f600c1ba3673e937d2"
+    }
+  ],
+  "scopeDraftSha256": "23b78ddf65512c2285e68e415e59623fcef0292b0a1868224c1a6a12e7a35cb6",
+  "existingImplementationReviewSha256": "f3d146b140c15115203993de8a4da7837b1ef3153e1a58e0210bbb82e81909f9",
+  "existingEvidenceManifestSha256": "ad7fbe66223019a8f5d74ba3a82415871707e9c63c92baa20077eae527e629de",
+  "registrationCondition": "This registration records the exact Founder disposition on trusted main. Any machine admission must prove it consumes this record under applicable governance. Product merge and release require their own exact authority.",
+  "effect": "Only the listed two hash transitions and single CORE path are approved. Raw exits and failures remain unchanged. This record is declarative and does not override checker results or authorize a product merge, release or deployment.",
+  "fullIndexDiffSha256": "8e7b68786611fbb0fdacc6f85ac7a0ea07217fe77666b229489652764ec9037b",
+  "approvedAt": "2026-11-09T16:39:46Z",
+  "approvalSource": {
+    "source": "Founder Formal Admission Decision in this task",
+    "decision": "APPROVED — EXACT SCOPE EXCEPTION, FROZEN SUCCESSORS & LIMITED GOVERNANCE REGISTRATION",
+    "statement": "批准 Codex 在完成精确字节、父链、Scope、Lineage 和独立审查绑定校验后，将本任务专属 Scope Exception 与三项冻结后继按现行正式流程登记到可信 main。",
+    "approvedAtMeaning": "UTC registration timestamp recorded after the explicit Founder decision.",
+    "scopeDraftSha256": "23b78ddf65512c2285e68e415e59623fcef0292b0a1868224c1a6a12e7a35cb6",
+    "freezeDraftSha256": "a8e7a25a03cbf536be54e01d50ebeb3619b7a4c1ab13b270f25153cb6af53a33",
+    "admissionManifestSha256": "a29c20f9cad31c6db4166424f3261b702d81c959252fbcc909b6f6b618c18bf9"
+  }
+}
