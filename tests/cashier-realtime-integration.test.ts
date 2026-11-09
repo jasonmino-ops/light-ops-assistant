@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { createCashierRealtimeWakeCoalescer } from '../lib/cashier-realtime-client'
 import { notifyCashierGateway } from '../lib/cashier-realtime-notify'
 
 const root = process.cwd()
+const { readUsbFrontSuccessor } = createRequire(resolve(root, 'package.json'))('./scripts/governance/es-print-usb-baseline-01.cjs')
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8')
 
 async function main() {
@@ -813,7 +815,8 @@ async function main() {
   } else {
     // ES-CASHIER-COST-01 exclusions and the existing H5/Dine-in approved set
     // retain their prior semantics. Closed historical grants are not reopened.
-    assertBoundary(changed, approved)
+    const usb = readUsbFrontSuccessor(root)
+    assertBoundary(changed, usb?.productPaths ?? approved)
   }
 
   console.log('cashier realtime Stage 1F integration and regression checks passed')

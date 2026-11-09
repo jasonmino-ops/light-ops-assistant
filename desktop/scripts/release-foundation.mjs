@@ -16,6 +16,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const { evaluateFile, validateException } = require('../../scripts/guards/check-change-scope.js')
+const { readUsbFrontSuccessor } = require('../../scripts/governance/es-print-usb-baseline-01.cjs')
 const { validateRegister, validatePilot, validatePilotSourcePaths } = require('../../scripts/governance/delivery-classification.cjs')
 
 const scriptDir = resolve(fileURLToPath(new URL('.', import.meta.url)))
@@ -423,6 +424,7 @@ async function runPolicy(options) {
 
   const baseline = options.baseline ?? BASELINE_FREEZE_TAG
   const allowAuthorizedSuccessors = options.baseline == null
+  const usb = allowAuthorizedSuccessors ? readUsbFrontSuccessor(repoRoot) : null
   const frozenBoundary = []
   for (const group of FROZEN_BOUNDARY_GROUPS) {
     const changed = git(['diff', '--name-only', baseline, '--', ...group.paths])
@@ -434,16 +436,20 @@ async function runPolicy(options) {
       successorSnapshot != null &&
       gitIsAncestor(successorSnapshot, 'HEAD') &&
       git(['diff', '--name-only', successorSnapshot, '--', ...group.paths]) === ''
+    const exactUsb = usb?.evaluateReleaseGroup(group.label, successorSnapshot ?? baseline, group.paths)
     frozenBoundary.push({
       label: group.label,
-      status: changed.length === 0 || matchesAuthorizedSuccessor ? 'PASS' : 'FAIL',
+      status: changed.length === 0 || matchesAuthorizedSuccessor || exactUsb?.admitted ? 'PASS' : 'FAIL',
+      ...(exactUsb ? { usbFrontHistoricalPaths: exactUsb.paths } : {}),
       changed,
       ...(matchesAuthorizedSuccessor ? { authorizedSuccessorSnapshot: successorSnapshot } : {}),
     })
   }
   const failed = frozenBoundary.filter((group) => group.status !== 'PASS')
   if (failed.length > 0) {
-    throw new Error(`frozen boundary changed: ${failed.map((group) => group.label).join(', ')}`)
+    const details = frozenBoundary.flatMap(group => (group.usbFrontHistoricalPaths ?? [])
+      .map(({ path, status }) => `ES-PRINT-USB-BASELINE-01 ${status} ${path}`))
+    throw new Error([`frozen boundary changed: ${failed.map((group) => group.label).join(', ')}`, ...details].join('\n'))
   }
 
   return {
