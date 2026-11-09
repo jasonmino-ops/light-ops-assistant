@@ -2,7 +2,7 @@ import { safeStorage } from 'electron'
 import { mkdir, open, readFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ActivationSecretSafeStorage } from '../activation/activationTypes'
-import { isDiamondUsbIdentity, parseWindowsUsbEndpoint, windowsUsbEndpointKey, type WindowsUsbEndpoint } from './windowsUsbEndpoint'
+import { parseWindowsUsbEndpoint, windowsUsbEndpointKey, type WindowsUsbEndpoint } from './windowsUsbEndpoint'
 
 export type PrinterRole = 'FRONT' | 'KITCHEN'
 export type LocalEndpointIdentity = { storeId: string; deviceId: string }
@@ -45,7 +45,7 @@ function document(value: unknown): EndpointDocument | null {
   for (const role of ROLES) {
     if (!(role in endpoints)) continue
     const tcp = endpoint(endpoints[role])
-    const value = tcp ?? (role === 'FRONT' && isDiamondUsbIdentity(identity.storeId, identity.deviceId)
+    const value = tcp ?? (role === 'FRONT'
       ? parseWindowsUsbEndpoint(endpoints[role]) : null)
     if (!value) return null
     parsed[role] = value

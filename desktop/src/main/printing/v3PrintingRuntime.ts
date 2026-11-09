@@ -9,7 +9,8 @@ import { EndpointMutex } from './endpointMutex'
 import { RawTcpEffectBoundary } from './rawTcpEffectBoundary'
 import { WindowsUsbPrintBoundary } from './windowsUsbPrintBoundary'
 import { isWindowsUsbEndpointKey } from './windowsUsbEndpoint'
-import { SharedPrintingCore, type SharedPrintIdentity } from './sharedPrintingCore'
+import { executeUsbFrontTest, readUsbFrontTestRequest, usbFrontTestLedgerPath, type UsbFrontTestRequest } from './windowsUsbFrontTest'
+import { SharedPrintingCore, type ExecutionSafetyCheck, type SharedExecutionResult, type SharedPrintIdentity } from './sharedPrintingCore'
 import type { V3ControlPlaneRuntime } from './controlPlaneRuntime'
 import type { ExecutionBatchProjection } from './controlPlaneClient'
 import { proveProcessDead } from './processLiveness'
@@ -21,6 +22,8 @@ import { NoPayloadEndpointReadiness, type RoleReadinessMask } from './endpointRe
 import { logger } from '../logger'
 
 const PRINT_ROLES: readonly PrinterRole[] = ['FRONT', 'KITCHEN']
+type RunUsbFrontTest = (request: UsbFrontTestRequest, endpointKey: string, validate: ExecutionSafetyCheck) => Promise<SharedExecutionResult>
+
 const NO_ROLES_READY: RoleReadinessMask = Object.freeze({ FRONT: false, KITCHEN: false })
 
 function releaseSafeExecutionResult(result: { status: string; record?: { state?: string } }): boolean {
@@ -45,6 +48,7 @@ export async function hasDurableCrossingUnknown(userDataPath: string): Promise<b
 export class V3PrintingRuntime {
   private timer: ReturnType<typeof setInterval> | null = null
   private pumpPromise: Promise<void> | null = null
+  private usbTestPromise: Promise<void> | null = null
   private running = false
   private started = false
   private lifecycleGeneration = 0
@@ -60,9 +64,10 @@ export class V3PrintingRuntime {
     private readonly cloud: V3PrintJobClient | null,
     private readonly pollIntervalMs: number,
     private readonly networkRenderer: V3NetworkRenderer,
-    private readonly releaseBlocked = false,
+    private releaseBlocked = false,
     private readonly endpointReadiness = new NoPayloadEndpointReadiness(),
     private readonly roleReadinessIntervalMs = 30_000,
+    private readonly usbFrontTest?: RunUsbFrontTest,
   ) {}
 
   public static async open(options: {
@@ -80,15 +85,30 @@ export class V3PrintingRuntime {
     if (!opened.ok) throw new Error(opened.error.code)
     const outbox = new ExecutionOutbox(options.userDataPath)
     await outbox.open()
+    const testLedgerPath = usbFrontTestLedgerPath(options.userDataPath)
     const releaseBlocked = await hasDurableCrossingUnknown(options.userDataPath) ||
+      await hasDurableCrossingUnknown(testLedgerPath) ||
       outbox.list().some(({ outcome }) => outcome === 'CROSSING_UNKNOWN')
     const tcp = new RawTcpEffectBoundary(options.tcpTimeoutMs ?? 10_000)
     const usb = new WindowsUsbPrintBoundary()
+    const mutex = new EndpointMutex({ root: options.userDataPath, staleRecovery: recovery })
     const shared = new SharedPrintingCore<Uint8Array>(
       ledger,
       { cross: (input) => isWindowsUsbEndpointKey(input.endpointKey) ? usb.cross(input) : tcp.cross(input) },
-      new EndpointMutex({ root: options.userDataPath, staleRecovery: recovery }),
+      mutex,
     )
+    const usbFrontTest: RunUsbFrontTest = async (request, endpointKey, validate) => {
+      await fs.mkdir(testLedgerPath, { recursive: true, mode: 0o700 })
+      const testLedger = createExecutionLedger({ userDataPath: testLedgerPath, staleLockRecovery: recovery })
+      const opened = await testLedger.open()
+      try {
+        if (!opened.ok) return { status: 'REJECTED', error: opened.error }
+        return await executeUsbFrontTest(new SharedPrintingCore(testLedger, usb, mutex), request, endpointKey, validate)
+      } finally {
+        const closed = await testLedger.close()
+        if (!closed.ok) throw new Error(closed.error.code)
+      }
+    }
     const authority = {
       canAdmit: (candidate: { batchId: string; storeId: string; deviceId: string; ownerEpoch: number; leaseId: string; batchExpiresAt: string }) => {
         const validation = options.controlPlane.validateAdmittedExecution(candidate)
@@ -109,11 +129,12 @@ export class V3PrintingRuntime {
     const runtime = new V3PrintingRuntime(ledger, new LocalFirstPrintCoordinator(authority, shared, outbox, mode), options.controlPlane,
       new LocalEndpointAuthority(options.userDataPath, { storeId: options.storeId, deviceId: options.deviceId }), outbox,
       options.cloud ?? null, options.cloudPollIntervalMs ?? 2_000, new V3NetworkRenderer(), releaseBlocked,
-      new NoPayloadEndpointReadiness(undefined, undefined, (key) => usb.isReady(key)))
+      new NoPayloadEndpointReadiness(undefined, undefined, (key) => usb.isReady(key)), undefined,
+      usbFrontTest)
     return runtime
   }
 
-  public async start(): Promise<void> {
+  public async start(argv: readonly string[] = process.argv): Promise<void> {
     if (this.started) return
     this.started = true
     this.running = true
@@ -123,12 +144,61 @@ export class V3PrintingRuntime {
         releaseBlocked: this.releaseBlocked,
         expiredSelfRecoveryReadiness: () => this.checkExpiredSelfRecoveryReadiness(generation),
       })
+      if (!this.running || generation !== this.lifecycleGeneration) return
+      let testRequest: UsbFrontTestRequest | null = null
+      try {
+        testRequest = readUsbFrontTestRequest(argv)
+      } catch (error) {
+        logger.warn('v3-print-usb.test-rejected', { code: (error as Error).message })
+      }
+      if (testRequest) {
+        this.usbTestPromise = this.runUsbTest(testRequest, generation)
+        try { await this.usbTestPromise } finally { this.usbTestPromise = null }
+      }
       if (!this.releaseBlocked) await this.refreshRoleReadiness(generation, true)
       if (this.running && generation === this.lifecycleGeneration) this.startCloudPump()
     } catch (error) {
       this.running = false
       this.started = false
       throw error
+    }
+  }
+
+  private async runUsbTest(request: UsbFrontTestRequest, generation: number): Promise<void> {
+    const reject = (code: string) => logger.warn('v3-print-usb.test-rejected', { requestId: request.printJobId, code })
+    if (!this.usbFrontTest) return reject('USB_TEST_UNAVAILABLE')
+    if (this.releaseBlocked) return reject('LOCAL_EFFECT_AMBIGUITY')
+    const endpoint = await this.endpoints.resolve('FRONT')
+    if (!endpoint.ok || !isWindowsUsbEndpointKey(endpoint.endpointKey)) return reject('USB_FRONT_NOT_CONFIGURED')
+    if (!this.running || generation !== this.lifecycleGeneration) return reject('RUNTIME_STOPPED')
+    const batch = this.controlPlane.current().batch
+    if (!batch) return reject('NO_OWNER_SCOPED_BATCH')
+    const lifecycle = this.controlPlane.beginExecutionLifecycle(batch)
+    if (!lifecycle.ok) return reject(lifecycle.error.code)
+
+    let releaseSafe = false
+    try {
+      const result = await this.usbFrontTest(request, endpoint.endpointKey, () => {
+        if (!this.running || generation !== this.lifecycleGeneration) {
+          return { ok: false, error: { code: 'RUNTIME_STOPPED', message: 'Printing runtime stopped.' } }
+        }
+        return this.controlPlane.validateAdmittedExecution({
+          batchId: batch.id, storeId: batch.storeId, deviceId: batch.ownerDeviceId,
+          ownerEpoch: batch.ownerEpoch, leaseId: batch.leaseId, batchExpiresAt: batch.expiresAt,
+        })
+      })
+      releaseSafe = releaseSafeExecutionResult(result)
+      logger.info('v3-print-usb.test-result', {
+        requestId: request.printJobId,
+        status: result.status,
+        code: result.status === 'REJECTED' ? result.error.code : undefined,
+        reason: 'reason' in result ? result.reason : undefined,
+      })
+    } catch {
+      reject('USB_TEST_EXECUTION_UNVERIFIABLE')
+    } finally {
+      if (!releaseSafe) this.releaseBlocked = true
+      await lifecycle.guard.complete({ releaseSafe })
     }
   }
 
@@ -218,6 +288,7 @@ export class V3PrintingRuntime {
     this.lifecycleGeneration += 1
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    await this.usbTestPromise
     await this.pumpPromise
     await this.roleReadinessPromise
     this.networkRenderer.dispose()
