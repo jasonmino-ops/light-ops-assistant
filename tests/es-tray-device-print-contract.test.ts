@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readShiftReportSuccessor } from '../scripts/governance/es-shift-report-follow-front-print-01.cjs'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import { NextRequest } from 'next/server'
@@ -466,9 +467,12 @@ async function main() {
     // Historical ES-DINE-IN-01 Cashier SHA-256: 621fce631a93b986d86f71a8de868de5872055acf9d79e385bb2ce113ca27e94.
     // Prior ES-DIAMOND-V3-PRINT-FROZEN-SUCCESSOR-01: exact ES-RETAIL-MULTI-UNIT-01 bytes.
     // Successor candidate: ES-PRODUCT-COUNT-LIMIT-01 (catalogue-only).
+    const successor = readShiftReportSuccessor(process.cwd())
+    assert.notEqual(successor?.blocked, true, 'merged shift report freeze successor does not match the checkout')
     assert.equal(
       createHash('sha256').update(cashier).digest('hex'),
-      '8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6',
+      successor?.cashierHash ??
+        '8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6',
     )
   })
 

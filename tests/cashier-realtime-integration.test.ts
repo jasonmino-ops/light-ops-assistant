@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readShiftReportSuccessor } from '../scripts/governance/es-shift-report-follow-front-print-01.cjs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -819,7 +820,8 @@ async function main() {
     const usb = readUsbFrontSuccessor(root)
     const unified = usb ? null : readUnifiedPrintSuccessor(root)
     const exactPaths = unified?.corePaths(changed, changed.filter(path => !approved.has(path)))
-    assertBoundary(changed, usb?.productPaths ?? exactPaths ?? approved)
+    const shiftPaths = usb || exactPaths ? null : readShiftReportSuccessor(root)?.corePaths
+    assertBoundary(changed, usb?.productPaths ?? exactPaths ?? shiftPaths ?? approved)
   }
 
   console.log('cashier realtime Stage 1F integration and regression checks passed')
