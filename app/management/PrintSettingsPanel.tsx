@@ -38,6 +38,13 @@ const additionalCodes = new Set([
   'USB_TEST_NOT_EXECUTED', 'RUNTIME_STOPPED',
 ])
 
+type Role = 'FRONT' | 'KITCHEN'
+type SaveFeedback = { kind: 'saved' | 'failed' | 'cancelled' | 'unconfirmed' | 'refresh'; code?: string }
+
+function sameUsbQueue(queue: UsbQueueChoice, endpoint: PrintSettingsState['front']) {
+  return endpoint?.kind === 'USB' && queue.queueName === endpoint.queueName && queue.portName === endpoint.portName
+}
+
 function statusCode(value: string): string {
   return Object.hasOwn(statusKeys, value) || additionalCodes.has(value) ? value : 'PRINT_SETTINGS_UNAVAILABLE'
 }
@@ -57,17 +64,41 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
   const [kitchenHost, setKitchenHost] = useState('')
   const [kitchenPort, setKitchenPort] = useState('9100')
   const [queues, setQueues] = useState<UsbQueueChoice[] | null>(null)
-  const [queueKey, setQueueKey] = useState('')
+  const [draftQueue, setDraftQueue] = useState<UsbQueueChoice | null>(null)
+  const [saveFeedback, setSaveFeedback] = useState<Partial<Record<Role, SaveFeedback>>>({})
+  const [needsRefresh, setNeedsRefresh] = useState(false)
+  const [unknownCode, setUnknownCode] = useState<string | null>(null)
   const [testLocked, setTestLocked] = useState(false)
 
-  function apply(snapshot: PrintSettingsState) {
+  const savedFront = state?.front
+  const savedKitchen = state?.kitchen
+  const selected = queues?.find((queue) => queue.key === draftQueue?.key)
+  const savedQueue = queues?.find((queue) => sameUsbQueue(queue, savedFront ?? null))
+  const frontDirty = frontKind !== (savedFront?.kind ?? 'TCP') ||
+    (!!draftQueue && !sameUsbQueue(draftQueue, savedFront ?? null)) ||
+    frontHost !== (savedFront?.kind === 'TCP' ? savedFront.host : '') ||
+    frontPort !== String(savedFront?.kind === 'TCP' ? savedFront.port : 9100)
+  const kitchenDirty = kitchenHost !== (savedKitchen?.host ?? '') || kitchenPort !== String(savedKitchen?.port ?? 9100)
+  const effectiveStatus = unknownCode ?? (state?.blockedCode === 'LOCAL_EFFECT_AMBIGUITY' ? state.blockedCode : status ?? state?.blockedCode)
+  const canEdit = state?.mode === 'V3' && !state.blockedCode && !unknownCode && !needsRefresh && !busy
+
+  function apply(snapshot: PrintSettingsState, keepDraft?: Role) {
     setState(snapshot)
-    setFrontKind(snapshot.front?.kind ?? 'TCP')
-    setFrontHost(snapshot.front?.kind === 'TCP' ? snapshot.front.host : '')
-    setFrontPort(snapshot.front?.kind === 'TCP' ? String(snapshot.front.port) : '9100')
-    setKitchenHost(snapshot.kitchen?.host ?? '')
-    setKitchenPort(snapshot.kitchen ? String(snapshot.kitchen.port) : '9100')
-    setQueueKey('')
+    setNeedsRefresh(false)
+    if (keepDraft !== 'FRONT') {
+      setFrontKind(snapshot.front?.kind ?? 'TCP')
+      setFrontHost(snapshot.front?.kind === 'TCP' ? snapshot.front.host : '')
+      setFrontPort(snapshot.front?.kind === 'TCP' ? String(snapshot.front.port) : '9100')
+      setDraftQueue(null)
+    }
+    if (keepDraft !== 'KITCHEN') {
+      setKitchenHost(snapshot.kitchen?.host ?? '')
+      setKitchenPort(snapshot.kitchen ? String(snapshot.kitchen.port) : '9100')
+    }
+  }
+
+  function updateSave(role: Role, feedback?: SaveFeedback) {
+    setSaveFeedback((previous) => ({ ...previous, [role]: feedback }))
   }
 
   useEffect(() => {
@@ -87,52 +118,108 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
     if (!bridge || busy) return
     setBusy(true)
     setStatus(null)
+    if (request.action === 'save') updateSave(request.role)
     try {
       const reply = await bridge.request(request)
       if (!reply.ok) {
-        setStatus(statusCode(reply.code))
-        if (request.action === 'test' && ['LOCAL_EFFECT_AMBIGUITY', 'USB_TEST_EXECUTION_UNVERIFIABLE', 'PRINT_SETTINGS_UNAVAILABLE'].includes(reply.code)) {
-          setTestLocked(true)
+        const code = statusCode(reply.code)
+        if (request.action === 'read' || code === 'ENDPOINT_CONFIG_REVISION_STALE' || statusKeys[code] === 'authority') {
+          setNeedsRefresh(true)
+        }
+        if (code === 'LOCAL_EFFECT_AMBIGUITY' || (request.action === 'test' &&
+          ['USB_TEST_EXECUTION_UNVERIFIABLE', 'PRINT_SETTINGS_UNAVAILABLE'].includes(code))) {
+          setUnknownCode(code)
+        } else if (request.action === 'save') {
+          updateSave(request.role, { kind: code === 'PRINT_SETTINGS_CANCELLED' ? 'cancelled' : 'failed', code })
+        } else {
+          setStatus(code)
+        }
+        if (request.action === 'queues' || ['USB_QUEUE_NOT_READY', 'USB_TEST_FAILED_NOT_CROSSED', 'USB_FRONT_NOT_CONFIGURED'].includes(code)) {
+          setQueues(null)
         }
         return
       }
-      if ('state' in reply) apply(reply.state)
-      if ('queues' in reply) {
-        setQueues(reply.queues)
-        setQueueKey('')
+      if ('state' in reply) {
+        apply(reply.state)
+        setQueues(null)
+        setSaveFeedback({})
       }
-      if ('code' in reply) {
+      if ('queues' in reply) setQueues(reply.queues)
+      if ('code' in reply && reply.code === 'USB_TEST_SPOOLED') {
         setStatus(reply.code)
-        if (reply.code === 'USB_TEST_SPOOLED') setTestLocked(true)
-        if (reply.code === 'SETTINGS_SAVED') {
-          const refreshed = await bridge.request({ action: 'read', storeCode: request.storeCode })
-          if (refreshed.ok && 'state' in refreshed) apply(refreshed.state)
-          else setState(null)
+        setTestLocked(true)
+      }
+      if (request.action === 'save' && 'code' in reply && reply.code === 'SETTINGS_SAVED') {
+        const refreshed = await bridge.request({ action: 'read', storeCode: request.storeCode }).catch(() => null)
+        if (refreshed?.ok && 'state' in refreshed) {
+          const keepDraft = request.role === 'FRONT' ? (kitchenDirty ? 'KITCHEN' : undefined) : (frontDirty ? 'FRONT' : undefined)
+          apply(refreshed.state, keepDraft)
+          updateSave(request.role, { kind: 'saved' })
+        } else {
+          setNeedsRefresh(true)
+          updateSave(request.role, { kind: 'refresh' })
         }
       }
     } catch {
       if (request.action === 'test') {
-        setStatus('USB_TEST_EXECUTION_UNVERIFIABLE')
-        setTestLocked(true)
+        setUnknownCode('USB_TEST_EXECUTION_UNVERIFIABLE')
+      } else if (request.action === 'save') {
+        setNeedsRefresh(true)
+        updateSave(request.role, { kind: 'unconfirmed', code: 'PRINT_SETTINGS_UNAVAILABLE' })
       } else {
-        setStatus('PRINT_SETTINGS_UNAVAILABLE')
-        if (request.action === 'save') setState(null)
+        if (request.action === 'queues') setQueues(null)
+        if (request.action === 'read') setNeedsRefresh(true)
+        setStatus(request.action === 'queues' ? 'USB_QUEUE_DISCOVERY_FAILED' : 'PRINT_SETTINGS_UNAVAILABLE')
       }
     } finally {
       setBusy(false)
     }
   }
 
-  const selected = queues?.find((queue) => queue.key === queueKey)
-  const effectiveStatus = status ?? state?.blockedCode
-  const canEdit = !!state && state.mode === 'V3' && !state.blockedCode && effectiveStatus !== 'LOCAL_EFFECT_AMBIGUITY' && !busy
   const configured = (endpoint: PrintSettingsState['front']) => endpoint?.kind === 'USB'
     ? `${endpoint.queueName} (${endpoint.portName})`
     : endpoint?.kind === 'TCP' ? `${endpoint.host}:${endpoint.port}` : t('printSettings.notConfigured')
 
-  const noticeKey = effectiveStatus ? statusKeys[statusCode(effectiveStatus)] ?? 'failed' : null
+  const isUnknown = !!unknownCode || effectiveStatus === 'LOCAL_EFFECT_AMBIGUITY'
+  const noticeKey = isUnknown ? 'unknown' : effectiveStatus && effectiveStatus !== 'USB_QUEUE_DISCOVERY_FAILED'
+    ? statusKeys[effectiveStatus] ?? 'failed' : null
   const noticeTone = noticeKey === 'unknown' || noticeKey === 'invalid' || noticeKey === 'failed'
-    ? 'error' : noticeKey === 'saved' || noticeKey === 'spooled' ? 'success' : 'notice'
+    ? 'error' : noticeKey === 'spooled' ? 'success' : 'notice'
+  const testBlockReason = (role: Role) => {
+    if (isUnknown) return 'unknownTitle'
+    if (busy) return 'busy'
+    if (state?.blockedCode) return statusKeys[statusCode(state.blockedCode)] ?? 'failed'
+    if (status && statusKeys[status] === 'authority') return 'authority'
+    if (needsRefresh) return 'testRefreshFirst'
+    if (role === 'KITCHEN' || frontKind === 'TCP') return 'tcpTestUnavailable'
+    if (frontDirty || !savedFront) return 'testSaveFirst'
+    if (testLocked) return 'testLockedHelp'
+    if (!state?.usbSupported || !savedQueue || (draftQueue && selected?.key !== savedQueue.key)) return 'testFindSavedUsb'
+    return null
+  }
+  const frontTestBlock = testBlockReason('FRONT')
+  const kitchenTestBlock = testBlockReason('KITCHEN')
+  const frontFieldError = saveFeedback.FRONT?.kind === 'failed' ? saveFeedback.FRONT.code : undefined
+  const kitchenFieldError = saveFeedback.KITCHEN?.kind === 'failed' ? saveFeedback.KITCHEN.code : undefined
+
+  function renderSaveFeedback(role: Role) {
+    const feedback = saveFeedback[role]
+    if (!feedback) return null
+    const title = feedback.kind === 'failed' ? 'saveFailedTitle' : feedback.kind === 'cancelled' ? 'cancelled' :
+      feedback.kind === 'unconfirmed' ? 'saveUnconfirmed' : 'savedTitle'
+    const message = feedback.kind === 'refresh' ? 'savedRefresh' :
+      feedback.kind === 'failed' ? statusKeys[feedback.code ?? ''] ?? 'failed' : null
+    const tone = feedback.kind === 'failed' ? 'error' : feedback.kind === 'saved' ? 'success' : 'notice'
+    return (
+      <div role="status" id={`print-save-${role}`} style={{ ...styles.notice, ...noticeStyles[tone] }}>
+        <div>
+          <strong>{t(`printSettings.${title}`)}</strong>
+          {message && <p style={styles.noticeText}>{t(`printSettings.${message}`)}</p>}
+        </div>
+        {feedback.code && <TechnicalDetails code={feedback.code} label={t('printSettings.technicalDetails')} />}
+      </div>
+    )
+  }
   const frontSummary = state?.front?.kind ?? ''
   const button = (primary = false): React.CSSProperties => primary ? { ...styles.button, ...styles.primary } : styles.button
 
@@ -144,7 +231,10 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
       `}</style>
       <div style={styles.toolbar}>
         <p style={styles.body}>{state?.mode === 'V3' ? t('printSettings.v3Only') : t('printSettings.deviceScope')}</p>
-        {storeCode && <button type="button" style={button()} disabled={busy} onClick={() => run({ action: 'read', storeCode })}>
+        {storeCode && <button type="button" style={button()} disabled={busy} onClick={() => {
+          if ((frontDirty || kitchenDirty) && !window.confirm(t('printSettings.confirmDiscard'))) return
+          void run({ action: 'read', storeCode })
+        }}>
           {t('printSettings.refresh')}
         </button>}
       </div>
@@ -154,13 +244,13 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
         <p style={styles.body}>{t('printSettings.legacyOnly')}</p>
         <button type="button" style={button()} disabled={legacyBusy} onClick={onLegacy}>{t('printSettings.openLegacy')}</button>
       </div>}
-      {effectiveStatus && noticeKey && (
+      {noticeKey && effectiveStatus && (
         <div role="status" style={{ ...styles.notice, ...noticeStyles[noticeTone] }}>
           <div>
             <strong>{t(`printSettings.${noticeTitles[noticeKey] ?? 'noticeTitle'}`)}</strong>
             <p style={styles.noticeText}>{t(`printSettings.${noticeKey}`)}</p>
           </div>
-          <code style={styles.code}>{statusCode(effectiveStatus)}</code>
+          <TechnicalDetails code={effectiveStatus} label={t('printSettings.technicalDetails')} />
         </div>
       )}
       {state?.mode === 'V3' && storeCode && <>
@@ -171,14 +261,17 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
                 <h3 id="front-printer-title" style={styles.cardTitle}>{t('printSettings.frontTitle')}</h3>
                 <p style={styles.description}>{t('management.frontPrinterDesc')}</p>
               </div>
-              <span style={styles.badge}>{frontSummary || t('printSettings.notConfigured')}</span>
+              <span style={styles.badge}>{frontDirty ? t('printSettings.unsaved') : frontSummary || t('printSettings.notConfigured')}</span>
             </div>
             <div style={styles.saved}>
-              <span style={styles.label}>{t('printSettings.current')}</span>
+              <span style={styles.label}>{t(needsRefresh ? 'printSettings.lastRead' : 'printSettings.current')}</span>
               <strong style={styles.configured}>{configured(state.front)}</strong>
             </div>
             <label style={styles.field}>{t('printSettings.method')}
-              <select style={styles.control} value={frontKind} onChange={(event) => setFrontKind(event.target.value === 'USB' ? 'USB' : 'TCP')}>
+              <select style={styles.control} value={frontKind} onChange={(event) => {
+                setFrontKind(event.target.value === 'USB' ? 'USB' : 'TCP')
+                updateSave('FRONT')
+              }}>
                 <option value="TCP">TCP</option>
                 {state.usbSupported && <option value="USB">USB</option>}
               </select>
@@ -186,38 +279,51 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
             {frontKind === 'USB' ? <>
               <div style={styles.queueRow}>
                 <label style={{ ...styles.field, flex: '1 1 180px' }}>{t('printSettings.queue')}
-                  <select style={styles.control} value={queueKey} disabled={!queues?.length} onChange={(event) => setQueueKey(event.target.value)}>
+                  <select style={styles.control} value={draftQueue?.key ?? savedQueue?.key ?? ''} disabled={!queues?.length}
+                    aria-describedby={frontFieldError ? 'print-save-FRONT' : undefined} onChange={(event) => {
+                      setDraftQueue(queues?.find((queue) => queue.key === event.target.value) ?? null)
+                      updateSave('FRONT')
+                    }}>
                     <option value="">{t('printSettings.choose')}</option>
+                    {draftQueue && !selected && <option value={draftQueue.key} disabled>{draftQueue.queueName} ({draftQueue.portName})</option>}
                     {queues?.map((queue) => <option key={queue.key} value={queue.key}>{queue.queueName} ({queue.portName})</option>)}
                   </select>
                 </label>
                 <button type="button" style={button()} onClick={() => run({ action: 'queues', storeCode })}>{t('printSettings.findQueues')}</button>
               </div>
+              {status === 'USB_QUEUE_DISCOVERY_FAILED' && <div role="status" style={styles.noQueues}>
+                {t('printSettings.discovery')} <TechnicalDetails code={status} label={t('printSettings.technicalDetails')} />
+              </div>}
               <p role={queues?.length === 0 ? 'status' : undefined} style={queues?.length === 0 ? styles.noQueues : styles.description}>
                 {t(queues?.length === 0 ? 'printSettings.noQueues' : 'printSettings.usbHelp')}
               </p>
             </> : (
               <div style={styles.addressRow}>
                 <label style={styles.field}>{t('printSettings.host')}
-                  <input style={styles.control} value={frontHost} onChange={(event) => setFrontHost(event.target.value)} />
+                  <input style={styles.control} value={frontHost} aria-describedby={frontFieldError ? 'print-save-FRONT' : undefined}
+                    onChange={(event) => { setFrontHost(event.target.value); updateSave('FRONT') }} />
                 </label>
                 <label style={styles.field}>{t('printSettings.port')}
-                  <input style={styles.control} type="number" min="1" max="65535" value={frontPort} onChange={(event) => setFrontPort(event.target.value)} />
+                  <input style={styles.control} type="number" min="1" max="65535" value={frontPort} aria-describedby={frontFieldError ? 'print-save-FRONT' : undefined}
+                    onChange={(event) => { setFrontPort(event.target.value); updateSave('FRONT') }} />
                 </label>
               </div>
             )}
+            {renderSaveFeedback('FRONT')}
             <div style={styles.cardFooter}>
               <div style={styles.actions}>
-                <button type="button" style={button(true)} disabled={!canEdit || (frontKind === 'USB' ? !selected : !frontHost || !frontPort)} onClick={() => {
+                <button type="button" style={button(true)} disabled={!canEdit || (frontKind === 'USB' ? !selected : !frontDirty || !frontHost || !frontPort)} onClick={() => {
                   if (frontKind === 'USB' && !selected) return
                   void run({ action: 'save', role: 'FRONT', storeCode, revision: state.revision, target: frontKind === 'USB' && selected
                     ? { kind: 'USB', ...selected } : { kind: 'TCP', host: frontHost.trim(), port: Number(frontPort) } })
                 }}>{t('printSettings.save')}</button>
-                <button type="button" style={button()} disabled={!canEdit || state.front?.kind !== 'USB' || testLocked} onClick={() => {
-                  void run({ action: 'test', storeCode, revision: state.revision })
-                }}>{t('printSettings.test')}</button>
+                <button type="button" style={button()} disabled={!!frontTestBlock || !canEdit} aria-describedby="front-test-help" onClick={() => {
+                  if (!frontTestBlock && canEdit) void run({ action: 'test', storeCode, revision: state.revision })
+                }}>{t('printSettings.frontTest')}</button>
               </div>
-              <p style={styles.description}>{t(testLocked ? 'printSettings.testLockedHelp' : 'printSettings.testHelp')}</p>
+              <p id="front-test-help" style={styles.description}>
+                {frontTestBlock ? t(`printSettings.${frontTestBlock}`) : `${t('printSettings.testDestination')} ${configured(savedFront ?? null)} · FRONT TEST - NO SALE`}
+              </p>
             </div>
           </fieldset>
           <fieldset aria-labelledby="kitchen-printer-title" disabled={busy} style={styles.card}>
@@ -226,26 +332,33 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
                 <h3 id="kitchen-printer-title" style={styles.cardTitle}>{t('printSettings.kitchenTitle')}</h3>
                 <p style={styles.description}>{t('management.kitchenPrinterDesc')}</p>
               </div>
-              <span style={styles.badge}>TCP</span>
+              <span style={styles.badge}>{kitchenDirty ? t('printSettings.unsaved') : 'TCP'}</span>
             </div>
             <div style={styles.saved}>
-              <span style={styles.label}>{t('printSettings.current')}</span>
+              <span style={styles.label}>{t(needsRefresh ? 'printSettings.lastRead' : 'printSettings.current')}</span>
               <strong style={styles.configured}>{configured(state.kitchen)}</strong>
             </div>
             <div style={styles.addressRow}>
               <label style={styles.field}>{t('printSettings.host')}
-                <input style={styles.control} value={kitchenHost} onChange={(event) => setKitchenHost(event.target.value)} />
+                <input style={styles.control} value={kitchenHost} aria-describedby={kitchenFieldError ? 'print-save-KITCHEN' : undefined}
+                    onChange={(event) => { setKitchenHost(event.target.value); updateSave('KITCHEN') }} />
               </label>
               <label style={styles.field}>{t('printSettings.port')}
-                <input style={styles.control} type="number" min="1" max="65535" value={kitchenPort} onChange={(event) => setKitchenPort(event.target.value)} />
+                <input style={styles.control} type="number" min="1" max="65535" value={kitchenPort} aria-describedby={kitchenFieldError ? 'print-save-KITCHEN' : undefined}
+                    onChange={(event) => { setKitchenPort(event.target.value); updateSave('KITCHEN') }} />
               </label>
             </div>
             <p style={styles.description}>{t('printSettings.kitchenHelp')}</p>
+            {renderSaveFeedback('KITCHEN')}
             <div style={styles.cardFooter}>
-              <button type="button" style={button(true)} disabled={!canEdit || !kitchenHost || !kitchenPort} onClick={() => {
-                void run({ action: 'save', role: 'KITCHEN', storeCode, revision: state.revision,
-                  target: { kind: 'TCP', host: kitchenHost.trim(), port: Number(kitchenPort) } })
-              }}>{t('printSettings.save')}</button>
+              <div style={styles.actions}>
+                <button type="button" style={button(true)} disabled={!canEdit || !kitchenDirty || !kitchenHost || !kitchenPort} onClick={() => {
+                  void run({ action: 'save', role: 'KITCHEN', storeCode, revision: state.revision,
+                    target: { kind: 'TCP', host: kitchenHost.trim(), port: Number(kitchenPort) } })
+                }}>{t('printSettings.save')}</button>
+                <button type="button" style={button()} disabled aria-describedby="kitchen-test-help">{t('printSettings.kitchenTest')}</button>
+              </div>
+              <p id="kitchen-test-help" style={styles.description}>{t(`printSettings.${kitchenTestBlock ?? 'tcpTestUnavailable'}`)}</p>
             </div>
           </fieldset>
         </div>
@@ -253,6 +366,13 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
       </>}
     </div>
   )
+}
+
+function TechnicalDetails({ code, label }: { code: string; label: string }) {
+  return <details style={styles.details}>
+    <summary>{label}</summary>
+    <code style={styles.code}>{statusCode(code)}</code>
+  </details>
 }
 
 const noticeTitles: Record<string, string> = {
@@ -307,6 +427,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '11px 13px', border: '1px solid #dfe6ef', borderRadius: 10, fontSize: 14,
   },
   noticeText: { margin: '3px 0 0', lineHeight: 1.5 },
+  details: { maxWidth: '100%', fontSize: 12, cursor: 'pointer' },
   code: { maxWidth: '100%', padding: '3px 6px', borderRadius: 5, background: '#ffffffa8', fontSize: 11, overflowWrap: 'anywhere' },
   footnote: { margin: 0, color: '#536174', fontSize: 13, lineHeight: 1.55 },
 }

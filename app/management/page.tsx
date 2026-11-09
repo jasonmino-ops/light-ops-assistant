@@ -382,9 +382,10 @@ export default function ManagementPage() {
               </div>
             )}
             {printingLaunchState === 'failed' && (
-              <p role="status" data-printing-launch-status="failed" style={styles.printingHint}>
-                {t('management.printingUnavailable')}{printingError && <> <code>{printingError}</code></>}
-              </p>
+              <div role="status" data-printing-launch-status="failed" style={styles.printingHint}>
+                {t('management.printingUnavailable')}
+                {printingError && <details><summary>{t('printSettings.technicalDetails')}</summary><code>{printingError}</code></details>}
+              </div>
             )}
           </section>
         )}
