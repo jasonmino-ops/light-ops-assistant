@@ -164,6 +164,7 @@ if (!gotLock) {
             controlPlane: v3ControlPlaneRuntime,
             storeId: context.device.storeId,
             deviceId: context.device.deviceId,
+            storeCode: context.device.storeCode,
             cloud: new V3PrintJobClient(getConfig().baseUrl, credential.credential.deviceToken),
           })
           await applyAuthorizedEndpointProvisioning(v3PrintingRuntime, {

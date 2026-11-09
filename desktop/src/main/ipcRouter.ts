@@ -8,7 +8,7 @@
  * - payload 由 validateCartSnapshotMessage 做运行时校验
  */
 
-import { app, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { app, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS, SENDABLE_BY_ROLE, INVOKABLE_BY_ROLE, type WindowRole } from '../shared/ipcChannels'
 import { cartSyncService } from './cartSyncService'
 import { getHealthSnapshot, updateHealth } from './runtimeHealth'
@@ -20,6 +20,7 @@ import type { WindowManager } from './windowManager'
 import type { V3PrintingRuntime } from './printing/v3PrintingRuntime'
 import { createHash } from 'node:crypto'
 import { openNetworkPrintSettings } from './networkPrintSettingsLauncher'
+import { printSettingsConfirmation, readPrintSettingsRequest } from './v3PrintSettingsIpc'
 
 let v3PrintingRuntimeProvider: () => V3PrintingRuntime | null = () => null
 export function setV3PrintingRuntimeProvider(provider: () => V3PrintingRuntime | null) {
@@ -146,6 +147,46 @@ export function registerIpcHandlers(windowManager: WindowManager) {
       openPath: (file) => shell.openPath(file),
       issueManagedAddonSession: () => posSessionBridge.issue(),
     })
+  })
+
+  let settingsConfirmationOpen = false
+  ipcMain.handle(IPC_CHANNELS.V3_PRINT_SETTINGS, async (event, payload: unknown) => {
+    if (authorize(windowManager, event, IPC_CHANNELS.V3_PRINT_SETTINGS, 'invoke') !== 'employee' ||
+        !event.senderFrame || !isAllowedNavigation(event.senderFrame.url, config) ||
+        new URL(event.senderFrame.url).pathname !== '/management') {
+      return { ok: false, code: 'PRINT_SETTINGS_ACCESS_DENIED' }
+    }
+    const employee = windowManager.getEmployeeWindow()
+    if (!employee || employee.isDestroyed() || employee.webContents.id !== event.sender.id) {
+      return { ok: false, code: 'PRINT_SETTINGS_ACCESS_DENIED' }
+    }
+    const request = readPrintSettingsRequest(payload)
+    if (!request) return { ok: false, code: 'PRINT_SETTINGS_INPUT_INVALID' }
+    const runtime = v3PrintingRuntimeProvider()
+    if (!runtime) return { ok: false, code: 'PRINT_SETTINGS_UNAVAILABLE' }
+    try {
+      if (request.action === 'read' || request.action === 'queues') return await runtime.printSettings(request)
+      if (settingsConfirmationOpen) return { ok: false, code: 'PRINT_SETTINGS_BUSY' }
+      settingsConfirmationOpen = true
+      try {
+        const state = await runtime.printSettings({ action: 'read', storeCode: request.storeCode })
+        if (!state.ok) return state
+        if (!('state' in state) || state.state.mode !== 'V3') return { ok: false, code: 'PRINT_SETTINGS_AUTHORITY_REQUIRED' }
+        if (state.state.blockedCode) return { ok: false, code: state.state.blockedCode }
+        if (state.state.revision !== request.revision) return { ok: false, code: 'ENDPOINT_CONFIG_REVISION_STALE' }
+        const { response } = await dialog.showMessageBox(employee, printSettingsConfirmation(request, config.lang))
+        if (response !== 1) return { ok: false, code: 'PRINT_SETTINGS_CANCELLED' }
+        const frame = event.senderFrame
+        if (employee.isDestroyed() || !frame || frame !== event.sender.mainFrame ||
+            !isAllowedNavigation(frame.url, config) || new URL(frame.url).pathname !== '/management' ||
+            runtime !== v3PrintingRuntimeProvider()) return { ok: false, code: 'PRINT_SETTINGS_ACCESS_DENIED' }
+        return await runtime.printSettings(request)
+      } finally {
+        settingsConfirmationOpen = false
+      }
+    } catch {
+      return { ok: false, code: 'PRINT_SETTINGS_UNAVAILABLE' }
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.V3_PRINT_SUBMIT, async (event, payload: unknown) => {

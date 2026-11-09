@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
+import { PrintSettingsPanel } from './PrintSettingsPanel'
 import { buildManagementHref, MANAGEMENT_PATH, withManagementReturn } from '@/lib/management-navigation'
 
 declare global {
@@ -103,7 +104,8 @@ export default function ManagementPage() {
   const [navigationContext, setNavigationContext] = useState({ fromDesktop: false, storeCode: null as string | null })
   const [isDesktopSurface, setIsDesktopSurface] = useState(false)
   const [printingInfoOpen, setPrintingInfoOpen] = useState(false)
-  const [printingLaunchState, setPrintingLaunchState] = useState<'idle' | 'opening' | 'failed'>('idle')
+  const [printingLaunchState, setPrintingLaunchState] = useState<'idle' | 'opening' | 'failed' | 'upgrade'>('idle')
+  const [printingError, setPrintingError] = useState<string | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -114,14 +116,20 @@ export default function ManagementPage() {
     })
   }, [])
 
-  const openPrintingSettings = async () => {
+  const openPrintingSettings = () => {
+    if (!isDesktopSurface || printingLaunchState === 'opening') return
+    setPrintingError(null)
+    setPrintingLaunchState(window.eshopDesktopV3PrintSettings || window.eshopDesktopPrintSettings ? 'idle' : 'upgrade')
+    setPrintingInfoOpen(true)
+  }
+
+  const openLegacyPrintingSettings = async () => {
     if (!isDesktopSurface || printingLaunchState === 'opening') return
     setPrintingLaunchState('opening')
-    setPrintingInfoOpen(false)
+    setPrintingError(null)
     const bridge = window.eshopDesktopPrintSettings
     if (!bridge) {
-      setPrintingLaunchState('failed')
-      setPrintingInfoOpen(true)
+      setPrintingLaunchState('upgrade')
       return
     }
     try {
@@ -129,6 +137,9 @@ export default function ManagementPage() {
       if (result?.ok === true) {
         setPrintingLaunchState('idle')
         return
+      }
+      if (result?.code && /^(?:NETWORK_PRINT_SETTINGS_(?:WINDOWS_REQUIRED|SHORTCUT_UNAVAILABLE|SHORTCUT_INVALID|HANDOFF_UNAVAILABLE|HANDOFF_WRITE_FAILED|OPEN_FAILED))$/.test(result.code)) {
+        setPrintingError(result.code)
       }
     } catch {
       // A missing or incompatible local entry remains a safe, user-visible failure.
@@ -355,10 +366,24 @@ export default function ManagementPage() {
                 </div>
               ))}
             </div>
-            {printingLaunchState === 'failed' && (
-              <p data-printing-launch-status="failed" style={styles.printingHint}>{t('management.printingUnavailable')}</p>
+            {printingLaunchState === 'upgrade' ? (
+              <p role="status" style={styles.printingHint}>{t('printSettings.upgrade')}</p>
+            ) : window.eshopDesktopV3PrintSettings ? (
+              <PrintSettingsPanel key={storeCode ?? ''} storeCode={storeCode} onLegacy={openLegacyPrintingSettings}
+                legacyBusy={printingLaunchState === 'opening'} />
+            ) : (
+              <div>
+                <p>{t('printSettings.legacyOnly')}</p>
+                <button type="button" disabled={printingLaunchState === 'opening'} onClick={openLegacyPrintingSettings}>
+                  {t('printSettings.openLegacy')}
+                </button>
+              </div>
             )}
-            <p style={styles.printingHint}>{t('management.printingHint')}</p>
+            {printingLaunchState === 'failed' && (
+              <p role="status" data-printing-launch-status="failed" style={styles.printingHint}>
+                {t('management.printingUnavailable')}{printingError && <> <code>{printingError}</code></>}
+              </p>
+            )}
           </section>
         )}
       </div>
