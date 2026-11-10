@@ -32,6 +32,15 @@ const CLOSURE_ACTIVATION_KEYS = [
   'priorMain', 'productCommit', 'productTree', 'requestSha256', 'reviewSha256', 'reviewedBy',
   'schemaVersion', 'status', 'taskId',
 ]
+// This exact development base follows the registered first-parent disposition.
+const RESUME_BASE = '332137496dd3578a0a8eb3fcc83e5e835f52aae1'
+const RESUME_ACTIVATION = `docs/change-gates/${TASK}-RESUME.json`
+const RESUME_DEPENDENCIES = [
+  '.github/workflows/desktop-windows-build.yml',
+  'desktop/scripts/release-foundation.mjs',
+  'desktop/tests/release-foundation.test.ts',
+  'scripts/governance/es-print-unified-integration-01.cjs',
+]
 const CORE = 'tests/cashier-realtime-integration.test.ts'
 const CORE_SHA = 'ccad9c0a1c3fb485871966a4c5aa9fcd7acfe7fdc9f9e567b0ff19d686235b60'
 const RUNTIME = 'desktop/src/main/printing/v3PrintingRuntime.ts'
@@ -86,28 +95,31 @@ function readUnifiedPrintSuccessor(root) {
       digest(head, path) === expected && digest('', path) === expected &&
       sha(readFileSync(resolve(root, path))) === expected
 
-    // A software-closure authorization is a new trusted-main record, added
-    // alone after the reviewed dependency commit. The prior record remains
-    // evidence and cannot authorize the new first parent.
-    const closureEntry = text('ls-tree', first, '--', CLOSURE_ACTIVATION)
-    const closure = closureEntry ? JSON.parse(blob(first, CLOSURE_ACTIVATION)) : null
+    // Select the new record only when present. A malformed new record never
+    // falls back to the historical closure approval.
+    const resumed = Boolean(text('ls-tree', first, '--', RESUME_ACTIVATION))
+    const closurePath = resumed ? RESUME_ACTIVATION : CLOSURE_ACTIVATION
+    const closureBase = resumed ? RESUME_BASE : CLOSURE_BASE
+    const dependencies = resumed ? RESUME_DEPENDENCIES : CLOSURE_DEPENDENCIES
+    const closureEntry = text('ls-tree', first, '--', closurePath)
+    const closure = closureEntry ? JSON.parse(blob(first, closurePath)) : null
     let approvalBase = first
     if (closureEntry) {
       if (!closure || !samePaths(Object.keys(closure), CLOSURE_ACTIVATION_KEYS) ||
           closure.schemaVersion !== 1 || closure.taskId !== TASK || closure.status !== 'ACTIVE' ||
           closure.approvedBy !== 'Founder' || closure.reviewedBy !== 'Claude' ||
-          closure.priorMain !== CLOSURE_BASE || closure.productCommit !== PRODUCT || closure.productTree !== PRODUCT_TREE ||
+          closure.priorMain !== closureBase || closure.productCommit !== PRODUCT || closure.productTree !== PRODUCT_TREE ||
           !isSha(closure.requestSha256) || !isSha(closure.reviewSha256) ||
           !isCurrentDeadline(closure.deadlineExclusive) || !isCommit(closure.dependencyCommit) ||
           !isCommit(closure.dependencyTree) ||
           text('rev-list', '--parents', '-1', first) !== `${first} ${closure.dependencyCommit}` ||
-          text('rev-list', '--parents', '-1', closure.dependencyCommit) !== `${closure.dependencyCommit} ${CLOSURE_BASE}` ||
+          text('rev-list', '--parents', '-1', closure.dependencyCommit) !== `${closure.dependencyCommit} ${closureBase}` ||
           text('rev-parse', `${closure.dependencyCommit}^{tree}`) !== closure.dependencyTree ||
-          text('diff', '--no-renames', '--name-status', closure.dependencyCommit, first) !== `A\t${CLOSURE_ACTIVATION}` ||
-          !samePaths(changed(CLOSURE_BASE, closure.dependencyCommit), CLOSURE_DEPENDENCIES) ||
-          !samePaths(Object.keys(closure.dependencyPathsSha256), CLOSURE_DEPENDENCIES) ||
-          !matchesTree(first, CLOSURE_ACTIVATION, digest(first, CLOSURE_ACTIVATION))) return null
-      for (const path of CLOSURE_DEPENDENCIES) {
+          text('diff', '--no-renames', '--name-status', closure.dependencyCommit, first) !== `A\t${closurePath}` ||
+          !samePaths(changed(closureBase, closure.dependencyCommit), dependencies) ||
+          !samePaths(Object.keys(closure.dependencyPathsSha256), dependencies) ||
+          !matchesTree(first, closurePath, digest(first, closurePath))) return null
+      for (const path of dependencies) {
         if (!matchesTree(closure.dependencyCommit, path, closure.dependencyPathsSha256[path]) ||
             !git('ls-tree', closure.dependencyCommit, '--', path).equals(git('ls-tree', first, '--', path))) return null
       }
@@ -132,7 +144,12 @@ function readUnifiedPrintSuccessor(root) {
 
     for (const path of EXECUTABLE_PATHS) {
       const expected = activation.executablePathsSha256[path]
-      if (closure && CLOSURE_DEPENDENCIES.includes(path)) {
+      if (resumed && path === CORE) {
+        // The independently merged shift-report successor owns the newer CORE
+        // checker bytes. Preserve both the original evidence and the current file.
+        if (!isSha(expected) || digest(executable, path) !== expected ||
+            !matchesTree(RESUME_BASE, path, digest(RESUME_BASE, path))) return null
+      } else if (closure && CLOSURE_DEPENDENCIES.includes(path)) {
         if (!isSha(expected) || digest(executable, path) !== expected ||
             !git('ls-tree', executable, '--', path).equals(git('ls-tree', approvalBase, '--', path))) return null
       } else if (!matchesTree(executable, path, expected) ||
@@ -164,6 +181,9 @@ function readUnifiedPrintSuccessor(root) {
     return {
       allowsFoundationHistory() {
         return closure !== null && isCurrentDeadline(closure.deadlineExclusive)
+      },
+      resumedCashierSnapshot() {
+        return resumed && isCurrentDeadline(closure.deadlineExclusive) ? RESUME_BASE : undefined
       },
       corePaths(candidatePaths, rejectedPaths) {
         return isCurrentDeadline(closure?.deadlineExclusive ?? activation.deadlineExclusive) && samePaths(candidatePaths, paths) &&

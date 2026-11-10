@@ -444,8 +444,13 @@ async function runPolicy(options) {
     const softwareClosureSnapshot = unified?.allowsFoundationHistory()
       ? SOFTWARE_CLOSURE_FOUNDATION_SUCCESSORS.get(group.label)
       : undefined
+    // The current main already contains the exact shift-report Cashier
+    // successor. Use that subtree only under the separately approved resumption.
+    const resumedCashierSnapshot = group.label === 'cashier/customer/mobile business'
+      ? unified?.resumedCashierSnapshot()
+      : undefined
     const successorSnapshot = allowAuthorizedSuccessors
-      ? softwareClosureSnapshot ?? FROZEN_BOUNDARY_SUCCESSORS.get(group.label)
+      ? resumedCashierSnapshot ?? softwareClosureSnapshot ?? FROZEN_BOUNDARY_SUCCESSORS.get(group.label)
       : undefined
     const matchesAuthorizedSuccessor =
       changed.length > 0 &&

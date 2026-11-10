@@ -107,12 +107,19 @@ describe('EP-MB3-07A release foundation policy', () => {
         snapshot: group.authorizedSuccessorSnapshot,
       }))
 
+    const cashierDigest = createHash('sha256')
+      .update(readFileSync(join(repositoryRoot, 'app/cashier/page.tsx'))).digest('hex')
+    const expectedCashierSnapshotByDigest = new Map([
+      ['8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6', '5211e38dd2d3c1636f76673ab3dd2816a9657b12'],
+      ['5698c31fb723a498ba3b4775aca4d547ff6d80cb201e2d9a6124e3f70d9e251f', '332137496dd3578a0a8eb3fcc83e5e835f52aae1'],
+    ])
+    expect(expectedCashierSnapshotByDigest.has(cashierDigest)).toBe(true)
     expect(authorized.filter(({ label }) => label !== 'main startup gate')).toEqual([
       { label: 'ActivationRuntime', snapshot: '227146b9e215e1441082c04e8941de8611592226' },
       { label: 'Prisma', snapshot: '52bdd9836327505623177b4624920fb6d0a277ed' },
       { label: 'Payment', snapshot: '52bdd9836327505623177b4624920fb6d0a277ed' },
       { label: 'Scanner', snapshot: '5211e38dd2d3c1636f76673ab3dd2816a9657b12' },
-      { label: 'cashier/customer/mobile business', snapshot: '5211e38dd2d3c1636f76673ab3dd2816a9657b12' },
+      { label: 'cashier/customer/mobile business', snapshot: expectedCashierSnapshotByDigest.get(cashierDigest) },
     ])
     const startupPath = 'desktop/src/main/main.ts'
     const startupDigest = createHash('sha256').update(readFileSync(join(repositoryRoot, startupPath))).digest('hex')
