@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-SHIFT-REPORT-DIRECT-PRINT-01",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "base": "304c03695bf904b5e179da8e19de2275eec9ea13",
+  "productPatchSha256": "f5590e67b254a6aa91d0ebc9c9c10f7223291195f969aab47fe7e4d52651b0f3",
+  "priorFoundationRecordSha256": "85b4996511876b401923714c252fbdb03dd226a42e9b13f0267602b89b324f75",
+  "governanceSha256": {
+    "docs/change-gates/exceptions/ES-SHIFT-REPORT-DIRECT-PRINT-01.json": "f9103846afd0c06497e1170537eb5e23066afe6e91430412cfd3d7f8ae417d2a",
+    "desktop/scripts/release-foundation.mjs": "93fa8e498f8d8f97534604ccb92fec3f367720eb7d5ae951ddbb8ea8fc21212e",
+    "desktop/tests/release-foundation.test.ts": "596ac754c1c978a9e806a39c64c7438a55c91fb13908f0c8cb461b3d7ea8c56b",
+    "scripts/governance/es-shift-report-direct-print-01.cjs": "6e7e874e3f0c8b4ede905c7b0f6d24e28d2e943e60e9646a4d021e06f5e839dc",
+    "tests/cashier-realtime-integration.test.ts": "4638a1bd5c3e7895667d5fddf8bf10cb1678b763cbb81d2e35d1f1793439125b",
+    "tests/es-tray-device-print-contract.test.ts": "80dff5b548300c4cac1996c31326e34299ffde0d815f09d61c2d1564410d4b61",
+    "tests/v3-reprint-recovery.test.ts": "21a89d993f1db7267d59a067ce98b21a8ca067d683449aab81ace0241b29f6cc"
+  }
+}

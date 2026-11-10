@@ -113,6 +113,12 @@ describe('EP-MB3-07A release foundation policy', () => {
       ['8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6', '5211e38dd2d3c1636f76673ab3dd2816a9657b12'],
       ['5698c31fb723a498ba3b4775aca4d547ff6d80cb201e2d9a6124e3f70d9e251f', '332137496dd3578a0a8eb3fcc83e5e835f52aae1'],
     ])
+    if (cashierDigest === '5c00b6d10ee6deb79b9574cf0d0bcfe9d18c6d7456fcd2adbca3af8265b9320c') {
+      const exactProduct = execFileSync('git', ['log', '-1', '--format=%H', '--', 'app/cashier/page.tsx'], {
+        cwd: repositoryRoot, encoding: 'utf8',
+      }).trim()
+      expectedCashierSnapshotByDigest.set(cashierDigest, exactProduct)
+    }
     expect(expectedCashierSnapshotByDigest.has(cashierDigest)).toBe(true)
     expect(authorized.filter(({ label }) => label !== 'main startup gate')).toEqual([
       { label: 'ActivationRuntime', snapshot: '227146b9e215e1441082c04e8941de8611592226' },

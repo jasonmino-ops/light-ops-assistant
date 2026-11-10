@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "taskId": "ES-SHIFT-REPORT-DIRECT-PRINT-01",
+  "featureBranch": "codex/es-shift-report-direct-print-01-web",
+  "baseOriginMainSha": "304c03695bf904b5e179da8e19de2275eec9ea13",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "reason": "Exact Web pair for Diamond direct shift-report printing.",
+  "sealedCandidatePatchSha256": "f5590e67b254a6aa91d0ebc9c9c10f7223291195f969aab47fe7e4d52651b0f3",
+  "approvalSource": "Founder Final Admission Execution Authorization and Bounded Release Disposition Authorization",
+  "additionalAuthorizations": [
+    {
+      "authorizationId": "RELEASE-REHEARSAL",
+      "featureBranch": "codex/es-shift-report-direct-print-01-release",
+      "baseOriginMainSha": "d441b55c8014642eb1b26b90d7bf5ce1b2df7941",
+      "reason": "Exact two-file locked release projection in isolated non-deploy staging.",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "closeAfter": "FEATURE_MERGE",
+      "createdAt": "2026-11-10T14:46:04Z",
+      "approvedAt": "2026-11-10T14:46:04Z",
+      "authorizedPaths": [
+        "app/cashier/page.tsx",
+        "app/components/ShiftReportPrint.tsx"
+      ],
+      "authorizedPathSha256": {
+        "app/cashier/page.tsx": "5c00b6d10ee6deb79b9574cf0d0bcfe9d18c6d7456fcd2adbca3af8265b9320c",
+        "app/components/ShiftReportPrint.tsx": "29e62ad401e0019b09a142ab1f7fdbf186097053a0c15d8dad22573474ccaeae"
+      }
+    }
+  ],
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "closeAfter": "FEATURE_MERGE",
+  "createdAt": "2026-11-10T14:46:04Z",
+  "approvedAt": "2026-11-10T14:46:04Z",
+  "authorizedPaths": [
+    "app/cashier/page.tsx",
+    "app/components/ShiftReportPrint.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "5c00b6d10ee6deb79b9574cf0d0bcfe9d18c6d7456fcd2adbca3af8265b9320c",
+    "app/components/ShiftReportPrint.tsx": "29e62ad401e0019b09a142ab1f7fdbf186097053a0c15d8dad22573474ccaeae"
+  }
+}
