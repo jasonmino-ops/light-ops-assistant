@@ -50,6 +50,7 @@ import {
 import {
   ShiftReportPrint,
   printShiftReport,
+  shiftPrintResultMessage,
   type ShiftReportData,
 } from '@/app/components/ShiftReportPrint'
 import {
@@ -2989,6 +2990,7 @@ export default function CashierPage() {
       })
 
       const report: ShiftReportData = {
+        storeCode,
         storeName: storeName || storeCode,
         operator,
         shiftStart: startIso,
@@ -3021,10 +3023,13 @@ export default function CashierPage() {
     await loadShiftReport()
   }
 
-  function handlePrintShiftReport() {
+  async function handlePrintShiftReport() {
     if (!shiftReport || shiftReportLoading || shiftReportError) return
     try {
-      printShiftReport(shiftReport, lang as 'zh' | 'en' | 'km')
+      const result = await printShiftReport(shiftReport, lang as 'zh' | 'en' | 'km')
+      if (!result || result === 'CANCELED') return
+      const message = shiftPrintResultMessage(result, lang as 'zh' | 'en' | 'km')
+      if (message) showToast(message)
     } catch (err) {
       console.warn('[cashier:shift] print failed', err)
       showToast(lang === 'en' ? 'Could not open shift report printing.'
