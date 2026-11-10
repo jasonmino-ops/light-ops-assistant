@@ -31,7 +31,7 @@
     }
   ],
   "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "approvedBy": "Founder",
   "closeAfter": "FEATURE_MERGE",
   "createdAt": "2026-11-10T14:46:04Z",
@@ -43,5 +43,7 @@
   "authorizedPathSha256": {
     "app/cashier/page.tsx": "5c00b6d10ee6deb79b9574cf0d0bcfe9d18c6d7456fcd2adbca3af8265b9320c",
     "app/components/ShiftReportPrint.tsx": "29e62ad401e0019b09a142ab1f7fdbf186097053a0c15d8dad22573474ccaeae"
-  }
+  },
+  "closedAt": "2026-11-10T14:47:53Z",
+  "featureMergeCommitSha": "1a84f353915f42d657cc5b9e6d99ab94c2bf02f5"
 }
