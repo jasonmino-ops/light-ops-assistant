@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
+import { PrintSettingsPanel } from './PrintSettingsPanel'
 import { buildManagementHref, MANAGEMENT_PATH, withManagementReturn } from '@/lib/management-navigation'
 
 declare global {
@@ -103,7 +104,18 @@ export default function ManagementPage() {
   const [navigationContext, setNavigationContext] = useState({ fromDesktop: false, storeCode: null as string | null })
   const [isDesktopSurface, setIsDesktopSurface] = useState(false)
   const [printingInfoOpen, setPrintingInfoOpen] = useState(false)
-  const [printingLaunchState, setPrintingLaunchState] = useState<'idle' | 'opening' | 'failed'>('idle')
+  const [printingLaunchState, setPrintingLaunchState] = useState<'idle' | 'opening' | 'failed' | 'upgrade'>('idle')
+  const [printingError, setPrintingError] = useState<string | null>(null)
+  const printingEntryRef = useRef<HTMLButtonElement>(null)
+  const printingTitleRef = useRef<HTMLHeadingElement>(null)
+  const printingWasOpen = useRef(false)
+
+  useEffect(() => {
+    if (printingInfoOpen) printingTitleRef.current?.focus()
+    else if (printingWasOpen.current) printingEntryRef.current?.focus()
+    printingWasOpen.current = printingInfoOpen
+  }, [printingInfoOpen])
+
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -114,14 +126,20 @@ export default function ManagementPage() {
     })
   }, [])
 
-  const openPrintingSettings = async () => {
+  const openPrintingSettings = () => {
+    if (!isDesktopSurface || printingLaunchState === 'opening') return
+    setPrintingError(null)
+    setPrintingLaunchState(window.eshopDesktopV3PrintSettings || window.eshopDesktopPrintSettings ? 'idle' : 'upgrade')
+    setPrintingInfoOpen(true)
+  }
+
+  const openLegacyPrintingSettings = async () => {
     if (!isDesktopSurface || printingLaunchState === 'opening') return
     setPrintingLaunchState('opening')
-    setPrintingInfoOpen(false)
+    setPrintingError(null)
     const bridge = window.eshopDesktopPrintSettings
     if (!bridge) {
-      setPrintingLaunchState('failed')
-      setPrintingInfoOpen(true)
+      setPrintingLaunchState('upgrade')
       return
     }
     try {
@@ -129,6 +147,9 @@ export default function ManagementPage() {
       if (result?.ok === true) {
         setPrintingLaunchState('idle')
         return
+      }
+      if (result?.code && /^(?:NETWORK_PRINT_SETTINGS_(?:WINDOWS_REQUIRED|SHORTCUT_UNAVAILABLE|SHORTCUT_INVALID|HANDOFF_UNAVAILABLE|HANDOFF_WRITE_FAILED|OPEN_FAILED))$/.test(result.code)) {
+        setPrintingError(result.code)
       }
     } catch {
       // A missing or incompatible local entry remains a safe, user-visible failure.
@@ -261,7 +282,7 @@ export default function ManagementPage() {
           </div>
         </header>
 
-        <div className="management-hub-grid" style={styles.groups}>
+        <div className="management-hub-grid" style={printingInfoOpen ? { display: 'none' } : styles.groups}>
           {groups.filter((group) => group.entries.some((entry) => (!entry.ownerOnly || isOwner) && (!entry.desktopOnly || isDesktopSurface) && (!entry.desktopHidden || !isDesktopSurface))).map((group) => {
             const visibleEntries = group.entries.filter((entry) => (!entry.ownerOnly || isOwner) && (!entry.desktopOnly || isDesktopSurface) && (!entry.desktopHidden || !isDesktopSurface))
             return (
@@ -298,6 +319,7 @@ export default function ManagementPage() {
                         key={entry.label}
                         type="button"
                         style={{ ...styles.entry, ...styles.actionEntry }}
+                        ref={printingEntryRef}
                         aria-expanded={printingInfoOpen}
                         aria-busy={printingLaunchState === 'opening'}
                         disabled={printingLaunchState === 'opening'}
@@ -329,36 +351,42 @@ export default function ManagementPage() {
           >
             <div style={styles.printingPanelHeader}>
               <div>
-                <h2 id="printing-info-title" style={styles.printingPanelTitle}>{t('management.printingTitle')}</h2>
-                <p style={styles.printingPanelDescription}>{t('management.printingDescription')}</p>
+                <p style={styles.printingBreadcrumb}>{t('management.title')} <span aria-hidden="true">/</span> {t('management.system')}</p>
+                <h2 ref={printingTitleRef} tabIndex={-1} id="printing-info-title" style={styles.printingPanelTitle}>
+                  {t('management.printingTitle')}
+                </h2>
+                <p style={styles.printingPanelDescription}>{t('printSettings.pageDescription')}</p>
               </div>
               <button
                 type="button"
                 style={styles.printingClose}
                 onClick={() => setPrintingInfoOpen(false)}
               >
-                {t('management.printingClose')}
+                {t('printSettings.backToManagement')}
               </button>
             </div>
-            <div style={styles.printingItems}>
-              {[
-                ['management.frontPrinter', 'management.frontPrinterDesc'],
-                ['management.kitchenPrinter', 'management.kitchenPrinterDesc'],
-                ['management.autoPrint', 'management.autoPrintDesc'],
-              ].map(([titleKey, descriptionKey]) => (
-                <div key={titleKey} style={styles.printingItem}>
-                  <span style={styles.printingItemIcon}><SemanticIcon name="printer" size={17} /></span>
-                  <span style={styles.printingItemBody}>
-                    <strong style={styles.printingItemTitle}>{t(titleKey)}</strong>
-                    <span style={styles.printingItemDescription}>{t(descriptionKey)}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-            {printingLaunchState === 'failed' && (
-              <p data-printing-launch-status="failed" style={styles.printingHint}>{t('management.printingUnavailable')}</p>
+            {printingLaunchState === 'upgrade' ? (
+              <div role="status" style={styles.printingHint}>
+                <strong>{t('printSettings.upgradeTitle')}</strong>
+                <p style={styles.printingNoticeText}>{t('printSettings.upgrade')}</p>
+              </div>
+            ) : window.eshopDesktopV3PrintSettings ? (
+              <PrintSettingsPanel key={storeCode ?? ''} storeCode={storeCode} onLegacy={openLegacyPrintingSettings}
+                legacyBusy={printingLaunchState === 'opening'} />
+            ) : (
+              <div style={styles.printingHint}>
+                <p style={styles.printingNoticeText}>{t('printSettings.legacyOnly')}</p>
+                <button type="button" style={styles.printingClose} disabled={printingLaunchState === 'opening'} onClick={openLegacyPrintingSettings}>
+                  {t('printSettings.openLegacy')}
+                </button>
+              </div>
             )}
-            <p style={styles.printingHint}>{t('management.printingHint')}</p>
+            {printingLaunchState === 'failed' && (
+              <div role="status" data-printing-launch-status="failed" style={styles.printingHint}>
+                {t('management.printingUnavailable')}
+                {printingError && <details><summary>{t('printSettings.technicalDetails')}</summary><code>{printingError}</code></details>}
+              </div>
+            )}
           </section>
         )}
       </div>
@@ -369,6 +397,7 @@ export default function ManagementPage() {
 const responsiveStyles = `
   .management-hub-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .management-system-group { grid-column: span 2; }
+  [data-printing-info-surface] button:focus-visible { outline: 2px solid #155dcc; outline-offset: 2px; }
   @media (max-width: 1080px) {
     .management-hub-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .management-system-group { grid-column: span 1; }
@@ -511,14 +540,13 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 8px 24px rgba(33, 48, 74, 0.045)',
   },
   printingPanelHeader: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20 },
-  printingPanelTitle: { margin: 0, fontSize: 20, lineHeight: 1.2, letterSpacing: '-0.025em', fontWeight: 760 },
-  printingPanelDescription: { margin: '8px 0 0', color: '#637187', fontSize: 13, lineHeight: 1.55 },
-  printingClose: { border: 0, background: 'transparent', color: '#155dcc', cursor: 'pointer', font: 'inherit', fontSize: 13, fontWeight: 700, padding: '3px 0' },
-  printingItems: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginTop: 22 },
-  printingItem: { display: 'flex', alignItems: 'flex-start', gap: 10, padding: 14, borderRadius: 12, background: '#f7f9fc' },
-  printingItemIcon: { width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, borderRadius: 9, background: '#eaf3ff', color: '#155dcc' },
-  printingItemBody: { display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 },
-  printingItemTitle: { fontSize: 13, lineHeight: 1.25, fontWeight: 750 },
-  printingItemDescription: { color: '#718096', fontSize: 12, lineHeight: 1.45 },
-  printingHint: { margin: '20px 0 0', paddingTop: 18, borderTop: '1px solid #edf0f4', color: '#536174', fontSize: 13, lineHeight: 1.6 },
+  printingBreadcrumb: { margin: '0 0 9px', color: '#586980', fontSize: 13, fontWeight: 650 },
+  printingPanelTitle: { margin: 0, fontSize: 26, lineHeight: 1.2, letterSpacing: '-0.025em', fontWeight: 760 },
+  printingPanelDescription: { margin: '8px 0 0', color: '#536174', fontSize: 14, lineHeight: 1.55 },
+  printingClose: {
+    flexShrink: 0, minHeight: 38, padding: '6px 12px', border: '1px solid #dfe6ef',
+    borderRadius: 9, background: '#fff', color: '#155dcc', cursor: 'pointer', font: 'inherit', fontSize: 13, fontWeight: 700,
+  },
+  printingHint: { margin: '20px 0 0', padding: 16, border: '1px solid #e8d8b4', borderRadius: 12, background: '#fffaf0', color: '#63440e', fontSize: 14, lineHeight: 1.55 },
+  printingNoticeText: { margin: '5px 0 8px' },
 }

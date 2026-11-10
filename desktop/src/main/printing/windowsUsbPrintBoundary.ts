@@ -60,9 +60,12 @@ function openWindowsWorker(endpoint: WindowsUsbEndpoint, bytes?: Uint8Array): Us
   child.stdin.once('error', close)
   child.stdout.once('error', close)
   const next = () => Promise.race([iterator.next().then((line) => line.done ? null : line.value), failure])
-  child.stdin.write(JSON.stringify(bytes
+  // Windows PowerShell's redirected stdin can use a legacy console code page.
+  const request = JSON.stringify(bytes
     ? { endpoint, mode: 'print', payload: Buffer.from(bytes).toString('base64') }
-    : { endpoint, mode: 'probe' }) + '\n')
+    : { endpoint, mode: 'probe' })
+  const ascii = request.replace(/[^\x00-\x7f]/g, (unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, '0')}`)
+  child.stdin.write(ascii + '\n')
   return {
     async ready() { return await next() === 'READY' },
     async submit() {

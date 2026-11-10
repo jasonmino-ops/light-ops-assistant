@@ -7,9 +7,10 @@ $handle = [IntPtr]::Zero
 try {
   $request = [Console]::ReadLine() | ConvertFrom-Json
   $target = $request.endpoint
-  if ($target.queueName -cne 'E-Shop Diamond FRONT USB' -or
-      $target.portName -cnotmatch '^USB[0-9]{3,5}$' -or
-      $target.deviceInstanceId -cnotmatch '^USB\\VID_0FE6&PID_811E\\[A-Z0-9&_.-]{1,100}$') {
+  if ($target.queueName -cnotmatch '\A[\p{L}\p{M}\p{N} ._()-]{1,128}\z' -or
+      $target.queueName -cne $target.queueName.Trim() -or
+      $target.portName -cnotmatch '\AUSB[0-9]{3,5}\z' -or
+      $target.deviceInstanceId -cnotmatch '\AUSB\\VID_[0-9A-F]{4}&PID_[0-9A-F]{4}(?:&MI_[0-9A-F]{2})?\\[A-Z0-9&_.-]{1,100}\z') {
     throw 'USB_ENDPOINT_INVALID'
   }
 
@@ -53,7 +54,7 @@ using System.Runtime.InteropServices;
 
 [assembly: DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
 
-public static class DiamondFrontSpooler {
+public static class WindowsUsbFrontSpooler {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct DocumentInfo {
         public string Name;
@@ -95,18 +96,18 @@ public static class DiamondFrontSpooler {
     }
 }
 '@
-  if (-not [DiamondFrontSpooler]::Open($target.queueName, [ref]$handle, [IntPtr]::Zero)) {
+  if (-not [WindowsUsbFrontSpooler]::Open($target.queueName, [ref]$handle, [IntPtr]::Zero)) {
     throw 'USB_SPOOLER_OPEN_FAILED'
   }
   Assert-UsbReady
   [Console]::WriteLine('READY')
   if ([Console]::ReadLine() -cne 'GO') { exit 1 }
-  $job = [DiamondFrontSpooler]::Submit($handle, $bytes)
+  $job = [WindowsUsbFrontSpooler]::Submit($handle, $bytes)
   if ($job -gt 0) { [Console]::WriteLine('SPOOLED:' + $job) }
   else { [Console]::WriteLine('UNKNOWN') }
 } catch {
   [Console]::WriteLine('FAILED')
 } finally {
-  if ($handle -ne [IntPtr]::Zero) { [void][DiamondFrontSpooler]::Close($handle) }
+  if ($handle -ne [IntPtr]::Zero) { [void][WindowsUsbFrontSpooler]::Close($handle) }
 }
 `

@@ -6,22 +6,18 @@ export type WindowsUsbEndpoint = {
 }
 
 const KEY_PREFIX = 'windows-usb:'
-const DIAMOND_STORE_ID = 'cmvulpn8r000106jvpo58kye4'
-const DIAMOND_DEVICE_ID = 'cmvyx1jes000208l14t5vf9ur'
-
-export function isDiamondUsbIdentity(storeId: string, deviceId: string): boolean {
-  return storeId === DIAMOND_STORE_ID && deviceId === DIAMOND_DEVICE_ID
-}
+// Exclude wildcard, remote, port-pool and special spooler name syntax.
+const QUEUE_NAME = /^(?!.*[\u{10000}-\u{10ffff}])[\p{L}\p{M}\p{N} ._()-]{1,128}$/u
 
 export function parseWindowsUsbEndpoint(value: unknown): WindowsUsbEndpoint | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const row = value as Record<string, unknown>
   if (Object.keys(row).sort().join(',') !== 'deviceInstanceId,kind,portName,queueName' ||
       row.kind !== 'windows-usb' ||
-      row.queueName !== 'E-Shop Diamond FRONT USB' ||
+      typeof row.queueName !== 'string' || !QUEUE_NAME.test(row.queueName) || row.queueName !== row.queueName.trim() ||
       typeof row.portName !== 'string' || !/^USB[0-9]{3,5}$/.test(row.portName) ||
       typeof row.deviceInstanceId !== 'string' ||
-      !/^USB\\VID_0FE6&PID_811E\\[A-Z0-9&_.-]{1,100}$/i.test(row.deviceInstanceId)) return null
+      !/^USB\\VID_[0-9A-F]{4}&PID_[0-9A-F]{4}(?:&MI_[0-9A-F]{2})?\\[A-Z0-9&_.-]{1,100}$/i.test(row.deviceInstanceId)) return null
   return { kind: row.kind, queueName: row.queueName, portName: row.portName, deviceInstanceId: row.deviceInstanceId.toUpperCase() }
 }
 
