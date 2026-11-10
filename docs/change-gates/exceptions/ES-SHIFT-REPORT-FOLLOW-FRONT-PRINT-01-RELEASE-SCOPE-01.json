@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "taskId": "ES-SHIFT-REPORT-FOLLOW-FRONT-PRINT-01-RELEASE-SCOPE-01",
+  "parentTaskId": "ES-SHIFT-REPORT-FOLLOW-FRONT-PRINT-01",
+  "featureBranch": "codex/es-shift-report-release-scope-01",
+  "lineageMode": "AUTHORIZED_COMMITS",
+  "baseOriginMainSha": "d441b55c8014642eb1b26b90d7bf5ce1b2df7941",
+  "authorizedCommits": [
+    "40a054aeb751ee066ffa794750b0ff9180b89a33"
+  ],
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "approvedAt": "2026-11-10T03:30:00Z",
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Apply the already-integrated, byte-identical shift-report product pair from the exact preserved selective product commit on one dedicated release rehearsal and staging branch.",
+  "authorizedPaths": [
+    "app/cashier/page.tsx",
+    "app/components/ShiftReportPrint.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "5698c31fb723a498ba3b4775aca4d547ff6d80cb201e2d9a6124e3f70d9e251f",
+    "app/components/ShiftReportPrint.tsx": "8837662bc20f2950f15cfc971c06570d30611b5418a889517748c7dfe9962c5e"
+  },
+  "createdAt": "2026-11-10T02:37:21Z",
+  "approvalSource": {
+    "source": "Separate durable Founder decision authorizing this exact release Scope registration",
+    "approvedAtMeaning": "Proposed earliest effective UTC time to be explicitly adopted in that decision. The actual decision and main-registration timestamps are recorded separately.",
+    "effectiveCondition": "Explicit Founder decision adopting this exact postimage and effective time, followed by byte-identical registration on trusted origin/main at or after approvedAt. Preparation and offline simulation confer no authority.",
+    "releaseAuthority": "Scope registration only. No release update, frozen exception, deployment, traffic change, physical print, or closure."
+  }
+}
