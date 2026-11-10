@@ -5,6 +5,7 @@ import { useState } from 'react'
 type Lang = 'zh' | 'en' | 'km'
 
 export type ShiftReportData = {
+  storeCode?: string
   storeName: string
   operator: string
   shiftStart: string
@@ -345,7 +346,26 @@ function printShiftReportInDesktop(styles: string, markup: string) {
   }
 }
 
-export function printShiftReport(report: ShiftReportData, lang: Lang = 'zh') {
+type ShiftDirectResult =
+  | 'LEGACY' | 'UNAVAILABLE' | 'BUSY' | 'CANCELED' | 'NOT_SUBMITTED'
+  | 'SUBMITTED' | 'UNKNOWN' | 'ALREADY_SUBMITTED' | 'RECONCILED'
+
+export function shiftPrintResultMessage(result: ShiftDirectResult, lang: Lang): string {
+  const messages = {
+    zh: { SUBMITTED: '已提交给 Windows，请核对出纸。', UNKNOWN: '打印结果不确定，请核对队列与纸张，勿重打。', NOT_SUBMITTED: '未提交：请检查前台队列是否在线且空闲。', UNAVAILABLE: '当前门店或前台队列无法使用交班直打。', BUSY: '已有交班打印请求。', ALREADY_SUBMITTED: '本班次已有提交记录，请核对出纸。', RECONCILED: '已记录人工核实结果。', LEGACY: '' },
+    en: { SUBMITTED: 'Submitted to Windows. Check the paper output.', UNKNOWN: 'Print result unknown. Check the queue and paper. Do not retry.', NOT_SUBMITTED: 'Not submitted. Check that the FRONT queue is online and idle.', UNAVAILABLE: 'Direct shift printing is unavailable for this store or queue.', BUSY: 'A shift print request is already open.', ALREADY_SUBMITTED: 'This shift has a submission record. Check the paper output.', RECONCILED: 'Manual verification recorded.', LEGACY: '' },
+    km: { SUBMITTED: 'បានបញ្ជូនទៅ Windows។ សូមពិនិត្យក្រដាស។', UNKNOWN: 'មិនដឹងលទ្ធផលបោះពុម្ព។ សូមពិនិត្យជួរ និងក្រដាស។ កុំបោះពុម្ពម្ដងទៀត។', NOT_SUBMITTED: 'មិនបានបញ្ជូន។ សូមពិនិត្យថាម៉ាស៊ីនខាងមុខអនឡាញ និងទំនេរ។', UNAVAILABLE: 'មិនអាចបោះពុម្ពផ្ទាល់សម្រាប់ហាង ឬជួរនេះទេ។', BUSY: 'មានសំណើបោះពុម្ពរបាយការណ៍រួចហើយ។', ALREADY_SUBMITTED: 'វេននេះមានកំណត់ត្រាបញ្ជូនរួច។ សូមពិនិត្យក្រដាស។', RECONCILED: 'បានកត់ត្រាការផ្ទៀងផ្ទាត់។', LEGACY: '' },
+  }
+  return result === 'CANCELED' ? '' : messages[lang === 'en' || lang === 'km' ? lang : 'zh'][result]
+}
+
+declare global {
+  interface Window {
+    eshopDesktopShiftReport?: { print(request: unknown): Promise<ShiftDirectResult> }
+  }
+}
+
+export async function printShiftReport(report: ShiftReportData, lang: Lang = 'zh'): Promise<ShiftDirectResult | undefined> {
   const isDesktop = window.eshopDesktopRuntime?.isDesktop === true
   if (isDesktop && document.getElementById(SHIFT_PRINT_ROOT_ID)) return
   const t = copy(lang)
@@ -353,6 +373,38 @@ export function printShiftReport(report: ShiftReportData, lang: Lang = 'zh') {
   const summary = summaryText(report, lang)
   const otherDetails = report.otherDetails ?? []
   const otherDetailsTotal = otherDetails.reduce((sum, detail) => sum + detail.amount, 0)
+
+  const hint = lang === 'en' ? 'Only this device local shift is counted. Offline pending and holds are not included in sales.'
+    : lang === 'km' ? 'គិតតែវេនលើឧបករណ៍នេះប៉ុណ្ណោះ។ រង់ចាំ sync offline និងមាត់ស្នើមិនគិតចូលការលក់។'
+      : '仅统计本设备本地班次；离线待同步和挂单不计入销售额。'
+
+  if (isDesktop && window.eshopDesktopRuntime?.windowRole === 'employee' && window.eshopDesktopShiftReport) {
+    try {
+      const result = await window.eshopDesktopShiftReport.print({
+        storeCode: report.storeCode,
+        shiftStart: report.shiftStart,
+        lang,
+        title: report.storeName || t.storeFallback,
+        subtitle: t.title,
+        hero: { label: t.salesAmount, value: fmtMoney(report.salesAmount), warn: false },
+        rows: rows.map(({ label, value, warn }) => ({ label, value, warn: !!warn })),
+        summary,
+        detailsTitle: t.detailsTitle,
+        details: otherDetails.length ? [
+          ...otherDetails.map(detail => ({
+            label: `${t.detailOrder} ${detail.orderNo}${detail.source ? `\n${t.detailSource}：${detail.source}` : ''}`,
+            value: fmtMoney(detail.amount), warn: false,
+          })),
+          { label: t.detailsTotal, value: fmtMoney(otherDetailsTotal), warn: false },
+        ] : [],
+        hint,
+      })
+      if (result !== 'LEGACY') return result
+    } catch {
+      return 'UNKNOWN'
+    }
+    if (document.getElementById(SHIFT_PRINT_ROOT_ID)) return
+  }
 
   const escapeHtml = (value: string) =>
     value
@@ -399,7 +451,7 @@ export function printShiftReport(report: ShiftReportData, lang: Lang = 'zh') {
     ${otherDetails.map(detail => `<div class="detail-row"><div><div>${escapeHtml(t.detailOrder)} ${escapeHtml(detail.orderNo)}</div>${detail.source ? `<div class="source">${escapeHtml(t.detailSource)}：${escapeHtml(detail.source)}</div>` : ''}</div><div>${escapeHtml(fmtMoney(detail.amount))}</div></div>`).join('')}
     <div class="detail-row"><div>${escapeHtml(t.detailsTotal)}</div><div>${escapeHtml(fmtMoney(otherDetailsTotal))}</div></div>
   </div>` : ''}
-  <div class="hint">${escapeHtml(lang === 'en' ? 'Only this device local shift is counted. Offline pending and holds are not included in sales.' : lang === 'km' ? 'គិតតែវេនលើឧបករណ៍នេះប៉ុណ្ណោះ។ រង់ចាំ sync offline និងមាត់ស្នើមិនគិតចូលការលក់។' : '仅统计本设备本地班次；离线待同步和挂单不计入销售额。')}</div>
+  <div class="hint">${escapeHtml(hint)}</div>
   `
 
   if (isDesktop) {
