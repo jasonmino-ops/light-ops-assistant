@@ -2147,9 +2147,19 @@ export default function CashierPage() {
       headers: posDeviceHeaders(storeCode),
     })
       .then(async (response) => {
-        const data = await response.json().catch(() => null) as { eligible?: boolean; hasActiveMeals?: boolean } | null
+        const data = await response.json().catch(() => null) as {
+          eligible?: boolean; hasActiveMeals?: boolean | null; recoveryAvailable?: boolean
+        } | null
         if (!active) return
-        setDineInEntry(!response.ok || !data ? null : data.eligible === true ? 'NEW' : data.hasActiveMeals === true ? 'RECOVERY' : null)
+        if (!response.ok || !data) {
+          setDineInEntry(null)
+        } else if (data.eligible === true) {
+          setDineInEntry('NEW')
+        } else {
+          const canRecover = data.hasActiveMeals === true ||
+            (data.hasActiveMeals === null && data.recoveryAvailable === true)
+          setDineInEntry(canRecover ? 'RECOVERY' : null)
+        }
       })
       .catch(() => { if (active) setDineInEntry(null) })
     return () => { active = false }

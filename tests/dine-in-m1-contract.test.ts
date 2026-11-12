@@ -433,8 +433,11 @@ test('r4: line voids stop under a live external payment; "sent" has one source; 
   // The cursor comes from the database's own rows, in the database's own rendering of the instant.
   assert.match(recover, /const last = pageRows\.at\(-1\)/)
   assert.match(recover, /to_char\(m\."endedAt", 'YYYY-MM-DD"T"HH24:MI:SS\.MS"Z"'\) AS "endedAt"/)
-  // If the entrance question cannot be answered, the entrance stays open.
-  assert.match(recover, /hasRecoverableMeals\(db, scope\)\.catch\(\(error\) => \{ console\.error\('\[dine-in\] recovery check unavailable', error\); return true \}\)/)
+  // Unknown activity remains distinct from a real meal, and the authenticated recovery entry stays open.
+  assert.match(recover, /return await hasRecoverableMeals\(db, scope\)\s*\} catch \(error\) \{\s*console\.error\('\[dine-in\] recovery check unavailable', error\)\s*return null/)
+  const cashierRecovery = read('app/cashier/page.tsx')
+  assert.match(cashierRecovery, /data\.hasActiveMeals === null && data\.recoveryAvailable === true/)
+  assert.match(cashierRecovery, /setDineInEntry\(canRecover \? 'RECOVERY' : null\)/)
   const exists = recover.slice(recover.indexOf('export async function hasRecoverableMeals('), recover.indexOf('export async function hasActiveMeals('))
   assert.match(exists, /SELECT EXISTS \(SELECT 1 FROM "DiningMeal" m WHERE \$\{recoverableMealCondition\(scope\)\}\)/)
   assert.doesNotMatch(exists, /listRecoverableMeals|LIMIT|cursor/)
