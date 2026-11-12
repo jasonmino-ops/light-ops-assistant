@@ -9,7 +9,7 @@
   "approvalSource": "Founder exact M1 runtime successor signature SHA-256 ecfe94be4744bf4ec0ea8751d51cb4cd5d630b1f8ee7be25be79894b098c83eb",
   "sealedCandidatePatchSha256": "c71e0210a4c6f9b4f8ab97112dd6ff4c1e573326b9665f5de7d39e44b541b54c",
   "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "approvedBy": "Founder",
   "closeAfter": "FEATURE_MERGE",
   "createdAt": "2026-11-12T04:49:15Z",
@@ -47,5 +47,7 @@
     "prisma/migrations/20261112132000_authorize_native_inventory_runtime/migration.sql": "750d78688b338a0aa1d0df50d2b5afa3ce77c3f6095e1002ce8226070ae2a5dc",
     "prisma/migrations/20261112133000_isolate_native_inventory_capability/migration.sql": "f45c016172da6d3b873a60e517fd5e3f733056fad55a850a45c0abc30e198783",
     "prisma/schema.prisma": "8c4676233e8a30b71d47f29a12996c4af9dff06bb46a19d0a4515e260f23a610"
-  }
+  },
+  "closedAt": "2026-11-12T15:45:25Z",
+  "featureMergeCommitSha": "cf2e1888ef6a42e67878d0a1f9e8546643c2b08b"
 }
