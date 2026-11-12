@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "taskId": "ES-NATIVE-INVENTORY-V1",
+  "featureBranch": "codex/es-native-inventory-v1-01",
+  "baseOriginMainSha": "95af2c656b6fbd8e5ca155e2cd9819a26ab21cf5",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "reason": "Exact two-file Prisma scope for isolated development branch commit and push only.",
+  "approvalSource": "Founder, ES-NATIVE-INVENTORY-V1 — Scope Gate 与继续开发",
+  "sealedCandidatePatchSha256": "49ec8fa9cdb00c5abe66f5238d02fa6ec8ad016fb3f79da32f8120ba212ed2f1",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "closeAfter": "FEATURE_MERGE",
+  "createdAt": "2026-11-12T04:49:15Z",
+  "approvedAt": "2026-11-12T04:49:15Z",
+  "authorizedPaths": [
+    "prisma/schema.prisma",
+    "prisma/migrations/20261112120000_add_native_inventory/migration.sql"
+  ],
+  "authorizedPathSha256": {
+    "prisma/schema.prisma": "8c4676233e8a30b71d47f29a12996c4af9dff06bb46a19d0a4515e260f23a610",
+    "prisma/migrations/20261112120000_add_native_inventory/migration.sql": "0c1f66d8482c3f76ef907f22e3d4e584afe947eef643e8162a480128f5bb1899"
+  }
+}
