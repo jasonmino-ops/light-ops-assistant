@@ -12,9 +12,12 @@ import { notifyCashierGateway } from '../lib/cashier-realtime-notify'
 const root = process.cwd()
 const { readUsbFrontSuccessor } = createRequire(resolve(root, 'package.json'))('./scripts/governance/es-print-usb-baseline-01.cjs')
 const { readUnifiedPrintSuccessor } = createRequire(resolve(root, 'package.json'))('./scripts/governance/es-print-unified-integration-01.cjs')
+const { readNativeInventoryM1Successor } = createRequire(resolve(root, 'package.json'))('./scripts/governance/es-native-inventory-m1-successor.cjs')
+const { assertNativeInventoryPaymentContract } = createRequire(resolve(root, 'package.json'))('./tests/support/native-inventory-payment-contract.cjs')
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8')
 
 async function main() {
+  const nativeInventoryM1 = readNativeInventoryM1Successor(root)
   const cashier = read('app/cashier/page.tsx')
   const ticket = read('app/api/cashier-realtime/ticket/route.ts')
   const notify = read('lib/cashier-realtime-notify.ts')
@@ -152,14 +155,17 @@ async function main() {
     ['app/api/sales/route.ts', 'pending_orders_changed', 'const result = await prisma.$transaction'],
     ['app/api/orders/[orderNo]/checkout/route.ts', 'pending_orders_changed', 'const pi = await prisma.$transaction'],
     ['app/api/orders/[orderNo]/cancel/route.ts', 'pending_orders_changed', 'await prisma.$transaction'],
-    ['app/api/payments/[paymentId]/confirm/route.ts', 'pending_orders_changed', 'const [updated, pendingTransition] = await prisma.$transaction'],
+    ['app/api/payments/[paymentId]/confirm/route.ts', 'pending_orders_changed', nativeInventoryM1 ? 'const result = await prisma.$transaction' : 'const [updated, pendingTransition] = await prisma.$transaction'],
     ['app/api/payments/[paymentId]/cancel/route.ts', 'pending_orders_changed', 'await prisma.$transaction'],
   ] as const
   for (const [path, wakeType, successMarker] of routeCases) {
     const source = read(path)
     assert.equal((source.match(/after\(\(\) => notifyCashierGateway\(\{/g) ?? []).length, 1, `${path}: one notify`)
     assert.match(source, new RegExp(`type: '${wakeType}'`))
-    assert.ok(source.indexOf('after(() => notifyCashierGateway') > source.indexOf(successMarker), `${path}: notify after success`)
+    const effectiveMarker = nativeInventoryM1 && path === 'app/api/orders/[orderNo]/checkout/route.ts'
+      ? 'const result = await prisma.$transaction' : successMarker
+    assert.ok(source.indexOf(effectiveMarker) !== -1 &&
+      source.indexOf('after(() => notifyCashierGateway') > source.indexOf(effectiveMarker), `${path}: notify after success`)
     assert.doesNotMatch(source, /await\s+notifyCashierGateway/, `${path}: business response must not await Cloudflare`)
     const wakeBlock = source.slice(source.indexOf('after(() => notifyCashierGateway'), source.indexOf('}))', source.indexOf('after(() => notifyCashierGateway')) + 3)
     assert.doesNotMatch(wakeBlock, /\btx\b|orderNo|paymentId|customer|items|price/i, `${path}: wake-only payload`)
@@ -171,20 +177,24 @@ async function main() {
   assert.match(read('app/api/orders/[orderNo]/checkout/route.ts'), /if \(paymentMethod === 'CASH'\)[\s\S]*after\(\(\) => notifyCashierGateway/)
 
   // Payment wakes are conditional on a real pending-list transition, not merely a PaymentIntent mutation.
-  const paymentConfirmRoute = read('app/api/payments/[paymentId]/confirm/route.ts')
-  assert.match(paymentConfirmRoute, /const \[updated, pendingTransition\] = await prisma\.\$transaction/)
-  assert.match(paymentConfirmRoute, /if \(pendingTransition\.count > 0\) \{[\s\S]*pending_orders_changed[\s\S]*\}/)
-  assert.ok(
-    paymentConfirmRoute.indexOf('if (pendingTransition.count > 0)') < paymentConfirmRoute.indexOf('after(() => notifyCashierGateway'),
-    'direct-retail confirm no-op must not wake pending orders',
-  )
-  const paymentCancelRoute = read('app/api/payments/[paymentId]/cancel/route.ts')
-  assert.match(paymentCancelRoute, /prisma\.saleRecord\.count\([\s\S]*status: 'PENDING_PAYMENT'/)
-  assert.match(paymentCancelRoute, /if \(pendingRecordCount > 0\) \{[\s\S]*pending_orders_changed[\s\S]*\}/)
-  assert.ok(
-    paymentCancelRoute.indexOf('if (pendingRecordCount > 0)') < paymentCancelRoute.indexOf('after(() => notifyCashierGateway'),
-    'non-pending cancel must not wake pending orders',
-  )
+  if (nativeInventoryM1) {
+    await assertNativeInventoryPaymentContract(root)
+  } else {
+    const paymentConfirmRoute = read('app/api/payments/[paymentId]/confirm/route.ts')
+    assert.match(paymentConfirmRoute, /const \[updated, pendingTransition\] = await prisma\.\$transaction/)
+    assert.match(paymentConfirmRoute, /if \(pendingTransition\.count > 0\) \{[\s\S]*pending_orders_changed[\s\S]*\}/)
+    assert.ok(
+      paymentConfirmRoute.indexOf('if (pendingTransition.count > 0)') < paymentConfirmRoute.indexOf('after(() => notifyCashierGateway'),
+      'direct-retail confirm no-op must not wake pending orders',
+    )
+    const paymentCancelRoute = read('app/api/payments/[paymentId]/cancel/route.ts')
+    assert.match(paymentCancelRoute, /prisma\.saleRecord\.count\([\s\S]*status: 'PENDING_PAYMENT'/)
+    assert.match(paymentCancelRoute, /if \(pendingRecordCount > 0\) \{[\s\S]*pending_orders_changed[\s\S]*\}/)
+    assert.ok(
+      paymentCancelRoute.indexOf('if (pendingRecordCount > 0)') < paymentCancelRoute.indexOf('after(() => notifyCashierGateway'),
+      'non-pending cancel must not wake pending orders',
+    )
+  }
 
   // Candidate boundary: check the complete candidate (tracked and untracked
   // files), rather than relying on a post-commit empty diff or ignoring new
@@ -284,11 +294,11 @@ async function main() {
     'packages/h5-renderer/runtime/h5-render-sandbox.socket',
     'packages/h5-renderer/runtime/apparmor.profile',
   ])
-  const assertBoundary = (paths: string[], allowed: ReadonlySet<string>) => {
+  const assertBoundary = (paths: string[], allowed: ReadonlySet<string>, sealedScanner?: string) => {
     assert.deepEqual(paths.filter(path => !allowed.has(path)), [])
     assert.equal(paths.includes('app/api/cashier/orders/route.ts'), false)
     assert.equal(paths.includes('app/api/cashier/pending-orders/route.ts'), false)
-    assert.equal(paths.some(path => path === 'app/sale/page.tsx' || path.includes('customer-display') || path.includes('pos/session/update')), false)
+    assert.equal(paths.some(path => (path === 'app/sale/page.tsx' && path !== sealedScanner) || path.includes('customer-display') || path.includes('pos/session/update')), false)
     assert.equal(paths.some(path => (path.startsWith('prisma/') || path.includes('migration') || path.includes('print')) && !allowed.has(path)), false)
   }
 
@@ -815,6 +825,9 @@ async function main() {
           `Cashier timeout ${ref || 'index'} SHA-256 mismatch: ${path}`)
       }
     }
+  } else if (nativeInventoryM1) {
+    assert.deepEqual([...changed].sort(), [...nativeInventoryM1.corePaths].sort())
+    assertBoundary(changed, nativeInventoryM1.corePaths, nativeInventoryM1.scannerPath)
   } else {
     // ES-CASHIER-COST-01 exclusions and the existing H5/Dine-in approved set
     // retain their prior semantics. Closed historical grants are not reopened.

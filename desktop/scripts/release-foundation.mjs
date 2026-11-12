@@ -878,8 +878,37 @@ async function verifyManifests(options) {
   }
 }
 
+function runNativeInventoryM1SourcePolicy(args) {
+  const rehearsal = args.length === 1 && args[0] === '--rehearsal'
+  if (args.length && !rehearsal) throw new Error('usage: m1-source-policy [--rehearsal]')
+  const { readNativeInventoryM1Successor, verifyNativeInventoryM1Remote } =
+    require('../../scripts/governance/es-native-inventory-m1-successor.cjs')
+  const successor = readNativeInventoryM1Successor(repoRoot)
+  if (!successor) throw new Error('M1 exact frozen successor is not active on this checkout')
+  const frozenGroups = FROZEN_BOUNDARY_GROUPS.map(({ label, paths }) => ({
+    label,
+    changed: [...successor.corePaths].filter(path =>
+      paths.some(prefix => path === prefix || path.startsWith(prefix + '/'))).sort(),
+  })).filter(group => group.changed.length)
+  const labels = frozenGroups.map(group => group.label).sort()
+  const expected = ['Prisma', 'Payment', 'Scanner', 'cashier/customer/mobile business'].sort()
+  if (JSON.stringify(labels) !== JSON.stringify(expected)) throw new Error('M1 exact frozen groups do not match')
+  if (!rehearsal) verifyNativeInventoryM1Remote(repoRoot, successor)
+  return {
+    mode: rehearsal ? 'NON_PRODUCTION_M1_REHEARSAL' : 'NON_PRODUCTION_M1_SOURCE_POLICY',
+    result: 'PASS',
+    registrationSha: successor.registrationSha,
+    cashierHash: successor.cashierHash,
+    frozenGroups,
+  }
+}
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2)
+  if (command === 'm1-source-policy') {
+    console.log(JSON.stringify(runNativeInventoryM1SourcePolicy(rest), null, 2))
+    return
+  }
   const options = parseArgs(rest)
   let result
   if (command === 'policy') {
@@ -891,7 +920,7 @@ async function main() {
   } else if (command === 'verify') {
     result = await verifyManifests(options)
   } else {
-    throw new Error(`usage: release-foundation.mjs <policy|source-policy|write|verify> [options]`)
+    throw new Error(`usage: release-foundation.mjs <policy|source-policy|m1-source-policy|write|verify> [options]`)
   }
   console.log(JSON.stringify(result, null, 2))
 }
