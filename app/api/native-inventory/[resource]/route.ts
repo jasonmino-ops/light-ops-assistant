@@ -11,14 +11,18 @@ function success(data: unknown) {
   return NextResponse.json({ outcome: 'SUCCESS', data }, { headers })
 }
 
-function failure(error: unknown, writing = false) {
+function failure(error: unknown, writing = false, requestId?: string) {
   if (error instanceof InventoryError) {
     return NextResponse.json({ outcome: 'FAILED', error: error.code }, { status: error.status, headers })
   }
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
     return NextResponse.json({ outcome: 'FAILED', error: 'UNIQUE_CONFLICT' }, { status: 409, headers })
   }
-  console.error('[native-inventory]', error instanceof Error ? error.name : 'UnknownError')
+  console.error('[native-inventory]', {
+    outcome: writing ? 'UNKNOWN' : 'FAILED',
+    requestId,
+    code: error instanceof Prisma.PrismaClientKnownRequestError ? error.code : error instanceof Error ? error.name : 'UnknownError',
+  })
   return NextResponse.json({
     outcome: writing ? 'UNKNOWN' : 'FAILED',
     error: writing ? 'CHECK_OPERATION_STATUS' : 'INVENTORY_UNAVAILABLE',
@@ -85,6 +89,7 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 
 export async function PUT(req: NextRequest, { params }: RouteContext) {
   let writing = false
+  let requestId: string | undefined
   try {
     const { resource } = await params
     const person = await inventoryPerson(req)
@@ -107,6 +112,7 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
     const body = object(payload)
     if (resource === 'import-preview') return success(await inventory.resolveImportRows(person, body.rows))
     writing = true
+    if (typeof body.id === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(body.id)) requestId = body.id
 
     switch (resource) {
       case 'items':
@@ -132,6 +138,6 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
         throw new InventoryError('NOT_FOUND', 404)
     }
   } catch (error) {
-    return failure(error, writing)
+    return failure(error, writing, requestId)
   }
 }

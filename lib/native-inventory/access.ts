@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { getContext } from '@/lib/context'
 import { getDesktopDeviceContext } from '@/lib/desktop-activation/auth'
+import { computeDesktopSubscriptionAccess, isDesktopSubscriptionAllowed } from '@/lib/desktop-activation/subscription-access'
 import { verifyPosDeviceRequest } from '@/lib/desktop-pos-auth'
 import { prisma } from '@/lib/prisma'
 import { verifySession } from '@/lib/session'
@@ -24,7 +25,7 @@ export async function inventoryPerson(req: NextRequest): Promise<InventoryPerson
         user: { tenantId: ctx.tenantId, status: 'ACTIVE' },
         store: { tenantId: ctx.tenantId, status: 'ACTIVE', tenant: { status: 'ACTIVE' } },
       },
-      select: { role: true, user: { select: { telegramId: true } }, store: { select: { code: true, name: true, currencyCode: true } } },
+      select: { role: true, user: { select: { telegramId: true, role: true } }, store: { select: { code: true, name: true, currencyCode: true } } },
     }),
     prisma.nativeInventoryStore.findUnique({
       where: { tenantId_storeId: scope },
@@ -50,20 +51,29 @@ export async function inventoryPerson(req: NextRequest): Promise<InventoryPerson
   const hasNativeCredential = req.headers.has('authorization')
   const desktop = req.headers.get('x-lightops-client') === 'desktop-pos'
   if (desktop || hasPosCredential || hasNativeCredential) {
+    const session = await verifyPosDeviceRequest(req, { ...scope, storeCode: membership.store.code }, { ignoreOperatorBoundary: true })
+    const deviceId = session?.browserPosSessionId && session.issuedBy === 'DESKTOP_DEVICE'
+      ? /^desktop-([A-Za-z0-9_-]{1,64})$/.exec(session.deviceId)?.[1]
+      : undefined
+    if (!deviceId) throw new InventoryError('DESKTOP_DEVICE_REQUIRED', 403)
     if (hasNativeCredential) {
-      const device = await getDesktopDeviceContext(req)
-      if (!device.ok || device.context.tenantId !== scope.tenantId || device.context.storeId !== scope.storeId) {
-        throw new InventoryError('DESKTOP_DEVICE_REQUIRED', 403)
-      }
-    } else {
-      const device = await verifyPosDeviceRequest(req, { ...scope, storeCode: membership.store.code }, { ignoreOperatorBoundary: true })
-      if (!device?.browserPosSessionId) throw new InventoryError('DESKTOP_DEVICE_REQUIRED', 403)
+      const native = await getDesktopDeviceContext(req)
+      if (!native.ok || native.context.tenantId !== scope.tenantId || native.context.storeId !== scope.storeId ||
+        native.context.deviceId !== deviceId) throw new InventoryError('DESKTOP_DEVICE_REQUIRED', 403)
+    }
+    const authorization = await prisma.desktopDevice.findFirst({
+      where: { ...scope, id: deviceId, status: 'ACTIVE', activeSlot: 'ACTIVE', tokenExpiresAt: { gt: new Date() } },
+      select: { tenant: { select: { subscription: { select: { status: true } } } } },
+    })
+    const subscriptionStatus = authorization?.tenant.subscription?.status
+    if (!subscriptionStatus || !isDesktopSubscriptionAllowed(computeDesktopSubscriptionAccess(subscriptionStatus))) {
+      throw new InventoryError('DESKTOP_DEVICE_REQUIRED', 403)
     }
   }
 
   if (!inventory?.enabledAt) throw new InventoryError('NATIVE_INVENTORY_DISABLED', 403)
   if (membership.store.currencyCode !== inventory.currencyCode) throw new InventoryError('INVENTORY_CURRENCY_MISMATCH', 409)
-  const isOwner = ctx.role === 'OWNER' && membership.role === 'OWNER'
+  const isOwner = ctx.role === 'OWNER' && membership.role === 'OWNER' && membership.user.role === 'OWNER'
   if (!isOwner && !inventory.receivers.length) throw new InventoryError('RECEIVING_ACCESS_DENIED', 403)
   return { ...scope, userId: ctx.userId, role: isOwner ? 'OWNER' : 'RECEIVER', currencyCode: membership.store.currencyCode, storeName: membership.store.name }
 }

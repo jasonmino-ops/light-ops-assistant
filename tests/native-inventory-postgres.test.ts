@@ -6,6 +6,7 @@ import { GET, PUT } from '../app/api/native-inventory/[resource]/route'
 import { signSession } from '../lib/session'
 import { prisma } from '../lib/prisma'
 import { issuePosDeviceSession } from '../lib/desktop-pos-auth'
+import { createDesktopDeviceToken } from '../lib/desktop-activation/crypto'
 
 const database = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/invalid')
 const localFixture = process.env.NATIVE_INVENTORY_TEST_DATABASE === '1' &&
@@ -15,8 +16,16 @@ if (!localFixture) throw new Error('Set NATIVE_INVENTORY_TEST_DATABASE=1 and use
 
 test('native inventory posts receipts and sale transitions in isolated PostgreSQL', async (t) => {
   t.after(async () => prisma.$disconnect())
+  if (process.env.NATIVE_INVENTORY_REQUIRE_NON_SUPERUSER === '1') {
+    const [role] = await prisma.$queryRaw<{ rolsuper: boolean; rolbypassrls: boolean }[]>`
+      SELECT rolsuper, rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = current_user
+    `
+    assert.deepEqual(role, { rolsuper: false, rolbypassrls: false })
+  }
   const botToken = 'inventory-test-telegram-token'
   process.env.TELEGRAM_BOT_TOKEN = botToken
+  process.env.DESKTOP_DEVICE_TOKEN_SECRET = 'inventory-test-desktop-secret'
+  process.env.DESKTOP_ACTIVATION_PIN_SECRET = 'inventory-test-pin-secret'
   const first = await prisma.tenant.create({ data: { name: 'Inventory tenant 1' } })
   const second = await prisma.tenant.create({ data: { name: 'Inventory tenant 2' } })
   const shop = (tenantId: string) => prisma.store.create({ data: { name: 'Inventory fixture', code: randomUUID(), tenantId } })
@@ -49,7 +58,7 @@ test('native inventory posts receipts and sale transitions in isolated PostgreSQ
   } = {}) => prisma.saleRecord.create({ data: {
     tenantId: first.id, storeId: shopId, operatorUserId: owner.id, productId: product.id, saleType: 'SALE',
     recordNo: randomUUID(), barcode: product.barcode, productNameSnapshot: product.name,
-    unitPrice: 100, quantity: 12, lineAmount: 100, sellingUnitType: 'AUX', sellingQuantity: 1, sellingConversionFactor: 12,
+    unitPrice: 100, quantity: 12, lineAmount: 100, sellingUnitType: 'AUX', sellingUnitNameSnapshot: 'box', sellingQuantity: 1, sellingConversionFactor: 12,
     ...overrides,
   } })
   const historical = await sale(store.id)
@@ -62,8 +71,8 @@ test('native inventory posts receipts and sale transitions in isolated PostgreSQ
   const session = (person: Person, storeId: string) => signSession({
     tenantId: person.tenantId, userId: person.id, storeId, role: person.role,
   })
-  function personProof(person: Person) {
-    const authDate = String(Math.floor(Date.now() / 1000))
+  function personProof(person: Person, ageSeconds = 0) {
+    const authDate = String(Math.floor(Date.now() / 1000) - ageSeconds)
     const identity = JSON.stringify({ id: person.telegramId })
     const secret = createHmac('sha256', 'WebAppData').update(botToken).digest()
     const hash = createHmac('sha256', secret).update(`auth_date=${authDate}\nuser=${identity}`).digest('hex')
@@ -98,18 +107,40 @@ test('native inventory posts receipts and sale transitions in isolated PostgreSQ
   assert.equal((await api('access', { headers: { 'x-telegram-init-data': '' } })).error, 'PERSON_PROOF_REQUIRED')
   const desktopHeaders = { 'x-lightops-client': 'desktop-pos', 'x-pos-operator-source': 'ACCOUNT' }
   assert.equal((await api('access', { headers: desktopHeaders })).error, 'DESKTOP_DEVICE_REQUIRED')
-  const browserId = randomUUID()
+  assert.equal((await api('access', { headers: { authorization: 'Bearer unmanaged' } })).error, 'DESKTOP_DEVICE_REQUIRED')
+  await prisma.tenantSubscription.create({ data: { tenantId: first.id, status: 'ACTIVE' } })
+  async function issueTerminal() {
+    const { token, ...credential } = createDesktopDeviceToken()
+    const terminal = await prisma.desktopDevice.create({ data: {
+      tenantId: first.id, storeId: store.id, installationIdHash: randomUUID(), ...credential,
+    } })
+    return { token, terminal }
+  }
+  const { token: nativeToken, terminal } = await issueTerminal()
+  const { token: otherNativeToken } = await issueTerminal()
+  const browserId = `desktop-${terminal.id}`
   const device = await prisma.$transaction((tx) => issuePosDeviceSession(tx, {
     tenantId: first.id, storeId: store.id, storeCode: store.code, browserDeviceId: browserId,
-    issuedBy: owner.id, issuedByUserId: owner.id, displayName: 'Inventory test desktop',
+    issuedBy: 'DESKTOP_DEVICE', issuedByUserId: null, displayName: 'Inventory test desktop',
   }))
   const deviceHeaders = { ...desktopHeaders, 'x-pos-device-token': device.token, 'x-pos-device-id': browserId }
   assert.equal((await api('access', { headers: deviceHeaders })).outcome, 'SUCCESS')
+  assert.equal((await api('access', { headers: { ...deviceHeaders, authorization: `Bearer ${nativeToken}` } })).status, 200)
+  assert.equal((await api('access', { headers: { ...deviceHeaders, authorization: `Bearer ${otherNativeToken}` } })).error, 'DESKTOP_DEVICE_REQUIRED')
+  assert.equal((await api('access', { headers: { authorization: `Bearer ${nativeToken}` } })).error, 'DESKTOP_DEVICE_REQUIRED')
+
   assert.equal((await api('access', { headers: deviceHeaders, shopId: peer.id })).status, 403)
   assert.equal((await api('access', { headers: deviceHeaders, person: denied })).status, 403)
   assert.equal((await api('access', { headers: deviceHeaders, person: null })).status, 401)
+  assert.equal((await api('access', { headers: { ...deviceHeaders, 'x-telegram-init-data': personProof(owner, 901) } })).error, 'PERSON_PROOF_INVALID')
+  assert.equal((await api('access', { headers: { ...deviceHeaders, 'x-telegram-init-data': personProof(denied) } })).error, 'PERSON_PROOF_INVALID')
+  await prisma.desktopDevice.update({ where: { id: terminal.id }, data: { tokenExpiresAt: new Date(Date.now() - 1000) } })
+  assert.equal((await api('access', { headers: deviceHeaders })).error, 'DESKTOP_DEVICE_REQUIRED')
+  await prisma.desktopDevice.update({ where: { id: terminal.id }, data: { status: 'REVOKED', tokenExpiresAt: new Date(Date.now() + 60000) } })
+  assert.equal((await api('access', { headers: deviceHeaders })).error, 'DESKTOP_DEVICE_REQUIRED')
+  await prisma.desktopDevice.update({ where: { id: terminal.id }, data: { status: 'ACTIVE' } })
   await prisma.browserPosDevice.update({ where: { id: device.sessionId }, data: { status: 'REVOKED' } })
-  assert.equal((await api('access', { headers: deviceHeaders })).status, 403)
+  assert.equal((await api('access', { headers: deviceHeaders })).error, 'DESKTOP_DEVICE_REQUIRED')
 
   assert.equal((await api('receivers', { body: { userId: receiver.id, enabled: true } })).status, 200)
   assert.equal((await api('profit', { person: receiver })).error, 'OWNER_REQUIRED')
@@ -159,6 +190,42 @@ test('native inventory posts receipts and sale transitions in isolated PostgreSQ
   assert.equal((await balance(material.id)).onHand.toString(), '3')
   assert.equal((await balance(item.id)).averageUnitCost?.toString(), '4')
   assert.equal((await api('suppliers', { query: `?id=${supplierId}` })).data.totals[0]._sum.total, '102')
+
+  const precisionItem = (await api('items', {
+    body: { id: randomUUID(), materialName: 'Precision sample', baseUnitName: 'kg' },
+  })).data
+  await prisma.nativeInventoryItem.update({
+    where: { tenantId_storeId_id: { tenantId: first.id, storeId: store.id, id: precisionItem.id } },
+    data: { onHand: '2', averageUnitCost: null },
+  })
+  const precisionReceiptId = randomUUID()
+  const tinyDraft = await api('receipts', { body: {
+    id: precisionReceiptId, supplierId, revision: 0,
+    lines: [{ itemId: precisionItem.id, unitId: 'BASE', quantity: '0.1', unitPrice: '0.04' }],
+  } })
+  assert.equal(tinyDraft.data.total, '0')
+  assert.equal((await api('receipt-confirmation', { body: { id: precisionReceiptId, revision: 1 } })).status, 200)
+  assert.equal((await balance(precisionItem.id)).onHand.toString(), '2.1')
+  assert.equal((await balance(precisionItem.id)).averageUnitCost?.toString(), '0.04')
+  const costSnapshot = await prisma.nativeInventoryMovement.findFirstOrThrow({
+    where: { tenantId: first.id, storeId: store.id, sourceId: `${precisionReceiptId}:1`, type: 'RECEIPT' },
+  })
+  assert.equal(costSnapshot.unitCost?.toString(), '0.04')
+  const batchId = randomUUID()
+  const batchDraft = await api('receipts', { body: {
+    id: batchId, supplierId, revision: 0,
+    lines: Array.from({ length: 100 }, () => ({ itemId: precisionItem.id, unitId: 'BASE', quantity: '0.1', unitPrice: '0.04' })),
+  } })
+  assert.equal(batchDraft.status, 200)
+  assert.equal((await api('receipt-confirmation', { body: { id: batchId, revision: 1 } })).status, 200)
+  const batchMoves = await prisma.nativeInventoryMovement.findMany({ where: {
+    tenantId: first.id, storeId: store.id, sourceId: { startsWith: `${batchId}:` }, type: 'RECEIPT',
+  } })
+  assert.equal(batchMoves.length, 100)
+  assert.equal(batchMoves.find((move) => move.sourceId === `${batchId}:1`)?.balance.toString(), '2.2')
+  assert.equal(batchMoves.find((move) => move.sourceId === `${batchId}:100`)?.balance.toString(), '12.1')
+  assert.equal((await balance(precisionItem.id)).averageUnitCost?.toString(), '0.04')
+
 
   const secondDraft = { ...draft, id: randomUUID(), lines: [{ itemId: item.id, unitId: 'BASE', quantity: '6', unitPrice: '9' }] }
   assert.equal((await api('receipts', { body: secondDraft })).status, 200)

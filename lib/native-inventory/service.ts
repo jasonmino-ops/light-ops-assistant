@@ -49,6 +49,14 @@ async function move(
     reason?: string
   },
 ) {
+  if (data.quantity.gt(0) && data.cost !== null) {
+    // Unknown opening valuation takes the first known inbound cost. The
+    // store lock serializes this initialization with every stock movement.
+    await tx.nativeInventoryItem.updateMany({
+      where: { ...scopeFor(person), id: data.itemId, onHand: { gt: 0 }, averageUnitCost: null },
+      data: { averageUnitCost: data.cost },
+    })
+  }
   const [{ applied }] = await tx.$queryRaw<{ applied: boolean }[]>`
     SELECT public.native_inventory_move(
       ${person.tenantId}, ${person.storeId}, ${data.itemId}, ${data.sourceId},
@@ -434,12 +442,38 @@ export async function confirmReceipt(person: InventoryPerson, id: string, expect
     if (receipt.revision !== expectedRevision) throw new InventoryError('RECEIPT_REVISION_CONFLICT', 409)
     if (receipt.postedAt) return receipt
     if (receipt.currencyCode !== person.currencyCode) throw new InventoryError('RECEIPT_CURRENCY_CHANGED', 409)
-    const [{ posted }] = await tx.$queryRaw<{ posted: number }[]>`
-      SELECT public.native_inventory_post_receipt(
-        ${scope.tenantId}, ${scope.storeId}, ${id}, ${person.userId}
-      ) AS posted
+    if (!receipt.lines.length) throw new InventoryError('RECEIPT_LEDGER_CONFLICT', 409)
+    if (receipt.lines.some((line) => line.unitPrice.div(line.factor).toDecimalPlaces(10).gte('100000000000000'))) {
+      throw new InventoryError('INVENTORY_UNIT_COST_OUT_OF_RANGE')
+    }
+    // When an item has positive quantity but no valuation, seed it with its
+    // first known incoming cost before the normal weighted-average movement.
+    await tx.$executeRaw`
+      UPDATE "NativeInventoryItem" item SET "averageUnitCost" = first_line.cost
+      FROM (
+        SELECT DISTINCT ON ("itemId") "itemId", round("unitPrice" / "factor", 10) AS cost
+        FROM "NativeInventoryReceiptLine"
+        WHERE "tenantId" = ${scope.tenantId} AND "storeId" = ${scope.storeId} AND "receiptId" = ${id}
+        ORDER BY "itemId", "lineNo"
+      ) first_line
+      WHERE item."tenantId" = ${scope.tenantId} AND item."storeId" = ${scope.storeId}
+        AND item."id" = first_line."itemId" AND item."onHand" > 0 AND item."averageUnitCost" IS NULL
     `
-    if (posted !== receipt.lines.length || posted === 0) throw new InventoryError('RECEIPT_LEDGER_CONFLICT', 409)
+    // PostgreSQL evaluates the volatile output expression after ordering on
+    // lineNo. Repeated products therefore retain sequential movement balances.
+    const movements = await tx.$queryRaw<{ applied: boolean }[]>`
+      SELECT public.native_inventory_move(
+        ${scope.tenantId}, ${scope.storeId}, line."itemId", ${id} || ':' || line."lineNo", 'RECEIPT',
+        line."baseQty", round(line."unitPrice" / line."factor", 10),
+        round(line."unitPrice" / line."factor", 10), NULL, ${person.userId}, NULL, NULL
+      ) AS applied
+      FROM "NativeInventoryReceiptLine" line
+      WHERE line."tenantId" = ${scope.tenantId} AND line."storeId" = ${scope.storeId} AND line."receiptId" = ${id}
+      ORDER BY line."lineNo"
+    `
+    if (movements.length !== receipt.lines.length || movements.some(({ applied }) => !applied)) {
+      throw new InventoryError('RECEIPT_LEDGER_CONFLICT', 409)
+    }
     return tx.nativeInventoryReceipt.update({
       where,
       data: { postedAt: new Date(), postedBy: person.userId },

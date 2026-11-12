@@ -242,7 +242,7 @@ export function Receiving({ draft, setDraft, access, refresh, reload, close, ope
           </button>)}</div> : itemResult?.data && query.trim() && <p className="hint">没有匹配的商品。请先在库存中建档。</p>}
           {!!itemResult?.error && <p className="err" role="alert">{message(itemResult.error)}</p>}
           {!!unmatched.length && <div className="banner amber"><b>未加入本单</b> {unmatched.join('、')} <button className="link" onClick={() => setUnmatched([])}>知道了</button></div>}
-          {owner && !!draft.lines.length && <div className="pricing"><span className="flabel">建议零售价</span><label>加价率 <input className="inp sm" aria-label="加价率百分比" inputMode="decimal" value={margin} onChange={(e) => setMargin(e.target.value)} /> %</label><small>建议价按本次进货价计算，供核对参考。</small></div>}
+          {owner && !!draft.lines.length && <div className="pricing"><span className="flabel">建议零售价</span><label>加价率 <input className="inp sm" aria-label="加价率百分比" inputMode="decimal" value={margin} onChange={(e) => setMargin(e.target.value)} /> %</label><small>建议价供核对参考，入库时同步改价未实现。</small></div>}
           {!draft.lines.length && <Empty title="还没有商品">扫码或搜索添加，同一商品重复扫码会自动累加数量。</Empty>}
           {draft.lines.map((line, index) => {
             const cost = Number(line.unitPrice)
@@ -289,8 +289,8 @@ export function Receiving({ draft, setDraft, access, refresh, reload, close, ope
           if (file) void importFile(file)
           e.target.value = ''
         }} /></label>)}
-        <button className="impbtn" disabled>PDF<small>暂未接入识别</small></button>
-        <button className="impbtn" disabled>拍照<small>暂未接入识别</small></button>
+        <button className="impbtn" disabled>PDF<small>识别未实现</small></button>
+        <button className="impbtn" disabled>拍照<small>识别未实现</small></button>
       </div>
       {busy && <p className="hint" role="status">正在读取单据…</p>}{error && <p className="err" role="alert">{error}</p>}
     </Panel>}

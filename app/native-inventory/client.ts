@@ -70,9 +70,13 @@ export function path(resource: string, query: Record<string, string> = {}) {
 }
 
 export async function request<T>(resource: string, body?: object, signal?: AbortSignal): Promise<T> {
-  const tg = (window as Window & { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp?.initData
+  const host = window as Window & {
+    Telegram?: { WebApp?: { initData?: string } }
+    eshopDesktopRuntime?: { isDesktop?: boolean }
+  }
+  const tg = host.Telegram?.WebApp?.initData
   const url = new URL(window.location.href)
-  const desktop = url.searchParams.get('from') === 'desktop'
+  const desktop = host.eshopDesktopRuntime?.isDesktop === true || url.searchParams.get('from') === 'desktop'
   const controller = new AbortController()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
@@ -85,7 +89,7 @@ export async function request<T>(resource: string, body?: object, signal?: Abort
       signal: controller.signal,
       headers: {
         ...(tg ? { 'x-telegram-init-data': tg } : {}),
-        ...(desktop ? posDeviceHeaders(url.searchParams.get('storeCode')) : {}),
+        ...(desktop ? { ...posDeviceHeaders(url.searchParams.get('storeCode')), 'x-lightops-client': 'desktop-pos' } : {}),
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),

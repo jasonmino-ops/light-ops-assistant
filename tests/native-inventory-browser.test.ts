@@ -25,6 +25,12 @@ function telegramProof(telegramId: string) {
 }
 
 test('desktop and phone inventory UI use actual HTTP routes and PostgreSQL', async (t) => {
+  if (process.env.NATIVE_INVENTORY_REQUIRE_NON_SUPERUSER === '1') {
+    const [role] = await prisma.$queryRaw<{ rolsuper: boolean; rolbypassrls: boolean }[]>`
+      SELECT rolsuper, rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = current_user
+    `
+    assert.deepEqual(role, { rolsuper: false, rolbypassrls: false })
+  }
   const browser = await chromium.launch()
   t.after(async () => { await browser.close(); await prisma.$disconnect() })
 
@@ -40,9 +46,14 @@ test('desktop and phone inventory UI use actual HTTP routes and PostgreSQL', asy
       } })
       const scope = { tenantId: tenant.id, storeId: store.id }
       await prisma.nativeInventoryStore.create({ data: { ...scope, currencyCode: store.currencyCode, enabledAt: new Date() } })
-      const browserId = randomUUID()
-      const device = desktop ? await prisma.$transaction((tx) => issuePosDeviceSession(tx, {
-        ...scope, storeCode: store.code, browserDeviceId: browserId, issuedBy: user.id, issuedByUserId: user.id, displayName: 'Inventory test desktop',
+      const terminal = desktop ? await prisma.desktopDevice.create({
+        data: { ...scope, tokenHash: randomUUID(), installationIdHash: randomUUID(),
+          tokenIssuedAt: new Date(), tokenExpiresAt: new Date(Date.now() + 600000) },
+      }) : null
+      if (terminal) await prisma.tenantSubscription.create({ data: { tenantId: tenant.id, status: 'ACTIVE' } })
+      const browserId = terminal ? `desktop-${terminal.id}` : ''
+      const device = terminal ? await prisma.$transaction((tx) => issuePosDeviceSession(tx, {
+        ...scope, storeCode: store.code, browserDeviceId: browserId, issuedBy: 'DESKTOP_DEVICE', issuedByUserId: null, displayName: 'Inventory test desktop',
       })) : null
       const context = await browser.newContext({ viewport: desktop ? { width: 1440, height: 900 } : { width: 390, height: 844 }, isMobile: !desktop, hasTouch: !desktop })
       try {
@@ -52,6 +63,7 @@ test('desktop and phone inventory UI use actual HTTP routes and PostgreSQL', asy
           Object.defineProperty(window, 'Telegram', { value: { WebApp: { initData: proof, expand() {} } }, configurable: true })
           sessionStorage.setItem('tg-authed-uid', id)
           if (deviceToken) {
+            Object.defineProperty(window, 'eshopDesktopRuntime', { value: { isDesktop: true }, configurable: true })
             localStorage.setItem('cashier:deviceId', browserId)
             localStorage.setItem('cashier:posDeviceToken:' + storeCode, deviceToken)
             sessionStorage.setItem('cashier:desktopOperatorSelection:' + storeCode, 'ACCOUNT')
@@ -59,7 +71,7 @@ test('desktop and phone inventory UI use actual HTTP routes and PostgreSQL', asy
         }, { proof: telegramProof(telegramId), id: telegramId, storeCode: store.code, browserId, deviceToken: device?.token ?? '' })
         const page = await context.newPage()
         const url = new URL('/native-inventory', runtime.origin)
-        if (desktop) { url.searchParams.set('from', 'desktop'); url.searchParams.set('storeCode', store.code) }
+        if (desktop) url.searchParams.set('storeCode', store.code)
         await page.goto(url.href)
         await expect(page.getByRole('heading', { name: '库存管理' })).toBeVisible({ timeout: 20000 })
         await page.getByRole('button', { name: '库存建档' }).click()
@@ -204,8 +216,61 @@ test('desktop and phone inventory UI use actual HTTP routes and PostgreSQL', asy
         assert.equal(concurrentSale.status(), 201, await concurrentSale.text())
         assert.equal((await prisma.nativeInventoryItem.findUniqueOrThrow({ where: key })).onHand.toString(), '4')
 
-        if (device) {
-          await prisma.browserPosDevice.update({ where: { id: device.sessionId }, data: { status: 'REVOKED' } })
+        if (desktop) {
+          const h5 = await prisma.customerOrder.create({ data: {
+            ...scope, storeCode: store.code, orderNo: `H5-${randomUUID()}`,
+            status: 'COMPLETED', totalAmount: '12',
+            itemsJson: JSON.stringify([{ productId: product.id, name: product.name, price: 12, quantity: 1, lineAmount: 12 }]),
+          } })
+          const capture = () => context.request.patch(new URL(`/api/customer-orders/${h5.id}`, runtime.origin).href, {
+            data: { paymentMethod: 'CASH' },
+          })
+          // Inject an isolated, source-scoped PostgreSQL error after checkout
+          // writes have run but before the inventory movement can commit.
+          await prisma.$executeRawUnsafe(
+            `ALTER TABLE "NativeInventoryMovement" ADD CONSTRAINT native_inventory_m1_h5_fault CHECK ("sourceId" <> '${h5.id}:1') NOT VALID`,
+          )
+          try {
+            const failed = await capture()
+            assert.equal(failed.status(), 500)
+            assert.equal((await prisma.customerOrder.findUniqueOrThrow({ where: { id: h5.id } })).paymentStatus, 'UNPAID')
+            assert.equal(await prisma.paymentIntent.count({ where: { ...scope, orderNo: h5.orderNo } }), 0)
+            assert.equal(await prisma.customerOrderFulfillmentIntent.count({ where: { ...scope, orderNo: h5.orderNo, purpose: 'FRONT_PAID' } }), 0)
+            assert.equal(await prisma.nativeInventoryMovement.count({ where: { ...scope, originalId: h5.id } }), 0)
+            assert.equal((await prisma.nativeInventoryItem.findUniqueOrThrow({ where: key })).onHand.toString(), '4')
+          } finally {
+            await prisma.$executeRaw`ALTER TABLE "NativeInventoryMovement" DROP CONSTRAINT native_inventory_m1_h5_fault`
+          }
+          const captures = await Promise.all([capture(), capture()])
+          for (const response of captures) assert.equal(response.status(), 200, await response.text())
+          assert.equal(await prisma.paymentIntent.count({ where: { ...scope, orderNo: h5.orderNo } }), 1)
+          assert.equal(await prisma.customerOrderFulfillmentIntent.count({ where: { ...scope, orderNo: h5.orderNo, purpose: 'FRONT_PAID' } }), 1)
+          assert.equal(await prisma.nativeInventoryMovement.count({ where: { ...scope, originalId: h5.id } }), 1)
+          assert.equal((await prisma.nativeInventoryItem.findUniqueOrThrow({ where: key })).onHand.toString(), '3')
+
+          const pos = () => context.request.post(new URL('/api/cashier/sales', runtime.origin).href, {
+            headers: { ...inventoryHeaders, 'x-pos-operator-source': 'ACCOUNT' },
+            data: { storeCode: store.code, paymentMethod: 'CASH', items: [{ barcode: product.barcode, quantity: 1 }] },
+          })
+          const existingSales = await prisma.saleRecord.count({ where: scope })
+          await prisma.$executeRawUnsafe(
+            `ALTER TABLE "NativeInventoryMovement" ADD CONSTRAINT native_inventory_m1_pos_fault CHECK ("itemId" <> '${item.id}' OR "type" <> 'SALE') NOT VALID`,
+          )
+          try {
+            assert.equal((await pos()).status(), 500)
+            assert.equal(await prisma.saleRecord.count({ where: scope }), existingSales)
+            assert.equal((await prisma.nativeInventoryItem.findUniqueOrThrow({ where: key })).onHand.toString(), '3')
+          } finally {
+            await prisma.$executeRaw`ALTER TABLE "NativeInventoryMovement" DROP CONSTRAINT native_inventory_m1_pos_fault`
+          }
+          const retried = await pos()
+          assert.equal(retried.status(), 201, await retried.text())
+          assert.equal(await prisma.saleRecord.count({ where: scope }), existingSales + 1)
+          assert.equal((await prisma.nativeInventoryItem.findUniqueOrThrow({ where: key })).onHand.toString(), '2')
+        }
+
+        if (terminal) {
+          await prisma.desktopDevice.update({ where: { id: terminal.id }, data: { status: 'REVOKED' } })
           await page.reload()
           await expect(page.getByText('请先完成本门店的桌面设备授权。')).toBeVisible()
         }
