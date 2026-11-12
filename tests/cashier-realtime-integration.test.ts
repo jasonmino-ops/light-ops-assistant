@@ -825,9 +825,17 @@ async function main() {
           `Cashier timeout ${ref || 'index'} SHA-256 mismatch: ${path}`)
       }
     }
-  } else if (nativeInventoryM1) {
-    assert.deepEqual([...changed].sort(), [...nativeInventoryM1.corePaths].sort())
-    assertBoundary(changed, nativeInventoryM1.corePaths, nativeInventoryM1.scannerPath)
+  } else if (nativeInventoryM1 && (!nativeInventoryM1.closedBaseline || nativeInventoryM1.mainline)) {
+    if (nativeInventoryM1.mainline) {
+      assert.deepEqual(changed, [], 'the verified main checkout must have no unapproved local delta')
+      const productPaths = gitPaths('diff', '--no-renames', '--name-only',
+        'd385e97540416c849ad1ff872be4ce3d658702b5', nativeInventoryM1.productCommitSha)
+      assert.deepEqual([...productPaths].sort(), [...nativeInventoryM1.corePaths].sort())
+      assertBoundary(productPaths, nativeInventoryM1.corePaths, nativeInventoryM1.scannerPath)
+    } else {
+      assert.deepEqual([...changed].sort(), [...nativeInventoryM1.corePaths].sort())
+      assertBoundary(changed, nativeInventoryM1.corePaths, nativeInventoryM1.scannerPath)
+    }
   } else {
     // ES-CASHIER-COST-01 exclusions and the existing H5/Dine-in approved set
     // retain their prior semantics. Closed historical grants are not reopened.

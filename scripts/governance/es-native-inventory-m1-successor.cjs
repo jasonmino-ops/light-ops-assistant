@@ -143,10 +143,14 @@ function readOriginalNativeInventoryM1Successor(root) {
 
 function readNativeInventoryM1Successor(root) {
   return readOriginalNativeInventoryM1Successor(root) ??
-    require('./es-native-inventory-m1-runtime-successor.cjs').readNativeInventoryM1RuntimeSuccessor(root)
+    require('./es-native-inventory-m1-runtime-successor.cjs').readNativeInventoryM1RuntimeSuccessor(root) ??
+    require('./es-native-inventory-m1-main-successor.cjs').readNativeInventoryM1MainSuccessor(root)
 }
 
 function verifyNativeInventoryM1Remote(root, exact) {
+  if ((exact.mainline && exact.scopeStatus !== 'CLOSED') || (exact.closedBaseline && !exact.mainline)) {
+    throw new Error('M1 mainline authority requires the atomic CLOSED handoff')
+  }
   const url = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8' }).trim()
   if (!['git@github.com:jasonmino-ops/light-ops-assistant.git',
     'https://github.com/jasonmino-ops/light-ops-assistant.git'].includes(url)) {
@@ -156,7 +160,7 @@ function verifyNativeInventoryM1Remote(root, exact) {
     'repos/jasonmino-ops/light-ops-assistant/git/ref/heads/main', '--jq', '.object.sha'], {
     cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 15000,
   }).trim()
-  if (sha !== exact.registrationSha) throw new Error('M1 registration does not match the live GitHub main ref')
+  if (sha !== (exact.trustedMainSha ?? exact.registrationSha)) throw new Error('M1 registration does not match the live GitHub main ref')
 }
 
 if (require.main === module) {

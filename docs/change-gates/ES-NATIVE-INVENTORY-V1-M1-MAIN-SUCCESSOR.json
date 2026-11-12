@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-NATIVE-INVENTORY-V1",
+  "status": "CONDITIONAL",
+  "baseOriginMainSha": "d385e97540416c849ad1ff872be4ce3d658702b5",
+  "productCommitSha": "cf2e1888ef6a42e67878d0a1f9e8546643c2b08b",
+  "priorSignatureSha256": "ecfe94be4744bf4ec0ea8751d51cb4cd5d630b1f8ee7be25be79894b098c83eb",
+  "deadlineExclusive": "2026-11-19T23:59:59Z",
+  "closedScopeSha256": "ea4e49bff0749310c80b20222fca57d10f01c02742022ceea7fec0538cd5a55e",
+  "executablePathsSha256": {
+    "scripts/governance/es-native-inventory-m1-main-successor.cjs": "a0da49afe5a7a077f3e33e6169d8d5250286b4e75cb97432ad113af24fa05efd",
+    "scripts/governance/es-native-inventory-m1-successor.cjs": "b1ec49e3e9258e94310864779ae151254fc6e0a62a1b00a285b33d9f0a0071b7",
+    "tests/cashier-realtime-integration.test.ts": "16c45e3e39e85885785184f5c55efc05954cdb962010b4030eb7b06eef4e27dd",
+    "tests/native-inventory-m1-successor.test.cjs": "d6b2d69a5b4160a2a70e4b0fa18f1cc5307441a48d78b56afcc47097f9a9c969"
+  },
+  "requiredApprover": "Founder",
+  "activationCondition": "EXACT_HANDOFF_AND_CLOSURE_SIGNATURE_BEFORE_CANONICAL_MAIN_UPDATE"
+}
