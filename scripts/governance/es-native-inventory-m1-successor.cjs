@@ -38,7 +38,7 @@ const validSha = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(val
 const samePaths = (a, b) => a.length === b.length && new Set(a).size === a.length && a.every(path => b.includes(path))
 const lines = text => text.split('\n').filter(Boolean)
 
-function readNativeInventoryM1Successor(root) {
+function readOriginalNativeInventoryM1Successor(root) {
   if (['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_NAMESPACE'].some(key => process.env[key])) return null
   try {
     const git = (...args) => execFileSync('git', ['--no-replace-objects', ...args], {
@@ -139,6 +139,11 @@ function readNativeInventoryM1Successor(root) {
   } catch {
     return null
   }
+}
+
+function readNativeInventoryM1Successor(root) {
+  return readOriginalNativeInventoryM1Successor(root) ??
+    require('./es-native-inventory-m1-runtime-successor.cjs').readNativeInventoryM1RuntimeSuccessor(root)
 }
 
 function verifyNativeInventoryM1Remote(root, exact) {

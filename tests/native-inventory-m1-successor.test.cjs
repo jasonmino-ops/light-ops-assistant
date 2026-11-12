@@ -10,7 +10,11 @@ const { readNativeInventoryM1Successor, verifyNativeInventoryM1Remote } = requir
 
 const ROOT = resolve(__dirname, '..')
 const BRANCH = 'codex/es-native-inventory-v1-01'
-const ACTIVATION = 'docs/change-gates/ES-NATIVE-INVENTORY-V1-M1-FROZEN-SUCCESSOR.json'
+const ORIGINAL_ACTIVATION = 'docs/change-gates/ES-NATIVE-INVENTORY-V1-M1-FROZEN-SUCCESSOR.json'
+const RUNTIME_ACTIVATION = 'docs/change-gates/ES-NATIVE-INVENTORY-V1-M1-RUNTIME-SUCCESSOR.json'
+const RUNTIME_SIGNATURE = 'docs/change-gates/ES-NATIVE-INVENTORY-V1-M1-RUNTIME-SIGNATURE.json'
+const RUNTIME_MIGRATION = 'prisma/migrations/20261112133000_isolate_native_inventory_capability/migration.sql'
+const RUNTIME_CASHIER_HASH = 'ec6926988be7cf7df7c78047fefbad4e1fd1a1de39aab08f37a54dcece656325'
 const SCOPE = 'docs/change-gates/exceptions/ES-NATIVE-INVENTORY-V1.json'
 const INTEGRATION = 'scripts/test/manifests/root-integration-tests.json'
 const CASHIER = 'app/cashier/page.tsx'
@@ -27,7 +31,9 @@ test('M1 exact successor admits only the sealed product on the registered develo
 
   const registered = readNativeInventoryM1Successor(ROOT)
   assert.ok(registered, 'the M1 branch must have an exact trusted activation')
-  assert.equal(registered.cashierHash, CASHIER_HASH)
+  const activationPath = registered.runtimeRoleSuccessor ? RUNTIME_ACTIVATION : ORIGINAL_ACTIVATION
+  const expectedCashierHash = registered.runtimeRoleSuccessor ? RUNTIME_CASHIER_HASH : CASHIER_HASH
+  assert.equal(registered.cashierHash, expectedCashierHash)
   assert.ok(registered.corePaths.has(CASHIER))
 
   const directory = mkdtempSync(join(tmpdir(), 'eshop-m1-successor-'))
@@ -61,7 +67,7 @@ test('M1 exact successor admits only the sealed product on the registered develo
 
   await t.test('the exact registered commit is accepted', () => {
     activate()
-    assert.equal(readNativeInventoryM1Successor(root)?.cashierHash, CASHIER_HASH)
+    assert.equal(readNativeInventoryM1Successor(root)?.cashierHash, expectedCashierHash)
   })
   await t.test('synthetic authority cannot pass live remote validation', () => {
     activate()
@@ -98,13 +104,26 @@ test('M1 exact successor admits only the sealed product on the registered develo
     reject()
     activate(commitTree(head, [], [trusted]))
     reject()
-    activate(commitTree(head, [[ACTIVATION, '{}']], [integration]))
+    activate(commitTree(head, [[activationPath, '{}']], [integration]))
     reject()
     activate(commitTree(head, [[INTEGRATION, '{}']], [integration]))
     reject()
   })
+  if (registered.runtimeRoleSuccessor) {
+    await t.test('runtime activation rejects a changed migration and replaced Founder signature', () => {
+      activate(commitTree(head, [[RUNTIME_MIGRATION, 'SELECT 1;']], [integration]))
+      reject()
+      const forged = [[RUNTIME_SIGNATURE, '{}']]
+      const alteredMain = commitTree(trusted, forged, [predecessor])
+      const merged = commitTree(integration, forged, [business, alteredMain])
+      activate(commitTree(head, forged, [merged]), alteredMain)
+      reject()
+      activate(commitTree(head, [], [business]), trusted)
+      reject()
+    })
+  }
   await t.test('expired, malformed and widened authority is denied even on matching ancestry', () => {
-    const authority = JSON.parse(git(['show', `${trusted}:${ACTIVATION}`]))
+    const authority = JSON.parse(git(['show', `${trusted}:${activationPath}`]))
     const scope = JSON.parse(git(['show', `${trusted}:${SCOPE}`]))
     for (const [record, extra] of [
       [{ ...authority, deadlineExclusive: '2000-01-01T00:00:00Z' }, []],
@@ -113,7 +132,7 @@ test('M1 exact successor admits only the sealed product on the registered develo
       [{ ...authority, candidatePatchSha256: '0'.repeat(64) }, []],
       [authority, [['unexpected-governance-file', 'x']]],
     ]) {
-      const files = [[ACTIVATION, JSON.stringify(record)], ...extra]
+      const files = [[activationPath, JSON.stringify(record)], ...extra]
       const alteredMain = commitTree(trusted, files, [predecessor])
       const merged = commitTree(integration, files, [business, alteredMain])
       const alteredHead = commitTree(head, files, [merged])
@@ -129,7 +148,7 @@ test('M1 exact successor admits only the sealed product on the registered develo
     ]) {
       const bytes = JSON.stringify(altered)
       const digest = createHash('sha256').update(bytes).digest('hex')
-      const files = [[SCOPE, bytes], [ACTIVATION, JSON.stringify({
+      const files = [[SCOPE, bytes], [activationPath, JSON.stringify({
         ...authority, executablePathsSha256: { ...authority.executablePathsSha256, [SCOPE]: digest },
       })]]
       const widerMain = commitTree(trusted, files, [predecessor])

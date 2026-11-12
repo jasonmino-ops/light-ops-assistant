@@ -1,0 +1,46 @@
+{
+  "taskId": "ES-NATIVE-INVENTORY-V1",
+  "state": "PENDING_FOUNDER_SIGNATURE",
+  "featureBranch": "codex/es-native-inventory-v1-01",
+  "trustedGovernanceBefore": "5a9b203c0cb67a99c04829f55d942baba09d1561",
+  "businessParent": "0d58dbd287064a2264e969e2f3f11b9361d25dab",
+  "candidatePatchSha256": "c71e0210a4c6f9b4f8ab97112dd6ff4c1e573326b9665f5de7d39e44b541b54c",
+  "candidatePathsSha256": {
+    "app/cashier/page.tsx": "ec6926988be7cf7df7c78047fefbad4e1fd1a1de39aab08f37a54dcece656325",
+    "app/desktop/dine-in/page.tsx": "a224ddec109b6570b379df5ab983f4f4bfca5f8cd0a269a3389d5c16dd8ffc98",
+    "lib/dine-in/commands.ts": "85c6cce75cdd321b68586a643186cd0086ba9a14af6cac064b9752e6b3ac321f",
+    "prisma/migrations/20261112133000_isolate_native_inventory_capability/migration.sql": "f45c016172da6d3b873a60e517fd5e3f733056fad55a850a45c0abc30e198783",
+    "scripts/test/manifests/root-integration-tests.json": "23fcb97dee9ed3119d4991087c73b782fa977bf6b03832c774a795eb19fd3ce5",
+    "tests/dine-in-m1-contract.test.ts": "8ae81b53c19a63d97e3e163a4dd87d706b552e5b7f405b473f0a1e7116bb68c5",
+    "tests/fixtures/native-inventory-legacy-acl.sql": "42cda6969205636ed60595a4b08704132699e79521aa6c8d020bb0c5405fc6be",
+    "tests/native-inventory-runtime-http.test.ts": "fec8970a2dee0e166b8205349a0d3d21154b7307faba3e433084414fd0c9cd95"
+  },
+  "exactScopeAddOrReplace": {
+    "app/cashier/page.tsx": "ec6926988be7cf7df7c78047fefbad4e1fd1a1de39aab08f37a54dcece656325",
+    "prisma/migrations/20261112133000_isolate_native_inventory_capability/migration.sql": "f45c016172da6d3b873a60e517fd5e3f733056fad55a850a45c0abc30e198783"
+  },
+  "frozenSuccessor": {
+    "app/cashier/page.tsx": {
+      "previousSha256": "e053f220726f0b698cd37009d897ec36dcb3eaaee814869a8617ba2461fe0707",
+      "candidateSha256": "ec6926988be7cf7df7c78047fefbad4e1fd1a1de39aab08f37a54dcece656325"
+    },
+    "app/desktop/dine-in/page.tsx": {
+      "previousSha256": "aecf723e9ece7ca13cb2ec7376fd25f1b7cec668f9afff4c6713d68e067f2e90",
+      "candidateSha256": "a224ddec109b6570b379df5ab983f4f4bfca5f8cd0a269a3389d5c16dd8ffc98"
+    },
+    "lib/dine-in/commands.ts": {
+      "previousSha256": "6fdea364e62e548dac25d05d9ea53ea9cf9f11e5efc6cd0f2e9ab20e4c5095fc",
+      "candidateSha256": "85c6cce75cdd321b68586a643186cd0086ba9a14af6cac064b9752e6b3ac321f"
+    },
+    "tests/dine-in-m1-contract.test.ts": {
+      "previousSha256": "b4d8f034f3e8f56a405793a3b195c35813236723a7b63cc13dca64e46351ed53",
+      "candidateSha256": "8ae81b53c19a63d97e3e163a4dd87d706b552e5b7f405b473f0a1e7116bb68c5"
+    },
+    "scripts/test/manifests/root-integration-tests.json": {
+      "previousSha256": "f3a70a174d0de1760a12c25f545418de5835cee8ccc7c7613d38ea725dda03cd",
+      "candidateSha256": "23fcb97dee9ed3119d4991087c73b782fa977bf6b03832c774a795eb19fd3ce5"
+    }
+  },
+  "authorizationRequested": "Exact non-production successor registration, development branch candidate commit and Cloud CI only; preserve and enforce the existing scope and frozen behavior gates.",
+  "frozenBehaviorEvidence": "Unknown dining recovery remains reachable for an authorized active store without asserting an active meal; unchanged print and payment state machine assertions."
+}
