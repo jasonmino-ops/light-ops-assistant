@@ -323,6 +323,7 @@ model Store {
   v3PrintExecutionBatches     V3PrintExecutionBatch[]
   diningTables                DiningTable[]
   diningMeals                 DiningMeal[]
+  nativeInventory             NativeInventoryStore?
   sourceApplication           StoreApplication?            @relation("StoreApplicationCreatedStore")
 
   @@unique([id, tenantId])
@@ -455,8 +456,11 @@ model Product {
   sales                 SaleRecord[]
   marketingProductPages MarketingProductPage[]
 
+  nativeInventoryItems NativeInventoryItem[]
+
   @@unique([tenantId, barcode])
   @@unique([tenantId, auxBarcode])
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@index([name])
   @@index([categoryId])
@@ -2326,4 +2330,151 @@ model DiningVoidLine {
   @@index([voidBatchId])
   @@index([originalBatchId])
   @@index([tenantId, storeId, mealId])
+}
+
+enum NativeInventoryMovementType {
+  RECEIPT
+  ADJUSTMENT
+  SALE
+  REFUND
+  SALE_CANCEL
+  REFUND_CANCEL
+  CUSTOMER_SALE
+  CUSTOMER_SALE_CANCEL
+}
+
+model NativeInventoryStore {
+  tenantId    String
+  storeId     String
+  enabledAt   DateTime? @db.Timestamptz(3)
+  currencyCode String
+  store       Store @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  items       NativeInventoryItem[]
+  suppliers   NativeInventorySupplier[]
+  receivers   NativeInventoryReceiver[]
+
+  @@id([tenantId, storeId])
+  @@unique([storeId, tenantId])
+}
+
+model NativeInventoryReceiver {
+  tenantId    String
+  storeId     String
+  userId      String
+  inventory   NativeInventoryStore @relation(fields: [tenantId, storeId], references: [tenantId, storeId], onDelete: Restrict)
+
+  @@id([tenantId, storeId, userId])
+}
+
+model NativeInventoryItem {
+  tenantId         String
+  storeId          String
+  id               String @default(cuid())
+  productId        String?
+  productTenantId  String?
+  materialName     String?
+  productName      String?
+  baseUnitName     String
+  lowStockAt       Decimal @default(0) @db.Decimal(18, 6)
+  onHand           Decimal @default(0) @db.Decimal(320, 6)
+  averageUnitCost  Decimal? @db.Decimal(24, 10)
+  inventory        NativeInventoryStore @relation(fields: [tenantId, storeId], references: [tenantId, storeId], onDelete: Restrict)
+  product          Product? @relation(fields: [productId, productTenantId], references: [id, tenantId], onDelete: SetNull)
+  units            NativeInventoryUnit[]
+  receiptLines     NativeInventoryReceiptLine[]
+  movements        NativeInventoryMovement[]
+
+  @@id([tenantId, storeId, id])
+  @@unique([tenantId, storeId, productId])
+}
+
+model NativeInventoryUnit {
+  tenantId   String
+  storeId    String
+  itemId     String
+  id         String @default(cuid())
+  name       String
+  barcode    String?
+  factor     Decimal @db.Decimal(18, 6)
+  item       NativeInventoryItem @relation(fields: [tenantId, storeId, itemId], references: [tenantId, storeId, id], onDelete: Restrict)
+
+  @@id([tenantId, storeId, id])
+  @@unique([tenantId, storeId, itemId, name])
+  @@unique([tenantId, storeId, barcode])
+}
+
+model NativeInventorySupplier {
+  tenantId   String
+  storeId    String
+  id         String @default(cuid())
+  name       String
+  contact    String?
+  inventory  NativeInventoryStore @relation(fields: [tenantId, storeId], references: [tenantId, storeId], onDelete: Restrict)
+  receipts   NativeInventoryReceipt[]
+
+  @@id([tenantId, storeId, id])
+}
+
+model NativeInventoryReceipt {
+  tenantId     String
+  storeId      String
+  id           String
+  supplierId   String
+  createdBy    String
+  revision     Int @default(1)
+  lastDraftRequestHash String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  postedAt     DateTime? @db.Timestamptz(3)
+  postedBy     String?
+  total        Decimal @db.Decimal(26, 2)
+  currencyCode String
+  supplier     NativeInventorySupplier @relation(fields: [tenantId, storeId, supplierId], references: [tenantId, storeId, id], onDelete: Restrict)
+  lines        NativeInventoryReceiptLine[]
+
+  @@id([tenantId, storeId, id])
+  @@index([tenantId, storeId, supplierId, postedAt])
+  @@index([tenantId, storeId, createdAt, id])
+}
+
+model NativeInventoryReceiptLine {
+  tenantId   String
+  storeId    String
+  receiptId  String
+  lineNo     Int
+  itemId     String
+  unitId     String
+  itemName   String
+  unitName   String
+  factor     Decimal @db.Decimal(18, 6)
+  quantity   Decimal @db.Decimal(18, 6)
+  baseQty    Decimal @db.Decimal(18, 6)
+  unitPrice  Decimal @db.Decimal(18, 6)
+  amount     Decimal @db.Decimal(24, 2)
+  receipt    NativeInventoryReceipt @relation(fields: [tenantId, storeId, receiptId], references: [tenantId, storeId, id], onDelete: Restrict)
+  item       NativeInventoryItem @relation(fields: [tenantId, storeId, itemId], references: [tenantId, storeId, id], onDelete: Restrict)
+
+  @@id([tenantId, storeId, receiptId, lineNo])
+  @@index([tenantId, storeId, itemId])
+}
+
+model NativeInventoryMovement {
+  tenantId    String
+  storeId     String
+  sourceId    String
+  type        NativeInventoryMovementType
+  itemId      String
+  quantity    Decimal @db.Decimal(320, 6)
+  balance     Decimal @db.Decimal(320, 6)
+  unitCost    Decimal? @db.Decimal(24, 10)
+  valuationUnitCost Decimal? @db.Decimal(24, 10)
+  revenue     Decimal? @db.Decimal(12, 2)
+  actorId     String?
+  reason      String?
+  originalId  String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  item        NativeInventoryItem @relation(fields: [tenantId, storeId, itemId], references: [tenantId, storeId, id], onDelete: Restrict)
+
+  @@id([tenantId, storeId, type, sourceId])
+  @@index([tenantId, storeId, itemId, createdAt])
+  @@index([tenantId, storeId, originalId])
 }
