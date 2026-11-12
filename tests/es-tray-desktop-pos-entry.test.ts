@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
+import { resolve } from 'node:path'
 import behavior from 'node:test'
 import ts from 'typescript'
+
+const { readNativeInventoryM1Successor } = createRequire(resolve(process.cwd(), 'package.json'))('./scripts/governance/es-native-inventory-m1-successor.cjs')
+const nativeInventoryM1 = readNativeInventoryM1Successor(process.cwd())
+const paymentBody = (paymentMethod: 'CASH' | 'QR', currencyCode = 'USD') =>
+  ({ paymentMethod, ...(nativeInventoryM1 ? { displayedCurrency: currencyCode } : {}) })
 
 const desktopEntry = fs.readFileSync('app/desktop/pos/page.tsx', 'utf8')
 const cashier = fs.readFileSync('app/cashier/page.tsx', 'utf8')
@@ -35,7 +42,7 @@ function executeH5(overrides: Record<string, unknown> = {}) {
   const order = { id: 'h5-order', orderNo: 'H5-frozen', storeCode: 'SYNTHETIC', status: 'PENDING', paymentStatus: 'UNPAID',
     items: [{ name: 'Frozen', price: 1, quantity: 2, lineAmount: 2 }], totalAmount: 1.5, remark: 'Frozen discount and note' }
   const forbidden = () => { throw new Error('FORBIDDEN_POS_SIDE_EFFECT') }
-  const deps = { isDesktopPos: true, storeCode: 'SYNTHETIC', requireOnlinePosAuthorization: () => true, cart: [],
+  const deps = { isDesktopPos: true, storeCode: 'SYNTHETIC', currencyCode: 'USD', requireOnlinePosAuthorization: () => true, cart: [],
     saleResult: null, submitting: false, h5ActionInFlight: { current: false }, showToast: (v: string) => errors.push(v),
     posDeviceHeaders: () => ({ 'x-pos-device-id': 'isolated-device' }),
     d: { managementBlockedDesktop: 'keep-current-cart' }, setH5Busy: () => {}, setH5Error: (v: string) => errors.push(v),
@@ -64,7 +71,7 @@ for (const method of ['CASH', 'KHQR'] as const) behavior(`actual H5 handlers: ${
   await f.accept(); await f.accept(); await f.pay(method); await f.pay(method)
   assert.deepEqual(f.calls.filter((c: any) => c.body).map((c: any) => c.body), [
     { status: 'CONFIRMED' }, { status: 'CONFIRMED' }, { status: 'COMPLETED' },
-    { paymentMethod: method === 'KHQR' ? 'QR' : 'CASH' }, { paymentMethod: method === 'KHQR' ? 'QR' : 'CASH' },
+    paymentBody(method === 'KHQR' ? 'QR' : 'CASH'), paymentBody(method === 'KHQR' ? 'QR' : 'CASH'),
   ])
   assert.doesNotMatch(h5Handlers, /setSaleResult|submitV3LocalTickets|LOCAL_DESKTOP|setCart|\/api\/cashier\/sales|\/api\/sales|router\.push/)
 })
@@ -120,9 +127,9 @@ behavior('actual Desktop poll restores COMPLETED+UNPAID entry after collection f
     assert.deepEqual(urls, [isDesktopPos ? '/api/customer-orders?storeCode=SYNTHETIC' : '/api/cashier/orders?storeCode=SYNTHETIC'])
     assert.deepEqual(selected, isDesktopPos ? [order] : [])
   }
-  const f = executeH5(); f.order.status = 'COMPLETED'
+  const f = executeH5({ currencyCode: 'XAF' }); f.order.status = 'COMPLETED'
   await f.open('h5-order'); await f.pay('CASH')
-  assert.deepEqual(f.calls.filter((c: any) => c.body).map((c: any) => c.body), [{ paymentMethod: 'CASH' }], 'reentry never reconfirms or creates kitchen')
+  assert.deepEqual(f.calls.filter((c: any) => c.body).map((c: any) => c.body), [paymentBody('CASH', 'XAF')], 'reentry never reconfirms or creates kitchen')
 })
 
 test('only Desktop H5 buttons leave legacy status-only writes; completed-unpaid orders retain an entry', () => {

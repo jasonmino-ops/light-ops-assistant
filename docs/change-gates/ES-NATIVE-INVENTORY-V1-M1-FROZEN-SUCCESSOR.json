@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-NATIVE-INVENTORY-V1",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "reviewedBy": "Codex independent reviewer m1_executable_successor_review",
+  "reviewSha256": "4082b7d1d02e2f6f1cb2d4ba01bb728e1c197af1d47615e80d9d6029571d42d0",
+  "deadlineExclusive": "2026-11-19T23:59:59Z",
+  "manifestSha256": "507de9f3e4c55f4dbf32be146eeb5b8702fb515e56d24a9cbaa6179337156ff1",
+  "candidatePatchSha256": "5c3d57bb579101d99089c0410fb1d00110a28cfe86bedf9cc39e0ca2129f8fd1",
+  "integrationManifestSha256": "f3a70a174d0de1760a12c25f545418de5835cee8ccc7c7613d38ea725dda03cd",
+  "executablePathsSha256": {
+    "desktop/scripts/release-foundation.mjs": "fa21716420d3e061878b30408a1570dce0fd18968eb192ba6e2081acc9f917fc",
+    "docs/change-gates/exceptions/ES-NATIVE-INVENTORY-V1.json": "f345592eadad428a530b7f0dac0a1c17f83ac5653a357e3fd0588b575146c4fe",
+    "docs/freezes/ES-NATIVE-INVENTORY-V1-M1-REVIEW.md": "4082b7d1d02e2f6f1cb2d4ba01bb728e1c197af1d47615e80d9d6029571d42d0",
+    "scripts/governance/es-native-inventory-m1-manifest.json": "507de9f3e4c55f4dbf32be146eeb5b8702fb515e56d24a9cbaa6179337156ff1",
+    "scripts/governance/es-native-inventory-m1-successor.cjs": "2ed0832fd758e0ddf37a1d61d5044df5d5e7498a53839abfa8433ba7cc870de6",
+    "scripts/test/manifests/root-core-tests.json": "937428edcf7cc1ec61dc811a9eb365d9e5f5f824bfea40521f63124081dadde9",
+    "tests/cashier-realtime-integration.test.ts": "c63fb6ad846b1106697936974e27482a46979b138ea5af62a63e48a1307c69e8",
+    "tests/es-tray-desktop-pos-entry.test.ts": "1f531e30f0255452d3d4521d04c9a257f26a1ea8df3fe8ea249e2a0935e81c82",
+    "tests/es-tray-device-print-contract.test.ts": "1c2905afc809c974206bd01b6468406f36e4cbd4bd8b8032ac70ce4326693b4f",
+    "tests/native-inventory-m1-successor.test.cjs": "6c5ca7dbb42691c511bc360699df7c248cb2adb0e88d7c5812201552605e0a96",
+    "tests/support/native-inventory-payment-contract.cjs": "4a95330874778b3e903cfbf421559391a525d548851e40c2b556361bc575bccf",
+    "tests/v3-reprint-recovery.test.ts": "f82e652a79342eb63c2a8130e1a2a1f9c7086bdc7f6e75583affeba04c774cee"
+  }
+}
