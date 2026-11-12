@@ -6,8 +6,8 @@
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
   "reason": "Exact two-file Prisma scope for isolated development branch commit and push only.",
-  "approvalSource": "Founder exact M1 executable-successor signature. This record extends the original two-file grant only by the exact paths and bytes in the signed M1 packet.",
-  "sealedCandidatePatchSha256": "5c3d57bb579101d99089c0410fb1d00110a28cfe86bedf9cc39e0ca2129f8fd1",
+  "approvalSource": "Founder exact M1 runtime successor signature SHA-256 ecfe94be4744bf4ec0ea8751d51cb4cd5d630b1f8ee7be25be79894b098c83eb",
+  "sealedCandidatePatchSha256": "c71e0210a4c6f9b4f8ab97112dd6ff4c1e573326b9665f5de7d39e44b541b54c",
   "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
   "status": "ACTIVE",
   "approvedBy": "Founder",
@@ -28,6 +28,7 @@
     "prisma/migrations/20261112120000_add_native_inventory/migration.sql",
     "prisma/migrations/20261112131000_bind_inventory_order_and_payment_currency/migration.sql",
     "prisma/migrations/20261112132000_authorize_native_inventory_runtime/migration.sql",
+    "prisma/migrations/20261112133000_isolate_native_inventory_capability/migration.sql",
     "prisma/schema.prisma"
   ],
   "authorizedPathSha256": {
@@ -35,7 +36,7 @@
     "app/api/orders/[orderNo]/cancel/route.ts": "61f10160c34b5b480b277e9eb99ec4b26a6704612eca32de5093d83dc91131d2",
     "app/api/orders/[orderNo]/checkout/route.ts": "01e5d9fdc6ddfd7f5328ca7065eadfcc11c77760dd6846cd85087d60d4898f30",
     "app/api/sales/route.ts": "b640ac3f5be7cb0e6a99c3e62ec046b8fb5d86950d0a9f1e7e9e448185f84413",
-    "app/cashier/page.tsx": "e053f220726f0b698cd37009d897ec36dcb3eaaee814869a8617ba2461fe0707",
+    "app/cashier/page.tsx": "ec6926988be7cf7df7c78047fefbad4e1fd1a1de39aab08f37a54dcece656325",
     "app/home/page.tsx": "379c257ec2371c7054a5e346a3300c492d7f95039d76718d3de3f1a46b21c4a3",
     "app/menu/page.tsx": "d7f81a0d2946662ad334c9227f8d6342d2e47de41da817c496ff2523551d5c60",
     "app/sale/page.tsx": "f47af18b44e4042a3ab919fbbe6e14dabd4e4dc00c774aebabc24e225745d120",
@@ -44,6 +45,7 @@
     "prisma/migrations/20261112120000_add_native_inventory/migration.sql": "0c1f66d8482c3f76ef907f22e3d4e584afe947eef643e8162a480128f5bb1899",
     "prisma/migrations/20261112131000_bind_inventory_order_and_payment_currency/migration.sql": "f5255ddc60f0c7905f120d19ff8385e9039372adcbc9410a2b05c6d50664afa1",
     "prisma/migrations/20261112132000_authorize_native_inventory_runtime/migration.sql": "750d78688b338a0aa1d0df50d2b5afa3ce77c3f6095e1002ce8226070ae2a5dc",
+    "prisma/migrations/20261112133000_isolate_native_inventory_capability/migration.sql": "f45c016172da6d3b873a60e517fd5e3f733056fad55a850a45c0abc30e198783",
     "prisma/schema.prisma": "8c4676233e8a30b71d47f29a12996c4af9dff06bb46a19d0a4515e260f23a610"
   }
 }
