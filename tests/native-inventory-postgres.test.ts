@@ -227,6 +227,23 @@ test('native inventory posts receipts and sale transitions in isolated PostgreSQ
   assert.equal((await balance(precisionItem.id)).averageUnitCost?.toString(), '0.04')
 
 
+  const fineItem = (await api('items', { body: {
+    id: randomUUID(), materialName: 'High precision sample', baseUnitName: 'kg',
+    units: [{ name: 'sample', factor: '0.000013', barcode: 'm1-high-precision' }],
+  } })).data
+  const fineUnit = (await api('items', { query: '?q=m1-high-precision&mode=barcode' })).data[0].units[1].id
+  const fineReceipt = randomUUID()
+  assert.equal((await api('receipts', { body: {
+    id: fineReceipt, supplierId, revision: 0,
+    lines: [{ itemId: fineItem.id, unitId: fineUnit, quantity: '1', unitPrice: '999999999.999999' }],
+  } })).status, 200)
+  assert.equal((await api('receipt-confirmation', { body: { id: fineReceipt, revision: 1 } })).status, 200)
+  const fineMovement = await prisma.nativeInventoryMovement.findFirstOrThrow({
+    where: { tenantId: first.id, storeId: store.id, sourceId: `${fineReceipt}:1`, type: 'RECEIPT' },
+  })
+  assert.equal(fineMovement.unitCost?.toString(), '76923076923076.8461538462')
+  assert.equal((await balance(fineItem.id)).averageUnitCost?.toString(), '76923076923076.8461538462')
+
   const secondDraft = { ...draft, id: randomUUID(), lines: [{ itemId: item.id, unitId: 'BASE', quantity: '6', unitPrice: '9' }] }
   assert.equal((await api('receipts', { body: secondDraft })).status, 200)
   assert.equal((await api('receipt-confirmation', { body: { id: secondDraft.id, revision: 1 } })).status, 200)

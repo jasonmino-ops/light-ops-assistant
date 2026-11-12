@@ -443,15 +443,20 @@ export async function confirmReceipt(person: InventoryPerson, id: string, expect
     if (receipt.postedAt) return receipt
     if (receipt.currencyCode !== person.currencyCode) throw new InventoryError('RECEIPT_CURRENCY_CHANGED', 409)
     if (!receipt.lines.length) throw new InventoryError('RECEIPT_LEDGER_CONFLICT', 409)
-    if (receipt.lines.some((line) => line.unitPrice.div(line.factor).toDecimalPlaces(10).gte('100000000000000'))) {
-      throw new InventoryError('INVENTORY_UNIT_COST_OUT_OF_RANGE')
-    }
+    const [{ outOfRange }] = await tx.$queryRaw<{ outOfRange: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM "NativeInventoryReceiptLine"
+        WHERE "tenantId" = ${scope.tenantId} AND "storeId" = ${scope.storeId} AND "receiptId" = ${id}
+          AND round("unitPrice"::numeric(45, 30) / "factor", 10) >= 100000000000000
+      ) AS "outOfRange"
+    `
+    if (outOfRange) throw new InventoryError('INVENTORY_UNIT_COST_OUT_OF_RANGE')
     // When an item has positive quantity but no valuation, seed it with its
     // first known incoming cost before the normal weighted-average movement.
     await tx.$executeRaw`
       UPDATE "NativeInventoryItem" item SET "averageUnitCost" = first_line.cost
       FROM (
-        SELECT DISTINCT ON ("itemId") "itemId", round("unitPrice" / "factor", 10) AS cost
+        SELECT DISTINCT ON ("itemId") "itemId", round("unitPrice"::numeric(45, 30) / "factor", 10) AS cost
         FROM "NativeInventoryReceiptLine"
         WHERE "tenantId" = ${scope.tenantId} AND "storeId" = ${scope.storeId} AND "receiptId" = ${id}
         ORDER BY "itemId", "lineNo"
@@ -464,8 +469,8 @@ export async function confirmReceipt(person: InventoryPerson, id: string, expect
     const movements = await tx.$queryRaw<{ applied: boolean }[]>`
       SELECT public.native_inventory_move(
         ${scope.tenantId}, ${scope.storeId}, line."itemId", ${id} || ':' || line."lineNo", 'RECEIPT',
-        line."baseQty", round(line."unitPrice" / line."factor", 10),
-        round(line."unitPrice" / line."factor", 10), NULL, ${person.userId}, NULL, NULL
+        line."baseQty", round(line."unitPrice"::numeric(45, 30) / line."factor", 10),
+        round(line."unitPrice"::numeric(45, 30) / line."factor", 10), NULL, ${person.userId}, NULL, NULL
       ) AS applied
       FROM "NativeInventoryReceiptLine" line
       WHERE line."tenantId" = ${scope.tenantId} AND line."storeId" = ${scope.storeId} AND line."receiptId" = ${id}
