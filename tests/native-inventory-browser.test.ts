@@ -60,8 +60,10 @@ test('desktop and phone inventory UI use actual HTTP routes and PostgreSQL', asy
         await context.addCookies([{ name: 'auth-session', value: signSession({ ...scope, userId: user.id, role: 'OWNER' }), url: runtime.origin, httpOnly: true }])
         await context.route('https://telegram.org/**', (route) => route.fulfill({ status: 200, contentType: 'text/javascript', body: '' }))
         await context.addInitScript(({ proof, id, storeCode, browserId, deviceToken }) => {
-          Object.defineProperty(window, 'Telegram', { value: { WebApp: { initData: proof, expand() {} } }, configurable: true })
-          sessionStorage.setItem('tg-authed-uid', id)
+          if (!deviceToken) {
+            Object.defineProperty(window, 'Telegram', { value: { WebApp: { initData: proof, expand() {} } }, configurable: true })
+            sessionStorage.setItem('tg-authed-uid', id)
+          }
           if (deviceToken) {
             Object.defineProperty(window, 'eshopDesktopRuntime', { value: { isDesktop: true }, configurable: true })
             localStorage.setItem('cashier:deviceId', browserId)
@@ -70,9 +72,34 @@ test('desktop and phone inventory UI use actual HTTP routes and PostgreSQL', asy
           }
         }, { proof: telegramProof(telegramId), id: telegramId, storeCode: store.code, browserId, deviceToken: device?.token ?? '' })
         const page = await context.newPage()
-        const url = new URL('/native-inventory', runtime.origin)
+        const url = new URL(desktop ? '/desktop/inventory' : '/native-inventory', runtime.origin)
         if (desktop) url.searchParams.set('storeCode', store.code)
         await page.goto(url.href)
+        async function authorizeDesktop() {
+          const begin = page.waitForResponse((r) => r.url().endsWith('/api/native-inventory/desktop-operator') && r.request().postDataJSON()?.action === 'begin')
+          await page.getByRole('button', { name: '生成配对码' }).click()
+          const paired = await begin
+          assert.equal(paired.status(), 200)
+          const { claim } = await paired.json() as { claim: string }
+          const code = page.getByLabel('配对码')
+          await expect(code).toHaveText(/^[a-f0-9-]{19}$/)
+          const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true })
+          try {
+            await phone.addCookies([{ name: 'auth-session', value: signSession({ ...scope, userId: user.id, role: 'OWNER' }), url: runtime.origin, httpOnly: true }])
+            await phone.route('https://telegram.org/**', (route) => route.fulfill({ status: 200, contentType: 'text/javascript', body: '' }))
+            await phone.addInitScript((proof) => {
+              Object.defineProperty(window, 'Telegram', { value: { WebApp: { initData: proof, expand() {} } } })
+            }, telegramProof(telegramId))
+            const authorizer = await phone.newPage()
+            await authorizer.goto(new URL('/desktop/inventory/authorize', runtime.origin).href)
+            await authorizer.getByLabel('配对码').fill(await code.innerText())
+            await authorizer.getByRole('button', { name: '授权当前桌面' }).click()
+            await expect(authorizer.getByRole('status')).toContainText('桌面已授权')
+          } finally { await phone.close() }
+          await expect(page.getByRole('heading', { name: '库存管理' })).toBeVisible()
+          return claim
+        }
+        let desktopClaim = desktop ? await authorizeDesktop() : ''
         await expect(page.getByRole('heading', { name: '库存管理' })).toBeVisible({ timeout: 20000 })
         await page.getByRole('button', { name: '库存建档' }).click()
         const setup = page.getByRole('dialog', { name: '库存建档' })
@@ -149,6 +176,7 @@ test('desktop and phone inventory UI use actual HTTP routes and PostgreSQL', asy
           await expect(page.getByRole('heading', { name: '结果未确认' })).toBeVisible()
           assert.equal(committedStatus, 200, commitError)
           await page.reload()
+          desktopClaim = await authorizeDesktop()
           await page.getByRole('button', { name: '查看待确认入库单' }).click()
           await page.getByRole('button', { name: /RK-/ }).click()
           const lookup = page.waitForResponse((response) => response.url().includes('/api/native-inventory/receipt-result?id='))
@@ -170,7 +198,7 @@ test('desktop and phone inventory UI use actual HTTP routes and PostgreSQL', asy
         assert.equal((await prisma.nativeInventoryItem.findUniqueOrThrow({ where: key })).onHand.toString(), '2')
 
         const sale = await context.request.post(new URL('/api/sales', runtime.origin).href, {
-          data: { saleType: 'SALE', paymentMethod: 'CASH', items: [{ barcode: product.barcode, quantity: 1 }] },
+          data: { saleType: 'SALE', paymentMethod: 'CASH', displayedCurrency: store.currencyCode, items: [{ barcode: product.barcode, quantity: 1 }] },
         })
         assert.equal(sale.status(), 201, await sale.text())
         assert.equal((await prisma.nativeInventoryItem.findUniqueOrThrow({ where: key })).onHand.toString(), '1')
@@ -193,10 +221,10 @@ test('desktop and phone inventory UI use actual HTTP routes and PostgreSQL', asy
         await expect(drawer).toBeHidden()
         assert.equal((await prisma.nativeInventoryItem.findUniqueOrThrow({ where: key })).onHand.toString(), '3')
 
-        const inventoryHeaders = {
-          'x-telegram-init-data': telegramProof(telegramId),
-          ...(device ? { 'x-lightops-client': 'desktop-pos', 'x-pos-device-token': device.token, 'x-pos-device-id': browserId } : {}),
-        }
+        const inventoryHeaders: Record<string, string> = device ? {
+          'x-lightops-client': 'desktop-pos', 'x-pos-device-token': device.token, 'x-pos-device-id': browserId,
+          'x-inventory-operator': desktopClaim,
+        } : { 'x-telegram-init-data': telegramProof(telegramId) }
         const supplier = await prisma.nativeInventorySupplier.findFirstOrThrow({ where: { ...scope, name: '金边供应商' } })
         const nextReceiptId = randomUUID()
         const draftResponse = await context.request.put(new URL('/api/native-inventory/receipts', runtime.origin).href, {
@@ -209,7 +237,7 @@ test('desktop and phone inventory UI use actual HTTP routes and PostgreSQL', asy
             headers: inventoryHeaders, data: { id: nextReceiptId, revision: 1 },
           }),
           context.request.post(new URL('/api/sales', runtime.origin).href, {
-            data: { saleType: 'SALE', paymentMethod: 'CASH', items: [{ barcode: product.barcode, quantity: 1 }] },
+            data: { saleType: 'SALE', paymentMethod: 'CASH', displayedCurrency: store.currencyCode, items: [{ barcode: product.barcode, quantity: 1 }] },
           }),
         ])
         assert.equal(concurrentReceipt.status(), 200, await concurrentReceipt.text())
@@ -250,7 +278,7 @@ test('desktop and phone inventory UI use actual HTTP routes and PostgreSQL', asy
 
           const pos = () => context.request.post(new URL('/api/cashier/sales', runtime.origin).href, {
             headers: { ...inventoryHeaders, 'x-pos-operator-source': 'ACCOUNT' },
-            data: { storeCode: store.code, paymentMethod: 'CASH', items: [{ barcode: product.barcode, quantity: 1 }] },
+            data: { storeCode: store.code, paymentMethod: 'CASH', displayedCurrency: store.currencyCode, items: [{ barcode: product.barcode, quantity: 1 }] },
           })
           const existingSales = await prisma.saleRecord.count({ where: scope })
           await prisma.$executeRawUnsafe(

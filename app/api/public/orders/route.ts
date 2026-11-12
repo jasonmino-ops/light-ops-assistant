@@ -2,6 +2,7 @@ import { after, NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { inventoryDisplayedCurrency, recordInventoryOrderCurrency } from '@/lib/native-inventory/order-currency'
 import { sendAndLogMessage } from '@/lib/telegram'
 import {
   cleanTrackingText,
@@ -158,7 +159,10 @@ export async function POST(req: NextRequest) {
     const landingCampaign = cleanTrackingText(raw.campaign, 120)
     const landingVisitorId = cleanVisitorId(raw.visitorId)
     const lang = pickLang(raw.lang), T = MSG[lang]
-    const normalized = { version: 1, storeCode, items, tableNo, remark, customerTelegramId: trimmedTgId,
+    const displayedCurrency = submissionText(raw.displayedCurrency)
+    if (displayedCurrency && !/^[A-Z]{3}$/.test(displayedCurrency)) throw new SubmissionError(400, 'INVALID_CURRENCY')
+    // Preserve the v1 hash for retries created before the displayed-currency field existed.
+    const normalized = { version: 1, storeCode, ...(displayedCurrency ? { displayedCurrency } : {}), items, tableNo, remark, customerTelegramId: trimmedTgId,
       couponId, pickupMethod, customerName, customerPhone, deliveryAddress, deliveryNote, deliveryLat, deliveryLng,
       deliveryAddressPhotoUrl, campaignCode: rawCampaignCode, campaignIntent: rawCampaignIntent,
       orderSource, source: landingSource, campaign: landingCampaign, visitorId: landingVisitorId, lang }
@@ -194,6 +198,13 @@ export async function POST(req: NextRequest) {
       if (prior) return { kind: 'REPLAY' as const, receipt: replaySubmission(prior, hash) }
       const currentStore = await tx.store.findFirst({ where: { id: store.id, tenantId: store.tenantId, code: storeCode } })
       if (!currentStore || currentStore.status !== 'ACTIVE') throw new SubmissionError(404, 'STORE_NOT_FOUND', T.storeNotFound)
+      if (displayedCurrency && displayedCurrency !== currentStore.currencyCode) {
+        const inventory = await tx.nativeInventoryStore.findUnique({
+          where: { tenantId_storeId: { tenantId: store.tenantId, storeId: store.id } },
+          select: { enabledAt: true },
+        })
+        if (inventory?.enabledAt) throw new SubmissionError(409, 'ORDER_CURRENCY_CHANGED')
+      }
       if (pickupMethod === 'delivery' && (!customerPhone || !deliveryAddress)) throw new SubmissionError(400, 'DELIVERY_INFO_REQUIRED', '请填写联系电话和送货/上门地址')
 
       const products = await tx.product.findMany({
@@ -240,6 +251,10 @@ export async function POST(req: NextRequest) {
       const receipt = { orderNo, totalAmount: payableAmount, subtotal, discountAmount, payableAmount, coupon: couponSnapshot,
         itemCount: items.reduce((n, i) => n + i.quantity, 0), message: T.submitted,
         labels: { submitted: T.submitted, orderNo: T.orderNo, total: T.total, statusPending: T.statusPending }, lang }
+      await recordInventoryOrderCurrency(tx, {
+        tenantId: store.tenantId, storeId: store.id, kind: 'H5',
+        currencyCode: inventoryDisplayedCurrency(displayedCurrency, currentStore.currencyCode),
+      })
       const created = await tx.customerOrder.create({ data: {
         tenantId: store.tenantId, storeId: store.id, storeCode: store.code, orderNo,
         submissionKey: key, submissionHash: hash, submissionVersion: 1, submissionResponse: receipt,

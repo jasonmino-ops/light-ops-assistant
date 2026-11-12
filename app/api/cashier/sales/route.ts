@@ -10,6 +10,7 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { inventoryDisplayedCurrency, recordInventoryOrderCurrency } from '@/lib/native-inventory/order-currency'
 import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
@@ -192,6 +193,11 @@ export async function POST(req: NextRequest) {
       // Release the transaction before waiting at a day boundary. No numbers or rows have been written.
       if (lastLineMs > recordClock.getTime()) return { lineTimesReadyAt: lastLineMs } as const
 
+      await recordInventoryOrderCurrency(tx, {
+        tenantId: store.tenantId, storeId: store.id, kind: 'POS',
+        currencyCode: inventoryDisplayedCurrency(body.displayedCurrency, store.currencyCode),
+        paymentCurrencyCode: khqrConfig?.currency ?? inventoryDisplayedCurrency(body.displayedCurrency, store.currencyCode),
+      })
       const orderNo = await generateRecordNo(tx, 'S', store.tenantId, store.id, store.code, recordClock)
       let totalAmount = 0
       const saleRecordData = saleLines.map((line, index) => {

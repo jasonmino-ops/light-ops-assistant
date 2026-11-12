@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { createHmac, randomUUID } from 'node:crypto'
 import { test } from 'node:test'
 import { NextRequest } from 'next/server'
+import { POST as pairDesktop } from '../app/api/native-inventory/desktop-operator/route'
+import { recordInventoryOrderCurrency } from '../lib/native-inventory/order-currency'
 import { GET, PUT } from '../app/api/native-inventory/[resource]/route'
 import { signSession } from '../lib/session'
 import { prisma } from '../lib/prisma'
@@ -55,12 +57,26 @@ test('native inventory posts receipts and sale transitions in isolated PostgreSQ
     quantity?: number
     lineAmount?: number
     originalSaleRecordId?: string
-  } = {}) => prisma.saleRecord.create({ data: {
-    tenantId: first.id, storeId: shopId, operatorUserId: owner.id, productId: product.id, saleType: 'SALE',
-    recordNo: randomUUID(), barcode: product.barcode, productNameSnapshot: product.name,
-    unitPrice: 100, quantity: 12, lineAmount: 100, sellingUnitType: 'AUX', sellingUnitNameSnapshot: 'box', sellingQuantity: 1, sellingConversionFactor: 12,
-    ...overrides,
-  } })
+  } = {}) => prisma.$transaction(async (tx) => {
+    const shop = await tx.store.findUniqueOrThrow({ where: { id: shopId } })
+    const orderNo = randomUUID()
+    await recordInventoryOrderCurrency(tx, {
+      tenantId: first.id, storeId: shopId, kind: 'POS', currencyCode: shop.currencyCode, paymentCurrencyCode: shop.currencyCode,
+    })
+    const record = await tx.saleRecord.create({ data: {
+      tenantId: first.id, storeId: shopId, operatorUserId: owner.id, productId: product.id, saleType: 'SALE',
+      recordNo: orderNo, orderNo, barcode: product.barcode, productNameSnapshot: product.name,
+      unitPrice: 100, quantity: 12, lineAmount: 100, sellingUnitType: 'AUX', sellingUnitNameSnapshot: 'box', sellingQuantity: 1, sellingConversionFactor: 12,
+      ...overrides,
+    } })
+    if (record.status === 'COMPLETED' && record.saleType === 'SALE') {
+      await tx.paymentIntent.create({ data: {
+        tenantId: first.id, storeId: shopId, operatorUserId: owner.id, orderNo, status: 'PAID',
+        paymentMethod: 'CASH', amount: record.lineAmount,
+      } })
+    }
+    return record
+  })
   const historical = await sale(store.id)
 
   await prisma.nativeInventoryStore.createMany({
@@ -124,16 +140,41 @@ test('native inventory posts receipts and sale transitions in isolated PostgreSQ
     issuedBy: 'DESKTOP_DEVICE', issuedByUserId: null, displayName: 'Inventory test desktop',
   }))
   const deviceHeaders = { ...desktopHeaders, 'x-pos-device-token': device.token, 'x-pos-device-id': browserId }
-  assert.equal((await api('access', { headers: deviceHeaders })).outcome, 'SUCCESS')
-  assert.equal((await api('access', { headers: { ...deviceHeaders, authorization: `Bearer ${nativeToken}` } })).status, 200)
+  assert.equal((await api('access', { headers: deviceHeaders })).error, 'DESKTOP_OPERATOR_REQUIRED')
   assert.equal((await api('access', { headers: { ...deviceHeaders, authorization: `Bearer ${otherNativeToken}` } })).error, 'DESKTOP_DEVICE_REQUIRED')
   assert.equal((await api('access', { headers: { authorization: `Bearer ${nativeToken}` } })).error, 'DESKTOP_DEVICE_REQUIRED')
 
-  assert.equal((await api('access', { headers: deviceHeaders, shopId: peer.id })).status, 403)
-  assert.equal((await api('access', { headers: deviceHeaders, person: denied })).status, 403)
-  assert.equal((await api('access', { headers: deviceHeaders, person: null })).status, 401)
-  assert.equal((await api('access', { headers: { ...deviceHeaders, 'x-telegram-init-data': personProof(owner, 901) } })).error, 'PERSON_PROOF_INVALID')
-  assert.equal((await api('access', { headers: { ...deviceHeaders, 'x-telegram-init-data': personProof(denied) } })).error, 'PERSON_PROOF_INVALID')
+  async function pair(body: object, headers: Record<string, string>) {
+    const response = await pairDesktop(new NextRequest('http://localhost/api/native-inventory/desktop-operator', {
+      method: 'POST', headers, body: JSON.stringify(body),
+    }))
+    return { status: response.status, ...await response.json() }
+  }
+  const begin = await pair({ action: 'begin' }, deviceHeaders)
+  assert.equal(begin.status, 200)
+  const boundDevice = { ...deviceHeaders, 'x-inventory-operator': begin.claim }
+  const approve = { action: 'approve', code: begin.code }
+  assert.equal((await pair({ action: 'status' }, boundDevice)).state, 'PENDING')
+  assert.equal((await pair(approve, {
+    cookie: `auth-session=${session(owner, peer.id)}`, 'x-telegram-init-data': personProof(owner),
+  })).error, 'DESKTOP_PAIRING_INVALID')
+  assert.equal((await pair(approve, {
+    cookie: `auth-session=${session(denied, store.id)}`, 'x-telegram-init-data': personProof(denied),
+  })).error, 'RECEIVING_ACCESS_DENIED')
+  assert.equal((await pair(approve, {
+    cookie: `auth-session=${session(owner, store.id)}`, 'x-telegram-init-data': personProof(owner, 901),
+  })).error, 'PERSON_PROOF_INVALID')
+  assert.equal((await pair(approve, {
+    cookie: `auth-session=${session(owner, store.id)}`, 'x-telegram-init-data': personProof(denied),
+  })).error, 'PERSON_PROOF_INVALID')
+  const approval = { cookie: `auth-session=${session(owner, store.id)}`, 'x-telegram-init-data': personProof(owner) }
+  assert.equal((await pair(approve, approval)).state, 'APPROVED')
+  assert.equal((await pair(approve, approval)).error, 'DESKTOP_PAIRING_INVALID')
+  assert.equal((await api('access', { person: null, headers: boundDevice })).data.userId, owner.id)
+  assert.equal((await api('access', { person: denied, headers: boundDevice })).data.userId, owner.id)
+  assert.equal((await api('access', { headers: { ...boundDevice, authorization: `Bearer ${nativeToken}` } })).status, 200)
+  await prisma.$executeRaw`UPDATE native_inventory.desktop_operator SET expires_at = now() WHERE device_session_id = ${device.sessionId}`
+  assert.equal((await api('access', { headers: boundDevice })).error, 'DESKTOP_OPERATOR_REQUIRED')
   await prisma.desktopDevice.update({ where: { id: terminal.id }, data: { tokenExpiresAt: new Date(Date.now() - 1000) } })
   assert.equal((await api('access', { headers: deviceHeaders })).error, 'DESKTOP_DEVICE_REQUIRED')
   await prisma.desktopDevice.update({ where: { id: terminal.id }, data: { status: 'REVOKED', tokenExpiresAt: new Date(Date.now() + 60000) } })
@@ -256,13 +297,20 @@ test('native inventory posts receipts and sale transitions in isolated PostgreSQ
   await sale(store.id, { saleType: 'REFUND', quantity: -1, originalSaleRecordId: historical.id, lineAmount: -10 })
   assert.equal((await balance(item.id)).onHand.toString(), '30')
 
+  await prisma.$transaction(async (tx) => {
+    await recordInventoryOrderCurrency(tx, { tenantId: first.id, storeId: store.id, kind: 'POS_PAYMENT', currencyCode: 'USD' })
+    await tx.paymentIntent.create({ data: {
+      tenantId: first.id, storeId: store.id, operatorUserId: owner.id, orderNo: pending.orderNo!, status: 'PAID',
+      paymentMethod: 'CASH', amount: pending.lineAmount,
+    } })
+  })
   await prisma.saleRecord.update({ where: { id: pending.id }, data: { status: 'COMPLETED' } })
   await prisma.saleRecord.update({ where: { id: pending.id }, data: { status: 'COMPLETED' } })
   assert.equal((await balance(item.id)).onHand.toString(), '18')
   const nextReceipt = { ...secondDraft, id: randomUUID(), lines: [{ ...secondDraft.lines[0], unitPrice: '10' }] }
   assert.equal((await api('receipts', { body: nextReceipt })).status, 200)
   assert.equal((await api('receipt-confirmation', { body: { id: nextReceipt.id, revision: 1 } })).status, 200)
-  const refund = await sale(peer.id, { saleType: 'REFUND', quantity: -3, originalSaleRecordId: pending.id, lineAmount: -25 })
+  const refund = await sale(disabled.id, { saleType: 'REFUND', quantity: -3, originalSaleRecordId: pending.id, lineAmount: -25 })
   assert.equal((await balance(item.id)).onHand.toString(), '27')
   const range = `?from=${new Date(Date.now() - 60000).toISOString()}&until=${new Date(Date.now() + 60000).toISOString()}`
   const [profit] = (await api('profit', { query: range })).data
@@ -302,6 +350,9 @@ test('native inventory posts receipts and sale transitions in isolated PostgreSQ
 
   const qrOrderNo = randomUUID()
   await prisma.$transaction(async (tx) => {
+    await recordInventoryOrderCurrency(tx, {
+      tenantId: first.id, storeId: store.id, kind: 'POS', currencyCode: 'USD', paymentCurrencyCode: 'USD',
+    })
     await tx.saleRecord.create({ data: {
       tenantId: first.id, storeId: store.id, operatorUserId: owner.id, productId: product.id, saleType: 'SALE',
       recordNo: qrOrderNo, orderNo: qrOrderNo, barcode: product.barcode, productNameSnapshot: product.name,
@@ -323,13 +374,23 @@ test('native inventory posts receipts and sale transitions in isolated PostgreSQ
   await prisma.saleRecord.update({ where: { id: earlyRefund.id }, data: { status: 'CANCELLED' } })
   assert.equal((await balance(item.id)).onHand.toString(), '28')
 
-  const h5 = await prisma.customerOrder.create({ data: {
+  const h5 = await prisma.$transaction(async (tx) => {
+    await recordInventoryOrderCurrency(tx, { tenantId: first.id, storeId: store.id, kind: 'H5', currencyCode: 'USD' })
+    return tx.customerOrder.create({ data: {
     tenantId: first.id, storeId: store.id, storeCode: store.code, orderNo: randomUUID(),
     status: 'COMPLETED', paymentStatus: 'UNPAID', totalAmount: '15',
-    itemsJson: JSON.stringify([{ productId: product.id, quantity: 2, lineAmount: 20 }]),
-  } })
+      itemsJson: JSON.stringify([{ productId: product.id, quantity: 2, lineAmount: 20 }]),
+    } })
+  })
   assert.equal((await balance(item.id)).onHand.toString(), '28')
-  await prisma.customerOrder.update({ where: { id: h5.id }, data: { paymentStatus: 'PAID' } })
+  await prisma.$transaction(async (tx) => {
+    await recordInventoryOrderCurrency(tx, { tenantId: first.id, storeId: store.id, kind: 'H5_PAYMENT', currencyCode: 'USD' })
+    await tx.paymentIntent.create({ data: {
+      tenantId: first.id, storeId: store.id, operatorUserId: owner.id, orderNo: h5.orderNo, status: 'PAID',
+      transactionActorId: h5.id, transactionActorType: 'H5_CUSTOMER_ORDER', paymentMethod: 'CASH', amount: h5.totalAmount,
+    } })
+    await tx.customerOrder.update({ where: { id: h5.id }, data: { paymentStatus: 'PAID' } })
+  })
   await prisma.customerOrder.update({ where: { id: h5.id }, data: { paymentStatus: 'PAID' } })
   assert.equal((await balance(item.id)).onHand.toString(), '26')
   const h5Movement = await prisma.nativeInventoryMovement.findFirstOrThrow({ where: { originalId: h5.id, type: 'CUSTOMER_SALE' } })

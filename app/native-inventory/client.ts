@@ -49,6 +49,9 @@ const errorText: Record<string, string> = {
   PERSON_PROOF_REQUIRED: '请通过 Telegram 打开以验证操作人员身份。',
   PERSON_PROOF_INVALID: 'Telegram 验证已过期，请从 Telegram 重新打开。',
   DESKTOP_DEVICE_REQUIRED: '请先完成本门店的桌面设备授权。',
+  DESKTOP_OPERATOR_REQUIRED: '请重新验证当前桌面操作员。',
+  DESKTOP_OPERATOR_REVOKED: '该操作员已失去本门店进销存权限，请重新配对。',
+  DESKTOP_PAIRING_INVALID: '配对码无效、已使用或不属于当前门店。',
   NATIVE_INVENTORY_DISABLED: '当前门店尚未开通原生库存。',
   RECEIVING_ACCESS_DENIED: '当前账号没有入库权限。',
   OWNER_REQUIRED: '此操作需要店主权限。',
@@ -69,14 +72,45 @@ export function path(resource: string, query: Record<string, string> = {}) {
   return resource + (search ? '?' + search : '')
 }
 
-export async function request<T>(resource: string, body?: object, signal?: AbortSignal): Promise<T> {
-  const host = window as Window & {
-    Telegram?: { WebApp?: { initData?: string } }
-    eshopDesktopRuntime?: { isDesktop?: boolean }
-  }
-  const tg = host.Telegram?.WebApp?.initData
+export function telegramInitData() {
+  return (window as Window & { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp?.initData
+}
+
+export function isInventoryDesktop() {
   const url = new URL(window.location.href)
-  const desktop = host.eshopDesktopRuntime?.isDesktop === true || url.searchParams.get('from') === 'desktop'
+  const host = window as Window & { eshopDesktopRuntime?: { isDesktop?: boolean } }
+  return host.eshopDesktopRuntime?.isDesktop === true || url.pathname === '/desktop/inventory' ||
+    url.searchParams.get('from') === 'desktop'
+}
+
+let desktopClaim: string | null = null
+
+export function setDesktopInventoryClaim(claim: string) {
+  desktopClaim = claim
+}
+
+export async function endDesktopInventoryClaim() {
+  if (!desktopClaim) return
+  const headers = desktopInventoryHeaders()
+  desktopClaim = null
+  await fetch('/api/native-inventory/desktop-operator', {
+    method: 'POST', body: JSON.stringify({ action: 'end' }), keepalive: true,
+    headers: { ...headers, 'content-type': 'application/json' },
+  })
+}
+
+export function desktopInventoryHeaders() {
+  const storeCode = new URL(window.location.href).searchParams.get('storeCode') || localStorage.getItem('cashier:lastStoreCode')
+  return {
+    ...posDeviceHeaders(storeCode),
+    'x-lightops-client': 'desktop-pos',
+    ...(desktopClaim ? { 'x-inventory-operator': desktopClaim } : {}),
+  }
+}
+
+export async function request<T>(resource: string, body?: object, signal?: AbortSignal): Promise<T> {
+  const desktop = isInventoryDesktop()
+  const tg = desktop ? undefined : telegramInitData()
   const controller = new AbortController()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
@@ -89,7 +123,7 @@ export async function request<T>(resource: string, body?: object, signal?: Abort
       signal: controller.signal,
       headers: {
         ...(tg ? { 'x-telegram-init-data': tg } : {}),
-        ...(desktop ? { ...posDeviceHeaders(url.searchParams.get('storeCode')), 'x-lightops-client': 'desktop-pos' } : {}),
+        ...(desktop ? desktopInventoryHeaders() : {}),
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),

@@ -27,9 +27,9 @@ function readSubmission(code: string): SavedSubmission | null {
   return value
 }
 const submissionMessages = {
-  zh: { pending: '上次提交结果待确认，请重试原提交；不会使用当前编辑内容创建新订单。', retry: '重试原提交', storage: '无法安全保存或读取提交记录，请启用浏览器存储；如已提交，请先联系门店核对。', conflict: '提交记录与原订单不一致，请联系门店核对，不要重复下单。' },
-  en: { pending: 'The previous submission is unconfirmed. Retry the original request, not the edited cart.', retry: 'Retry original submission', storage: 'Cannot safely store or read this submission. Enable browser storage; check with the store if already submitted.', conflict: 'This request differs from the original order. Contact the store before ordering again.' },
-  km: { pending: 'ការបញ្ជូនមុនមិនទាន់បានបញ្ជាក់។ សូមបញ្ជូនសំណើដើមម្ដងទៀត មិនមែនកន្ត្រកដែលបានកែទេ។', retry: 'បញ្ជូនសំណើដើមម្ដងទៀត', storage: 'មិនអាចរក្សាទុក ឬអានសំណើបាន។ សូមបើកការផ្ទុកក្នុងកម្មវិធីរុករក។ បើបានបញ្ជូនរួច សូមសួរហាងសិន។', conflict: 'សំណើនេះខុសពីការបញ្ជាទិញដើម។ សូមទាក់ទងហាងមុនបញ្ជាទិញម្ដងទៀត។' },
+  zh: { pending: '上次提交结果待确认，请重试原提交；不会使用当前编辑内容创建新订单。', retry: '重试原提交', storage: '无法安全保存或读取提交记录，请启用浏览器存储；如已提交，请先联系门店核对。', conflict: '提交记录与原订单不一致，请联系门店核对，不要重复下单。', currencyChanged: '门店币种已变更，请刷新菜单并核对订单金额。' },
+  en: { pending: 'The previous submission is unconfirmed. Retry the original request, not the edited cart.', retry: 'Retry original submission', storage: 'Cannot safely store or read this submission. Enable browser storage; check with the store if already submitted.', conflict: 'This request differs from the original order. Contact the store before ordering again.', currencyChanged: 'The store currency changed. Refresh the menu and review your total.' },
+  km: { pending: 'ការបញ្ជូនមុនមិនទាន់បានបញ្ជាក់។ សូមបញ្ជូនសំណើដើមម្ដងទៀត មិនមែនកន្ត្រកដែលបានកែទេ។', retry: 'បញ្ជូនសំណើដើមម្ដងទៀត', storage: 'មិនអាចរក្សាទុក ឬអានសំណើបាន។ សូមបើកការផ្ទុកក្នុងកម្មវិធីរុករក។ បើបានបញ្ជូនរួច សូមសួរហាងសិន។', conflict: 'សំណើនេះខុសពីការបញ្ជាទិញដើម។ សូមទាក់ទងហាងមុនបញ្ជាទិញម្ដងទៀត។', currencyChanged: 'រូបិយប័ណ្ណរបស់ហាងបានផ្លាស់ប្តូរ។ សូមផ្ទុកម៉ឺនុយឡើងវិញ ហើយពិនិត្យទឹកប្រាក់សរុប។' },
 }
 
 // 顾客端 Bot 用户名（前端公开变量，不允许写死；清理误填的 @）
@@ -1227,7 +1227,7 @@ export default function MenuPage() {
         pending = {
           version: 1, key: crypto.randomUUID(), paymentMethod: checkoutPaymentMethod,
           payload: JSON.stringify({
-            storeCode: code,
+            storeCode: code, displayedCurrency: storeData?.currencyCode ?? undefined,
             items: activeCart.map((c) => ({ productId: c.id, quantity: c.quantity, ...(c.sugar ? { sugar: c.sugar } : {}) })),
             ...(tableNo ? { tableNo } : {}), ...(customerTelegramId ? { customerTelegramId } : {}),
             ...(selectedCouponId ? { couponId: selectedCouponId } : {}), pickupMethod,
@@ -1254,6 +1254,7 @@ export default function MenuPage() {
       if (!res.ok) {
         const msg =
           body.error === 'IDEMPOTENCY_KEY_CONFLICT' ? submissionUi.conflict :
+          body.error === 'ORDER_CURRENCY_CHANGED' ? submissionUi.currencyChanged :
           body.error === 'DELIVERY_INFO_REQUIRED'? (body.message ?? ui.deliveryInfoRequired) :
           body.error === 'PRODUCT_UNAVAILABLE'   ? ui.errSubmitProduct :
           body.error === 'COUPON_ALREADY_USED'   ? ui.couponAlreadyUsed :

@@ -2,11 +2,12 @@
 
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useState } from 'react'
-import { useInventory, type Access, type Draft, type Item, type Receipt, type Supplier } from './client'
+import { endDesktopInventoryClaim, isInventoryDesktop, RequestError, useInventory, type Access, type Draft, type Item, type Receipt, type Supplier } from './client'
 import { newDraft, openDraft, Receiving, SupplierForm, type PendingReceipt } from './receiving'
 import { ProfitReport, ReceiptDetail, Receipts, SupplierDetail, Suppliers } from './reports'
 import { CatalogSetup, ReadState, StockDetail, StockList } from './stock'
 import { Choices, Icon } from './ui'
+import { DesktopPairing } from './desktop-pairing'
 import './inventory.css'
 
 const BarcodeScanner = dynamic(() => import('@/app/components/BarcodeScanner'), { ssr: false })
@@ -22,14 +23,35 @@ const nav = [
 export default function NativeInventoryPage() {
   const [refresh, setRefresh] = useState(0)
   const access = useInventory<Access>('access', refresh)
+  const authorized = useCallback(() => setRefresh((value) => value + 1), [])
+  const endDesktopSession = useCallback(() => {
+    void endDesktopInventoryClaim().catch(() => {})
+    authorized()
+  }, [authorized])
+  useEffect(() => {
+    if (!isInventoryDesktop()) return
+    const end = () => { void endDesktopInventoryClaim().catch(() => {}) }
+    const restore = (event: PageTransitionEvent) => { if (event.persisted) authorized() }
+    window.addEventListener('pagehide', end)
+    window.addEventListener('pageshow', restore)
+    return () => { window.removeEventListener('pagehide', end); window.removeEventListener('pageshow', restore); end() }
+  }, [authorized])
+  const pairingRequired = access?.error instanceof RequestError &&
+    ['DESKTOP_OPERATOR_REQUIRED', 'DESKTOP_OPERATOR_REVOKED'].includes(access.error.code)
   return <div className="native-inventory">
+    {pairingRequired ? <DesktopPairing authorized={authorized} /> :
     <ReadState data={access?.data} error={access?.error} retry={() => setRefresh((v) => v + 1)} label="暂时无法访问进销存">
-      {access?.data && <Inventory key={access.data.storeId + ':' + access.data.userId} access={access.data} />}
-    </ReadState>
+      {access?.data && <Inventory key={access.data.storeId + ':' + access.data.userId} access={access.data} endDesktopSession={endDesktopSession} />}
+    </ReadState>}
   </div>
 }
 
-function Inventory({ access }: { access: Access }) {
+function Inventory({ access, endDesktopSession }: { access: Access; endDesktopSession: () => void }) {
+  const [desktop] = useState(() => isInventoryDesktop())
+  const source = desktop ? new URLSearchParams(window.location.search) : null
+  const cashierPath = source ? '/desktop/pos?' + new URLSearchParams({
+    mode: 'pos', storeCode: source.get('storeCode') ?? '', lang: source.get('lang') ?? 'zh',
+  }) : ''
   const [destination, setDestination] = useState<Destination>('stock')
   const [tab, setTab] = useState('当前库存')
   const [refresh, setRefresh] = useState(0)
@@ -110,6 +132,10 @@ function Inventory({ access }: { access: Access }) {
     <div className="shell">
       <nav className="side" aria-label="主导航">
         <div className="brand">店小二 E-Shop</div><div className="store">{access.storeName} · 库存与采购</div>
+        {desktop && <>
+          <button className="nav-btn" type="button" onClick={endDesktopSession}>切换库存操作员</button>
+          <a className="nav-btn" href={cashierPath}>返回收银台</a>
+        </>}
         {available.map(({ kind, desktop }) => <button className={`nav-btn ${destination === kind ? 'on' : ''}`} disabled={!!draft} aria-current={destination === kind ? 'page' : undefined} key={kind} onClick={() => { setDestination(kind); reload() }}><Icon kind={kind} />{desktop}</button>)}
       </nav>
       <main className="main">
@@ -121,6 +147,7 @@ function Inventory({ access }: { access: Access }) {
             {tab === '当前库存' ? <StockList access={access} refresh={refresh} reload={reload} query={query} setQuery={setQuery} justReceived={received}
               scan={() => beginScan(setQuery)} setup={() => setOverlay({ kind: 'catalog' })} open={(item) => setOverlay({ kind: 'stock', item })} />
               : <Receipts access={access} refresh={refresh} reload={reload} open={openReceipt} localDrafts={localDrafts} resumeLocal={setDraft} pending={pending} clearPending={() => setPending(null)} />}
+            {!desktop && <div className="foot"><a href="/desktop/inventory/authorize">配对桌面</a></div>}
             {pending && tab === '当前库存' && <div className="foot"><button className="btn" onClick={showRecords}>查看待确认入库单</button></div>}
           </section> : destination === 'suppliers' ? <Suppliers access={access} refresh={refresh} reload={reload} open={(supplier) => setOverlay({ kind: 'supplier', supplier })} add={() => setOverlay({ kind: 'supplier-form' })} />
             : <ProfitReport access={access} refresh={refresh} reload={reload} />}

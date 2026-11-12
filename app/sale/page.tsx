@@ -1120,7 +1120,7 @@ export default function SalePage() {
         method: 'POST',
         body: JSON.stringify({
           saleType: 'SALE',
-          paymentMethod: method,
+          paymentMethod: method, displayedCurrency: currencyCode,
           items: cart.map((ci) => ({
             barcode: ci.product.barcode,
             quantity: ci.qty,
@@ -1171,7 +1171,7 @@ export default function SalePage() {
         method: 'POST',
         body: JSON.stringify({
           saleType: 'SALE',
-          paymentMethod: 'DEFER',
+          paymentMethod: 'DEFER', displayedCurrency: currencyCode,
           items: cart.map((ci) => ({ barcode: ci.product.barcode, quantity: ci.qty })),
         }),
       })
@@ -1202,7 +1202,7 @@ export default function SalePage() {
     try {
       const res = await apiFetch(`/api/orders/${encodeURIComponent(deferredOrder.orderNo)}/checkout`, {
         method: 'POST',
-        body: JSON.stringify({ paymentMethod: method }),
+        body: JSON.stringify({ paymentMethod: method, displayedCurrency: currencyCode }),
       })
       const body = await res.json()
       if (res.ok) {

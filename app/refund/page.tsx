@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, FormEvent } from 'react'
 import { apiFetch } from '@/lib/api'
+import { formatMoney } from '@/lib/currency'
+import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 
@@ -145,6 +147,7 @@ function buildOrderGroups(items: SaleListItem[]): OrderGroup[] {
 
 export default function RefundPage() {
   const { t } = useLocale()
+  const { currencyCode } = useWorkMode()
   // ── List phase ─────────────────────────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>('list')
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('recent')
@@ -170,7 +173,7 @@ export default function RefundPage() {
 
   const item = lookup?.items[0] ?? null
   const rQty = Math.max(1, parseInt(refundQtyStr, 10) || 1)
-  const refundPreview = item ? (item.unitPrice * rQty).toFixed(2) : '0.00'
+  const refundPreview = formatMoney(item ? item.unitPrice * rQty : 0, currencyCode)
 
   // ── Fetch sale list ────────────────────────────────────────────────────────
 
@@ -325,7 +328,7 @@ export default function RefundPage() {
       const res = await apiFetch('/api/sales', {
         method: 'POST',
         body: JSON.stringify({
-          saleType: 'REFUND',
+          saleType: 'REFUND', displayedCurrency: currencyCode,
           originalSaleRecordId: item.saleRecordId,
           refundQty: rQty,
           refundReason: finalReason,
@@ -478,7 +481,7 @@ export default function RefundPage() {
                   <InfoRow label={t('refund.refundNo')} value={result.recordNo} mono />
                   <InfoRow
                     label={t('refund.refundAmountLabel')}
-                    value={`-$${Math.abs(result.lineAmount).toFixed(2)}`}
+                    value={`-${formatMoney(Math.abs(result.lineAmount), currencyCode)}`}
                     red
                   />
                   <InfoRow
@@ -520,7 +523,7 @@ export default function RefundPage() {
                   )}
                   <div style={s.productMeta}>
                     <span style={s.metaLabel}>{t('refund.origPrice')}</span>
-                    <span style={s.metaValue}>${item.unitPrice.toFixed(2)}</span>
+                    <span style={s.metaValue}>{formatMoney(item.unitPrice, currencyCode)}</span>
                   </div>
                   <div style={s.qtyGrid}>
                     <QtyCell label={t('refund.sold')} value={item.originalQty} />

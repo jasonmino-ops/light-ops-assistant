@@ -1,6 +1,7 @@
 import { after, NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { inventoryDisplayedCurrency, recordInventoryOrderCurrency } from '@/lib/native-inventory/order-currency'
 import { getContext } from '@/lib/context'
 import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
@@ -161,6 +162,11 @@ async function handleSale(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      await recordInventoryOrderCurrency(tx, {
+        tenantId: ctx.tenantId, storeId: ctx.storeId, kind: 'POS',
+        currencyCode: inventoryDisplayedCurrency(body.displayedCurrency, store.currencyCode),
+        paymentCurrencyCode: khqrConfig?.currency ?? inventoryDisplayedCurrency(body.displayedCurrency, store.currencyCode),
+      })
       // 生成第一条记录号，同时用作整单的 orderNo
       const orderNo = await generateRecordNo(tx, 'S', ctx.tenantId, ctx.storeId, store.code)
 
@@ -283,7 +289,7 @@ async function handleDeferredSale(
 
   const store = await prisma.store.findFirst({
     where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
-    select: { id: true, tenantId: true, code: true, businessType: true },
+    select: { id: true, tenantId: true, code: true, businessType: true, currencyCode: true },
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 400 })
 
@@ -304,6 +310,10 @@ async function handleDeferredSale(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      await recordInventoryOrderCurrency(tx, {
+        tenantId: ctx.tenantId, storeId: ctx.storeId, kind: 'POS',
+        currencyCode: inventoryDisplayedCurrency(body.displayedCurrency, store.currencyCode),
+      })
       const orderNo = await generateRecordNo(tx, 'S', ctx.tenantId, ctx.storeId, store.code)
 
       let totalAmount = 0
@@ -386,7 +396,7 @@ async function handleRefund(
 
   const store = await prisma.store.findFirst({
     where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
-    select: { code: true },
+    select: { code: true, currencyCode: true },
   })
   if (!store) {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 400 })
@@ -397,6 +407,7 @@ async function handleRefund(
 
   try {
     const record = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "SaleRecord" WHERE id = ${originalSaleRecordId} AND "tenantId" = ${ctx.tenantId} FOR UPDATE`
       const original = await tx.saleRecord.findFirst({
         where: {
           id: originalSaleRecordId,
@@ -459,6 +470,10 @@ async function handleRefund(
         : decimalToMoney(original.unitPrice.mul(requestedSellingQty)).neg()
       const recordNo = await generateRecordNo(tx, 'R', ctx.tenantId, ctx.storeId, store.code)
 
+      await recordInventoryOrderCurrency(tx, {
+        tenantId: ctx.tenantId, storeId: ctx.storeId, kind: 'POS',
+        currencyCode: inventoryDisplayedCurrency(body.displayedCurrency, store.currencyCode),
+      })
       const refund = await tx.saleRecord.create({
         data: {
           tenantId: ctx.tenantId,

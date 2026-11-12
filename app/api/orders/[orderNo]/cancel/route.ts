@@ -1,5 +1,6 @@
 import { after, NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { lockOrderSettlement, orderRecordStore } from '@/lib/order-settlement-lock'
 import { getContext } from '@/lib/context'
 import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
 
@@ -21,9 +22,10 @@ export async function POST(
 
   const { orderNo } = await params
 
+  const tenantScope = { tenantId: ctx.tenantId, ...(ctx.role === 'STAFF' ? { storeId: ctx.storeId } : {}) }
   // Check records exist and are cancellable
   const records = await prisma.saleRecord.findMany({
-    where: { orderNo, tenantId: ctx.tenantId },
+    where: { orderNo, ...tenantScope },
     select: { id: true, status: true, tenantId: true, storeId: true, diningBatchId: true },
   })
 
@@ -41,6 +43,10 @@ export async function POST(
     )
   }
 
+  const storeId = records[0].storeId
+  if (records.some((record) => record.storeId !== storeId)) {
+    return NextResponse.json({ error: 'INVALID_ORDER_SCOPE' }, { status: 409 })
+  }
   const alreadyCancelled = records.every((r) => r.status === 'CANCELLED')
   if (alreadyCancelled) {
     return NextResponse.json({ error: 'ALREADY_CANCELLED' }, { status: 409 })
@@ -55,19 +61,29 @@ export async function POST(
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      // Cancel all PENDING_PAYMENT records
-      await tx.saleRecord.updateMany({
-        where: { orderNo, tenantId: ctx.tenantId, status: 'PENDING_PAYMENT' },
+    const cancelled = await prisma.$transaction(async (tx) => {
+      await lockOrderSettlement(tx, ctx.tenantId, orderNo)
+      const paymentScope = { orderNo, tenantId: ctx.tenantId }
+      const scope = { ...paymentScope, storeId }
+      if (await orderRecordStore(tx, scope) !== storeId) return 'ORDER_STATE_CHANGED'
+      const prior = await tx.paymentIntent.findFirst({ where: paymentScope, select: { status: true } })
+      if (prior?.status === 'PAID') return 'ALREADY_COMPLETED'
+      const current = await tx.saleRecord.findMany({ where: scope, select: { status: true } })
+      if (current.some((record) => record.status === 'COMPLETED')) return 'ALREADY_COMPLETED'
+      const changed = await tx.saleRecord.updateMany({
+        where: { ...scope, status: 'PENDING_PAYMENT' },
         data: { status: 'CANCELLED' },
       })
 
+      if (!changed.count) return 'ALREADY_CANCELLED'
       // Cancel any pending PaymentIntent
       await tx.paymentIntent.updateMany({
-        where: { orderNo, tenantId: ctx.tenantId, status: 'PENDING' },
+        where: { ...paymentScope, status: 'PENDING' },
         data: { status: 'CANCELLED' },
       })
+      return 'CANCELLED'
     })
+    if (cancelled !== 'CANCELLED') return NextResponse.json({ error: cancelled }, { status: 409 })
 
     after(() => notifyCashierGateway({
       tenantId: records[0].tenantId,

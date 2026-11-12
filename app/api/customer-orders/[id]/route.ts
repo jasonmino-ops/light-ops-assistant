@@ -1,6 +1,7 @@
 import { after, NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { inventoryDisplayedCurrency, recordInventoryOrderCurrency } from '@/lib/native-inventory/order-currency'
 import { getContext } from '@/lib/context'
 import { sendAndLogMessage } from '@/lib/telegram'
 import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
@@ -116,7 +117,7 @@ export async function PATCH(
 
   const { id } = await params
 
-  let body: { status?: string; paymentMethod?: string }
+  let body: { status?: string; paymentMethod?: string; displayedCurrency?: string }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
@@ -258,6 +259,10 @@ export async function PATCH(
           return readCommittedPayment()
         }
 
+        await recordInventoryOrderCurrency(tx, {
+          tenantId: order.tenantId, storeId: order.storeId, kind: 'H5_PAYMENT',
+          currencyCode: inventoryDisplayedCurrency(body.displayedCurrency, storeForIntent.currencyCode),
+        })
         const paymentIntent = await tx.paymentIntent.create({
           data: customerOrderPaymentIntentData({
             tenantId: order.tenantId,
