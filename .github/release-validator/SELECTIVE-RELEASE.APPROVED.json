@@ -1,0 +1,38 @@
+{
+  "releaseId": "ES-INVENTORY-MERCHANT-PRODUCTION-UI-01",
+  "taskIds": [
+    "ES-INVENTORY-MERCHANT-PRODUCTION-UI-01"
+  ],
+  "baseProductionSha": "dd02c7d49c824798f13c4901124bd6d84763f434",
+  "sourceMainSha": "24528f1e346b2c83913bdfa0a841b5e0ca6a6fd4",
+  "includedSourceCommits": [
+    "24528f1e346b2c83913bdfa0a841b5e0ca6a6fd4"
+  ],
+  "founderAuthorization": {
+    "authorizationId": "ES-INVENTORY-MERCHANT-PRODUCTION-UI-01-FOUNDER-EXACT-24528F1E-1F33D03B",
+    "approvedBy": "Founder",
+    "status": "APPROVED",
+    "approvedAt": "2026-11-13T12:33:47+00:00",
+    "approvedAtMeaning": "UTC time of recording the explicit Founder approval received in the current conversation",
+    "includedSourceCommits": [
+      "24528f1e346b2c83913bdfa0a841b5e0ca6a6fd4"
+    ],
+    "authorizedCandidateSha": "1f33d03bcba0bc5d2173be7afe0e3cb0694345c8",
+    "authorizedProductionSha": "dd02c7d49c824798f13c4901124bd6d84763f434",
+    "authorizationReceiptSha256": "a3d490be1f574b16566b2c38cb75abbe57def4c2b722135940f7d8660fe10ca8"
+  },
+  "releaseSha": "1f33d03bcba0bc5d2173be7afe0e3cb0694345c8",
+  "deploymentId": "PENDING",
+  "productionSha": "PENDING",
+  "allowedPaths": [
+    "app/components/InventoryEntry.tsx",
+    "app/products/page.tsx",
+    "tests/inventory-profit-ui.test.ts"
+  ],
+  "contentSha256": {
+    "app/components/InventoryEntry.tsx": "9b9d0286d378d25d98e39f2b99afd28be6c71bcd5644e5bd93048d61a652690f",
+    "app/products/page.tsx": "c9979cd99885987f8580307d8f3f11e2a2852ff5a37bde26d0d4640e23241990",
+    "tests/inventory-profit-ui.test.ts": "146389fdc9262cc5d08b72f5e77c61afac6d42a88f09247131030940ed913858"
+  },
+  "patchSha256": "320e916e852576b45104ffd244e4be6261a114628de0ca6582ff2ec03b872982"
+}

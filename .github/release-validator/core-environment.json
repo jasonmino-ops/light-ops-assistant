@@ -1,0 +1,7 @@
+{
+  "node": "v24.14.0",
+  "os": "Darwin arm64",
+  "suite": "npm run test:core",
+  "trusted_main": "24528f1e346b2c83913bdfa0a841b5e0ca6a6fd4",
+  "package_lock_sha256": "8e9e9c97cea6468bd0f6a5eefc1f46871fb3097226b30cdbd6e81142bb571a33"
+}
