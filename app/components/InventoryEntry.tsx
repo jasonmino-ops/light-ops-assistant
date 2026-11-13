@@ -1,28 +1,25 @@
 'use client'
 
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
+import { useLocale, type Lang } from '@/app/components/LangProvider'
 
-export default function InventoryEntry() {
+const labels: Record<Lang, string> = {
+  zh: '库存与入库',
+  en: 'Inventory & Receiving',
+  km: 'ស្តុក និងការទទួលទំនិញ',
+}
+
+export default function InventoryEntry({ style }: { style: CSSProperties }) {
+  const { lang } = useLocale()
   return (
     <Link
       href="/inventory"
+      prefetch={false}
       data-testid="inventory-entry"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        margin: '14px 0',
-        padding: '16px 18px',
-        border: '1px solid #fed7aa',
-        borderRadius: 14,
-        background: '#fff7ed',
-        color: '#9a3412',
-        textDecoration: 'none',
-        fontWeight: 700,
-      }}
+      style={{ ...style, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', textDecoration: 'none' }}
     >
-      <span>商品库存</span>
-      <span aria-hidden="true">›</span>
+      {labels[lang]}
     </Link>
   )
 }

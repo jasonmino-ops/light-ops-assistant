@@ -1987,8 +1987,6 @@ export default function ProductsPage() {
           ))}
         </div>
 
-        {canViewInventory ? <InventoryEntry /> : null}
-
         {canManageProducts ? (
           <>
             <div style={s.aiHeroCard}>
@@ -2018,12 +2016,14 @@ export default function ProductsPage() {
               <button type="button" style={s.secondaryEntryBtn} onClick={openAiImport}>
                 {t('products.aiMenuImportAction')}
               </button>
+              {canViewInventory && <InventoryEntry style={s.secondaryEntryBtn} />}
             </div>
           </>
         ) : (
           <div style={s.staffLookupCard}>
             <div style={s.staffLookupTitle}>{t('products.staffLookupTitle')}</div>
             <div style={s.staffLookupSub}>{t('products.staffLookupSub')}</div>
+            {canViewInventory && <InventoryEntry style={s.secondaryEntryBtn} />}
           </div>
         )}
 
