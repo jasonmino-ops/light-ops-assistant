@@ -4,10 +4,12 @@ import {
   approveDesktopOperatorPairing, beginDesktopOperatorPairing, desktopOperatorClaim, endDesktopOperatorPairing, inventoryDesktopDevice, inventoryEnabledForDevice,
 } from '@/lib/native-inventory/desktop-operator'
 import { InventoryError } from '@/lib/native-inventory/input'
+import { nativeInventoryAvailable } from '@/lib/native-inventory/rollout'
 
 const headers = { 'Cache-Control': 'no-store' }
 
 export async function GET(req: NextRequest) {
+  if (!nativeInventoryAvailable()) return NextResponse.json({ enabled: false }, { headers })
   try {
     const enabled = await inventoryEnabledForDevice(await inventoryDesktopDevice(req))
     return NextResponse.json({ enabled }, { headers })
@@ -18,6 +20,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (!nativeInventoryAvailable()) return NextResponse.json({ error: 'NATIVE_INVENTORY_DISABLED' }, { status: 403, headers })
   try {
     const body = await req.json().catch(() => null)
     if (body?.action === 'approve') {

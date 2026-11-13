@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { inventoryDisplayedCurrency, recordInventoryOrderCurrency } from '@/lib/native-inventory/order-currency'
+import { nativeInventoryAvailable } from '@/lib/native-inventory/rollout'
 import { sendAndLogMessage } from '@/lib/telegram'
 import {
   cleanTrackingText,
@@ -198,7 +199,7 @@ export async function POST(req: NextRequest) {
       if (prior) return { kind: 'REPLAY' as const, receipt: replaySubmission(prior, hash) }
       const currentStore = await tx.store.findFirst({ where: { id: store.id, tenantId: store.tenantId, code: storeCode } })
       if (!currentStore || currentStore.status !== 'ACTIVE') throw new SubmissionError(404, 'STORE_NOT_FOUND', T.storeNotFound)
-      if (displayedCurrency && displayedCurrency !== currentStore.currencyCode) {
+      if (nativeInventoryAvailable() && displayedCurrency && displayedCurrency !== currentStore.currencyCode) {
         const inventory = await tx.nativeInventoryStore.findUnique({
           where: { tenantId_storeId: { tenantId: store.tenantId, storeId: store.id } },
           select: { enabledAt: true },
