@@ -160,7 +160,9 @@ export async function POST(req: NextRequest) {
     const landingCampaign = cleanTrackingText(raw.campaign, 120)
     const landingVisitorId = cleanVisitorId(raw.visitorId)
     const lang = pickLang(raw.lang), T = MSG[lang]
-    const displayedCurrency = submissionText(raw.displayedCurrency)
+    const inventoryAvailable = nativeInventoryAvailable()
+    // While disabled, keep the exact legacy idempotency identity across deploy and rollback.
+    const displayedCurrency = inventoryAvailable ? submissionText(raw.displayedCurrency) : undefined
     if (displayedCurrency && !/^[A-Z]{3}$/.test(displayedCurrency)) throw new SubmissionError(400, 'INVALID_CURRENCY')
     // Preserve the v1 hash for retries created before the displayed-currency field existed.
     const normalized = { version: 1, storeCode, ...(displayedCurrency ? { displayedCurrency } : {}), items, tableNo, remark, customerTelegramId: trimmedTgId,
@@ -199,7 +201,7 @@ export async function POST(req: NextRequest) {
       if (prior) return { kind: 'REPLAY' as const, receipt: replaySubmission(prior, hash) }
       const currentStore = await tx.store.findFirst({ where: { id: store.id, tenantId: store.tenantId, code: storeCode } })
       if (!currentStore || currentStore.status !== 'ACTIVE') throw new SubmissionError(404, 'STORE_NOT_FOUND', T.storeNotFound)
-      if (nativeInventoryAvailable() && displayedCurrency && displayedCurrency !== currentStore.currencyCode) {
+      if (displayedCurrency && displayedCurrency !== currentStore.currencyCode) {
         const inventory = await tx.nativeInventoryStore.findUnique({
           where: { tenantId_storeId: { tenantId: store.tenantId, storeId: store.id } },
           select: { enabledAt: true },
