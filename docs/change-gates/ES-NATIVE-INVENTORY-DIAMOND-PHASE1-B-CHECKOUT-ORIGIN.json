@@ -1,0 +1,23 @@
+{
+  "approvedBy": "Founder",
+  "approvalSource": "Diamond 签发工作流最终修复",
+  "kind": "CHECKOUT_ORIGIN_FORMAT_ONLY",
+  "candidate": "cf3960dc953eb58c48dd50edefe605aa4327abd8",
+  "store": "ST883DC00C",
+  "path": "B",
+  "runtime": "R2",
+  "initialMain": "782e81ed5055e002dc7e3e31c55596b41fd38d14",
+  "initialControl": "8b887af6194b3f5b04f29b13c580c16db0f3ef43",
+  "admissionSha256": "16a175d62d28b1d6012f72f1a447f65eda502895dc57834315eeab551485b9ab",
+  "signingControlSha": "be2cb36a8535abaf17bfc0dcc9ade00ad4fd18cc",
+  "controlPathsSha256": {
+    ".github/release-validator/diamond-corrected-verifier.mjs": "9dcd59d05601a5f14cc6b6dd5dba0a8b8c1d0eedd06a800d3755fa164e2020ce",
+    ".github/release-validator/diamond-origin-correction.mjs": "1b9e4988529f044a62165b76891ea496032fbe68a6063a895d56aa4a955aa3b1",
+    ".github/release-validator/diamond.mjs": "01d5ec619986281ce3d5dbdb3742a4652fc16496e71012aac466327308b062d8",
+    ".github/workflows/selective-release-validator.yml": "606757086a95dde27d0e0eb639457050066124afac4bcc9f545d10d6e3dabdaf"
+  },
+  "independentReviewSha256": "b4c84711952e141063c848b824119e37f38b2c94ec598782fa4be55506d78eb9",
+  "independentReviewInputSha256": "655402695e69d39235b5dbda113b7905ebaaa29a2f8c3b38e06386a4d134e83f",
+  "issuedAt": "2026-11-15T16:16:51.241Z",
+  "expiresAt": "2026-11-15T17:37:50.000Z"
+}
