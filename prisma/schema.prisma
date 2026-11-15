@@ -2347,6 +2347,7 @@ model NativeInventoryStore {
   tenantId    String
   storeId     String
   enabledAt   DateTime? @db.Timestamptz(3)
+  salesEnabledAt DateTime? @db.Timestamptz(3)
   currencyCode String
   store       Store @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
   items       NativeInventoryItem[]

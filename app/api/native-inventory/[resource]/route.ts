@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { inventoryPerson, requireInventoryOwner } from '@/lib/native-inventory/access'
 import { InventoryError, object, operationId, requiredText, revision } from '@/lib/native-inventory/input'
+import { nativeInventoryAvailable } from '@/lib/native-inventory/rollout'
 import * as inventory from '@/lib/native-inventory/service'
 
 type RouteContext = { params: Promise<{ resource: string }> }
@@ -39,6 +40,7 @@ function timestamp(value: string | null) {
 }
 
 export async function GET(req: NextRequest, { params }: RouteContext) {
+  if (!nativeInventoryAvailable()) return failure(new InventoryError('NATIVE_INVENTORY_DISABLED', 403))
   try {
     const { resource } = await params
     const person = await inventoryPerson(req)
@@ -88,6 +90,7 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 }
 
 export async function PUT(req: NextRequest, { params }: RouteContext) {
+  if (!nativeInventoryAvailable()) return failure(new InventoryError('NATIVE_INVENTORY_DISABLED', 403))
   let writing = false
   let requestId: string | undefined
   try {
