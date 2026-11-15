@@ -1,0 +1,116 @@
+{
+  "files": [
+    {
+      "path": "app/api/native-inventory/[resource]/route.ts",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "sourceBefore": "f60534b68493f0a62a46de58a268a7559d31992b69f691113c530ee4f3280222",
+      "sourceAfter": "32b74e6965314b3c05022066455a84618f0f73c89c286ecd65cc87073a50baa8",
+      "releaseBefore": "f2b83453db94ea5ba7cfea39e46a7be84337cae9ff1f9904f1d764fedb567a1f",
+      "releaseAfter": "6854bb3ddf4d9f4f336e55ea7c7d3085108ca135e20a1cb95407c36137e268b4",
+      "frozen": true
+    },
+    {
+      "path": "app/home/computer-client/layout.tsx",
+      "oldMode": "000000",
+      "newMode": "100644",
+      "sourceBefore": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceAfter": "fd4e5c99731456b642cac51e0eadc4a5bcb66d2f195085e8d227baecaa20eb07",
+      "releaseBefore": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "releaseAfter": "fd4e5c99731456b642cac51e0eadc4a5bcb66d2f195085e8d227baecaa20eb07",
+      "frozen": true
+    },
+    {
+      "path": "app/management/page.tsx",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "sourceBefore": "b2738da6f7be6ee2824c4f09d813733941b6adba9e5966987bbee9253453f534",
+      "sourceAfter": "6fe166a123c6695703152fa430ff7abae805675fb9d38d6363d488aae0c4b0c0",
+      "releaseBefore": "fd51b5ad205cc273f828a3b41033902f4a312ac5491e26891b70cdeb6f7ba433",
+      "releaseAfter": "266b2ebc23ea6a1f4fda2ce89b6d1cc630b5720d12cb454cc0dda5409c6d6fdb",
+      "frozen": false
+    },
+    {
+      "path": "app/native-inventory/desktop-pairing.tsx",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "sourceBefore": "25beab9d5ad6a04a0f8145ce48f5bd36629fde71cb648e0b9efb34fc31f4b82c",
+      "sourceAfter": "9a5738ebac819420790215f38605fb46cdbec9f6edb379c505532afaa93e42c0",
+      "releaseBefore": "25beab9d5ad6a04a0f8145ce48f5bd36629fde71cb648e0b9efb34fc31f4b82c",
+      "releaseAfter": "9a5738ebac819420790215f38605fb46cdbec9f6edb379c505532afaa93e42c0",
+      "frozen": true
+    },
+    {
+      "path": "app/native-inventory/page.tsx",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "sourceBefore": "aba624d066f9fbafacc169223e54169990ea1419846e4d51ccd4a8a8ae6c8c10",
+      "sourceAfter": "21f7dcacdda5a7399e40b15a0b2e4646ebd912ab1e80457b8e41990c0d543c14",
+      "releaseBefore": "86161e4fb0f28181223056bdb753da701c481cfb3a374f5610451f3f9173f2e2",
+      "releaseAfter": "2b963988ca1ba44a158c8097df2a857d0860e6d2cd70eea918532cc260484b1d",
+      "frozen": true
+    },
+    {
+      "path": "app/native-inventory/stock.tsx",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "sourceBefore": "adcc74cc2f6dfcc7cba24a4001629073eafd0ef462a99f374e4f3a679f4f43ed",
+      "sourceAfter": "6aca3a2100ad7889fad6d24065e7228d859bb5db779ca56186b5a91395ed0bbf",
+      "releaseBefore": "31a2fcdce07992e1af713e6f6b6ebb6b49dbdaea234a15796136af8dacd3cc56",
+      "releaseAfter": "72af04ba6d17746e42c596842cb10c6448c30bdf05fa69ef4ba972f265856f55",
+      "frozen": true
+    },
+    {
+      "path": "lib/i18n/en.ts",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "sourceBefore": "ef71da35015e5e62eac0a02c5a57192b524129da07142dad453af646d3a58d9e",
+      "sourceAfter": "ee7beff19334a7283e003ae12d0c98f519f7cb196a49baf7866c6e3f540b2b5a",
+      "releaseBefore": "264d37d5465590e7f30c895ffbc27c38cd65c6a2d9c2cf19985c694d474e297b",
+      "releaseAfter": "97abc4e7ee6cea7c5668bc87ee9032666fc4555af4883daace0cd76897827dae",
+      "frozen": false
+    },
+    {
+      "path": "lib/i18n/km.ts",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "sourceBefore": "4e1e565020b5b0656be27bf6b74fd857567ae28a7cf7ac783dbd6c2c99b5a70f",
+      "sourceAfter": "38cb1b65529d38671da9e1266ff21406010231ae9f5fc98c66ad0df747e38665",
+      "releaseBefore": "ff59f5357966924fba052d64fb75754c1ab2189343920eb9a1af0ab4a2271dba",
+      "releaseAfter": "92a94b992b030706c0a15672a4dce2c8e7a138b2de83e7cdb2722c8e5ca672c2",
+      "frozen": false
+    },
+    {
+      "path": "lib/i18n/zh.ts",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "sourceBefore": "8493e2fda988af4cf9df584ea88fd3775261f21bb4325ae966e339f45d56d395",
+      "sourceAfter": "515c3c59fc059910fb5109a81de400830d360fd8d5337ace9c2e74340a9f2477",
+      "releaseBefore": "469aa7cb92bd220dfa3376c9c9931e4e439a6495a3ed3461fc1e5f97ed6fc670",
+      "releaseAfter": "6ff05d99a1b81558a4b741db42ce41fa278bdbe871a15c96ad1da47138bb8908",
+      "frozen": false
+    },
+    {
+      "path": "lib/native-inventory/service.ts",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "sourceBefore": "49adbaa23af5c6b09f19783c2cb86166785a01a3b15df0052355420adb5559fd",
+      "sourceAfter": "28e45f7c120a28e9ed9fac8d5e47474976c590ed823333f8f2a9caaafc427303",
+      "releaseBefore": "b642828685d33d95f9bf9f7a62ff050dcf3497c1732fc5217d93229426767dbe",
+      "releaseAfter": "7b3477cc16ec67294c06e1ef91cf8f209b001e9aedd17f7296fbaf912f3fe2ca",
+      "frozen": true
+    }
+  ],
+  "adaptations": {
+    "app/api/native-inventory/[resource]/route.ts": "Adds the stock overview GET and preserves the production salesTracking access response and profit API gate.",
+    "app/management/page.tsx": "Adds the receiver authorization link next to computer activation while retaining the production Desktop print settings bridge and its state handling.",
+    "app/native-inventory/page.tsx": "Adds the in-app product return and catalog selection, relocates pairing, and keeps the production sales-off banner and profit gate.",
+    "app/native-inventory/stock.tsx": "Adds unregistered catalog search and pagination while retaining production name/barcode searches, unknown stock, manual base unit input, and the adjustment guard.",
+    "lib/i18n/en.ts": "Adds only two English desktop inventory authorization strings and preserves production printing descriptions.",
+    "lib/i18n/km.ts": "Adds only two Khmer desktop inventory authorization strings and preserves production printing descriptions.",
+    "lib/i18n/zh.ts": "Adds only two Chinese desktop inventory authorization strings and preserves the production print settings title and descriptions.",
+    "lib/native-inventory/service.ts": "Adds owner-scoped snapshot reads and keyset pagination while preserving the old catalog response, sales state, nullable inventory and receipt/adjustment behavior."
+  },
+  "originalSourceFingerprint": "21046d2094e52086da1b2cc00a3f11a9d225cf78a7a5f3c307efa5115827b15d",
+  "releaseFingerprint": "8b67e53caa77753e7e1cf66c27ac2369a056ee504cde9dc6e183495780558c3c"
+}

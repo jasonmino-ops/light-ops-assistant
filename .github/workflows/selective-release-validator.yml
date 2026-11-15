@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify exact Diamond admission and live trusted refs
+      - name: Verify exact Diamond FIELD FIX 01 and live trusted refs
         id: diamond
         env:
           GH_TOKEN: ${{ github.token }}
@@ -26,10 +26,10 @@ jobs:
             "$canonical"|"${canonical%.git}") git remote set-url origin "$canonical" ;;
             *) echo 'Unexpected checkout origin'; exit 1 ;;
           esac
-          node .github/release-validator/diamond.mjs preflight
+          node .github/release-validator/diamond-field01.mjs preflight
       - name: Publish exact status with the protected App
         env:
           ADMISSION_MAIN: ${{ steps.diamond.outputs.main }}
           ADMISSION_DIGEST: ${{ steps.diamond.outputs.digest }}
           ESHOP_RELEASE_VALIDATOR_PEM: ${{ secrets.ESHOP_RELEASE_VALIDATOR_PEM }}
-        run: node .github/release-validator/diamond.mjs publish
+        run: node .github/release-validator/diamond-field01.mjs publish
