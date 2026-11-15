@@ -51,7 +51,7 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 
     switch (resource) {
       case 'access':
-        return success({ role: person.role, currencyCode: person.currencyCode, storeName: person.storeName, storeId: person.storeId, userId: person.userId })
+        return success({ role: person.role, currencyCode: person.currencyCode, storeName: person.storeName, storeId: person.storeId, userId: person.userId, salesTracking: person.salesTracking })
       case 'items':
         return success(await inventory.listItems(person, q, query.get('mode') === 'barcode', query.get('after') || undefined))
       case 'receipt-result':
@@ -76,6 +76,7 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
         return success(await inventory.listMovements(person, id ? requiredText(id) : undefined))
       case 'profit': {
         requireInventoryOwner(person)
+        if (!person.salesTracking) throw new InventoryError('SALES_TRACKING_DISABLED', 403)
         const from = timestamp(query.get('from'))
         const until = timestamp(query.get('until'))
         if (from >= until) throw new InventoryError('INVALID_DATE_RANGE')

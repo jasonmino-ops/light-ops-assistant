@@ -39,7 +39,7 @@ async function inventoryMembership(
     }),
     prisma.nativeInventoryStore.findUnique({
       where: { tenantId_storeId: scope },
-      select: { enabledAt: true, currencyCode: true, receivers: { where: { userId: ctx.userId }, select: { userId: true } } },
+      select: { enabledAt: true, salesEnabledAt: true, currencyCode: true, receivers: { where: { userId: ctx.userId }, select: { userId: true } } },
     }),
   ])
   if (!membership) throw new InventoryError('STORE_ACCESS_DENIED', 403)
@@ -48,7 +48,7 @@ async function inventoryMembership(
   if (membership.store.currencyCode !== inventory.currencyCode) throw new InventoryError('INVENTORY_CURRENCY_MISMATCH', 409)
   const isOwner = (!proof || proof.role === 'OWNER') && membership.role === 'OWNER' && membership.user.role === 'OWNER'
   if (!isOwner && !inventory.receivers.length) throw new InventoryError('RECEIVING_ACCESS_DENIED', 403)
-  return { ...scope, userId: ctx.userId, role: isOwner ? 'OWNER' : 'RECEIVER', currencyCode: membership.store.currencyCode, storeName: membership.store.name }
+  return { ...scope, userId: ctx.userId, role: isOwner ? 'OWNER' : 'RECEIVER', currencyCode: membership.store.currencyCode, storeName: membership.store.name, salesTracking: Boolean(inventory.salesEnabledAt && inventory.salesEnabledAt.getTime() <= Date.now()) }
 }
 
 export async function inventoryTelegramPerson(req: NextRequest) {

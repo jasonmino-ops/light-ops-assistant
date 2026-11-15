@@ -238,7 +238,7 @@ export function Receiving({ draft, setDraft, access, refresh, reload, close, ope
           </form>
           {itemResult?.data?.length ? <div className="results">{itemResult.data.map((item) => <button className="res" key={item.id} disabled={!editable}
             onClick={() => add(item, item.units.find((unit) => unit.barcode === query.trim()) ?? item.units[0])}>
-            <span><b>{item.name}</b> <small>{item.units[0]?.barcode}</small></span><small>{item.tracked ? item.onHand : '—'} {item.units[0]?.name}</small>
+            <span><b>{item.name}</b> <small>{item.units[0]?.barcode}</small></span><small>{item.onHand ?? '—'} {item.units[0]?.name}</small>
           </button>)}</div> : itemResult?.data && query.trim() && <p className="hint">没有匹配的商品。请先在库存中建档。</p>}
           {!!itemResult?.error && <p className="err" role="alert">{message(itemResult.error)}</p>}
           {!!unmatched.length && <div className="banner amber"><b>未加入本单</b> {unmatched.join('、')} <button className="link" onClick={() => setUnmatched([])}>知道了</button></div>}

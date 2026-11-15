@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { posDeviceHeaders } from '@/lib/desktop-pos-client'
 
-export type Access = { role: 'OWNER' | 'RECEIVER'; currencyCode: string; storeName: string; storeId: string; userId: string }
+export type Access = { role: 'OWNER' | 'RECEIVER'; currencyCode: string; storeName: string; storeId: string; userId: string; salesTracking: boolean }
 export type Unit = { id: string; name: string; factor: string; barcode: string | null }
 export type Item = {
   id: string
@@ -11,8 +11,7 @@ export type Item = {
   productId: string | null
   kind: 'PRODUCT' | 'MATERIAL'
   tracked: boolean
-  sku: string | null
-  onHand: string
+  onHand: string | null
   lowStock: boolean
   sellPrice: string | null
   averageUnitCost?: string | null

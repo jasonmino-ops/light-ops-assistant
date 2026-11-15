@@ -103,7 +103,7 @@ function Inventory({ access, endDesktopSession }: { access: Access; endDesktopSe
     scanner?.(barcode)
   }, [scanner])
   const openReceipt = (receipt: Receipt) => setOverlay({ kind: 'receipt', receipt })
-  const available = nav.filter(({ kind }) => kind !== 'profit' || access.role === 'OWNER')
+  const available = nav.filter(({ kind }) => kind !== 'profit' || (access.role === 'OWNER' && access.salesTracking))
 
   function showRecords() {
     setDraft(null)
@@ -144,14 +144,14 @@ function Inventory({ access, endDesktopSession }: { access: Access; endDesktopSe
           : destination === 'stock' ? <section className="page">
             <div className="phead"><h1>库存管理</h1><Choices tabs values={['当前库存', '入库记录']} value={tab} onChange={(t) => { setTab(t); reload() }} />
               <span className="grow" /><button className="btn primary" disabled={!!pending} onClick={() => setDraft(localDraft ?? newDraft())}>＋ {localDraft ? '继续本地草稿' : '新建入库单'}</button></div>
-            <p className="banner amber">当前仅记录入库和库存调整，销售和退款不会自动更新库存。</p>
+            {!access.salesTracking && <p className="banner amber">当前仅记录入库和库存调整，销售和退款不会自动更新库存。</p>}
             {tab === '当前库存' ? <StockList access={access} refresh={refresh} reload={reload} query={query} setQuery={setQuery} justReceived={received}
               scan={() => beginScan(setQuery)} setup={() => setOverlay({ kind: 'catalog' })} open={(item) => setOverlay({ kind: 'stock', item })} />
               : <Receipts access={access} refresh={refresh} reload={reload} open={openReceipt} localDrafts={localDrafts} resumeLocal={setDraft} pending={pending} clearPending={() => setPending(null)} />}
             {!desktop && <div className="foot"><a href="/desktop/inventory/authorize">配对桌面</a></div>}
             {pending && tab === '当前库存' && <div className="foot"><button className="btn" onClick={showRecords}>查看待确认入库单</button></div>}
           </section> : destination === 'suppliers' ? <Suppliers access={access} refresh={refresh} reload={reload} open={(supplier) => setOverlay({ kind: 'supplier', supplier })} add={() => setOverlay({ kind: 'supplier-form' })} />
-            : <ProfitReport access={access} refresh={refresh} reload={reload} />}
+            : access.role === 'OWNER' && access.salesTracking ? <ProfitReport access={access} refresh={refresh} reload={reload} /> : null}
       </main>
     </div>
     <nav className="tabbar" aria-label="主导航">

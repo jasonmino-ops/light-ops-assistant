@@ -4,12 +4,12 @@ import { prisma } from '@/lib/prisma'
 import { baseQuantity, decimal, InventoryError, object, operationId, optionalText, requiredText, revision } from './input'
 
 export type InventoryScope = { tenantId: string; storeId: string }
-export type InventoryPerson = InventoryScope & { userId: string; role: 'OWNER' | 'RECEIVER'; currencyCode: string; storeName: string }
+export type InventoryPerson = InventoryScope & { userId: string; role: 'OWNER' | 'RECEIVER'; currencyCode: string; storeName: string; salesTracking: boolean }
 
 const receiptIncludes = { lines: { orderBy: { lineNo: 'asc' } }, supplier: { select: { name: true } } } satisfies Prisma.NativeInventoryReceiptInclude
 const itemIncludes = {
   units: { orderBy: { name: 'asc' } },
-  product: { select: { name: true, barcode: true, sku: true, auxBarcode: true, auxUnitName: true, auxConversionFactor: true, auxEnabled: true, sellPrice: true } },
+  product: { select: { name: true, barcode: true, sellPrice: true } },
   _count: { select: { movements: true } },
 } satisfies Prisma.NativeInventoryItemInclude
 const limit = 100
@@ -73,9 +73,8 @@ export async function listItems(person: InventoryPerson, query: string, exact = 
   const where = query ? {
     OR: [
       { product: { barcode: match } },
-      { product: { auxEnabled: true, auxBarcode: match } },
       { units: { some: { barcode: match } } },
-      ...(!exact ? [{ product: { name: match } }, { product: { sku: match } }, { materialName: match }, { productName: match }] : []),
+      ...(!exact ? [{ product: { name: match } }, { materialName: match }, { productName: match }] : []),
     ],
   } : {}
   const items = await prisma.nativeInventoryItem.findMany({
@@ -90,22 +89,19 @@ export async function listItems(person: InventoryPerson, query: string, exact = 
 function serializeItem(item: Prisma.NativeInventoryItemGetPayload<{ include: typeof itemIncludes }>, person: InventoryPerson) {
   const units = [
     { id: 'BASE', name: item.baseUnitName, factor: '1', barcode: item.product?.barcode ?? null },
-    ...(item.product?.auxEnabled && item.product.auxConversionFactor && item.product.auxUnitName
-      ? [{ id: 'AUX', name: item.product.auxUnitName, factor: String(item.product.auxConversionFactor), barcode: item.product.auxBarcode }]
-      : []),
     ...item.units.map((unit) => ({ id: unit.id, name: unit.name, factor: unit.factor.toString(), barcode: unit.barcode })),
   ]
+  const tracked = item._count.movements > 0
   return {
     id: item.id,
     name: item.product?.name ?? item.productName ?? item.materialName,
     productId: item.productId,
     kind: item.materialName ? 'MATERIAL' : 'PRODUCT',
-    tracked: item._count.movements > 0,
+    tracked,
     sellPrice: item.product?.sellPrice ?? null,
-    sku: item.product?.sku ?? null,
-    onHand: item.onHand,
+    onHand: tracked ? item.onHand : null,
     lowStockAt: item.lowStockAt,
-    lowStock: item.onHand.lte(item.lowStockAt),
+    lowStock: tracked && item.onHand.lte(item.lowStockAt),
     units,
     ...(person.role === 'OWNER' ? { averageUnitCost: item.onHand.gt(0) ? item.averageUnitCost : null } : {}),
   }
@@ -125,7 +121,6 @@ export async function resolveImportRows(person: InventoryPerson, values: unknown
       ...scopeFor(person),
       OR: [
         { product: { barcode: { in: barcodes } } },
-        { product: { auxEnabled: true, auxBarcode: { in: barcodes } } },
         { units: { some: { barcode: { in: barcodes } } } },
       ],
     },
@@ -183,10 +178,10 @@ export async function createItem(person: InventoryPerson, body: Record<string, u
     await lockInventory(tx, person)
     const product = productId ? await tx.product.findFirst({
       where: { id: productId, tenantId: scope.tenantId, status: 'ACTIVE' },
-      select: { mainUnitName: true, name: true },
+      select: { name: true },
     }) : null
     if (productId && !product) throw new InventoryError('PRODUCT_NOT_FOUND', 404)
-    const baseUnitName = product?.mainUnitName ?? requiredText(body.baseUnitName, 40)
+    const baseUnitName = requiredText(body.baseUnitName, 40)
     const existing = await tx.nativeInventoryItem.findUnique({
       where: { tenantId_storeId_id: { ...scope, id } },
       include: { units: { orderBy: { name: 'asc' } } },
@@ -398,10 +393,7 @@ export async function saveReceipt(person: InventoryPerson, body: Record<string, 
       if (!item) throw new InventoryError('ITEM_NOT_FOUND', 404)
       let factor = new Prisma.Decimal(1)
       let unitName = item.baseUnitName
-      if (line.unitId === 'AUX' && item.product?.auxEnabled && item.product.auxUnitName && item.product.auxConversionFactor) {
-        factor = new Prisma.Decimal(item.product.auxConversionFactor)
-        unitName = item.product.auxUnitName
-      } else if (line.unitId !== 'BASE') {
+      if (line.unitId !== 'BASE') {
         const unit = item.units.find((unit) => unit.id === line.unitId)
         if (!unit) throw new InventoryError('UNIT_NOT_FOUND', 404)
         factor = unit.factor
@@ -511,10 +503,10 @@ export async function listCatalog(person: InventoryPerson, query: string) {
     where: {
       tenantId: person.tenantId,
       status: 'ACTIVE',
-      OR: [{ name: contains }, { barcode: contains }, { sku: contains }],
+      OR: [{ name: contains }, { barcode: contains }],
       nativeInventoryItems: { none: scopeFor(person) },
     },
-    select: { id: true, name: true, sku: true, barcode: true, mainUnitName: true },
+    select: { id: true, name: true, barcode: true },
     orderBy: [{ name: 'asc' }, { id: 'asc' }],
     take: limit,
   })

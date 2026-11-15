@@ -15,7 +15,7 @@ const kindFilters = ['全部', '可售商品', '原材料']
 const adjustments = ['盘点差异', '损耗报废', '退回补录', '其他']
 
 function stockStatus(item: Item) {
-  if (!item.tracked) return { label: '未建账', color: 'gray' }
+  if (item.onHand === null) return { label: '未建账', color: 'gray' }
   if (Number(item.onHand) < 0) return { label: '待盘点', color: 'amber' }
   if (Number(item.onHand) === 0) return { label: '缺货', color: 'red' }
   return item.lowStock ? { label: '库存不足', color: 'amber' } : { label: '正常', color: 'green' }
@@ -51,7 +51,7 @@ export function StockList({ access, refresh, reload, open, scan, query, setQuery
   }
 
   return <div className="scroll">
-    <div className="searchbar"><input className="inp grow" aria-label="搜索商品" placeholder="搜索商品名称 / 条码 / SKU" value={query} maxLength={120} onChange={(e) => setQuery(e.target.value)} />
+    <div className="searchbar"><input className="inp grow" aria-label="搜索商品" placeholder="搜索商品名称 / 条码" value={query} maxLength={120} onChange={(e) => setQuery(e.target.value)} />
       <button className="btn" onClick={scan}>扫码</button></div>
     <div className="frow"><Choices values={stockFilters} value={status} onChange={setStatus} /></div>
     <div className="frow"><span className="flabel">类型</span><Choices values={kindFilters} value={kind} onChange={setKind} />{owner && <button className="link" onClick={setup}>库存建档</button>}</div>
@@ -61,8 +61,8 @@ export function StockList({ access, refresh, reload, open, scan, query, setQuery
         {visible.map((item) => {
           const badge = stockStatus(item)
           return <button className="row g-stock" key={item.id} onClick={() => open(item)}>
-            <span className="c-main"><b>{item.name}</b><small>{[item.units[0]?.barcode, item.sku].filter(Boolean).join(' · ')}</small></span>
-            <span className="num"><span className="big">{item.tracked ? item.onHand : '—'}</span> <small>{item.units[0]?.name}</small></span>
+            <span className="c-main"><b>{item.name}</b><small>{item.units[0]?.barcode ?? ''}</small></span>
+            <span className="num"><span className="big">{item.onHand ?? '—'}</span> <small>{item.units[0]?.name}</small></span>
             <span className="stock-meta">
               {owner ? <span className="num"><small className="mo">成本 </small>{money(item.averageUnitCost, access.currencyCode)}</span> : <span className="dx" />}
               <span className="status"><span className={`tag ${badge.color}`}>{badge.label}</span>{item.kind === 'MATERIAL' && <span className="tag gray">原材料</span>}
@@ -87,7 +87,7 @@ export function StockDetail({ item, access, close, changed }: { item: Item; acce
   const owner = access.role === 'OWNER'
   const [refresh, setRefresh] = useState(0)
   const [editing, setEditing] = useState(false)
-  const [target, setTarget] = useState(item.onHand)
+  const [target, setTarget] = useState(item.onHand ?? '')
   const [reason, setReason] = useState('')
   const [note, setNote] = useState('')
   const [pending, setPending] = useState<{ id: string; itemId: string; quantity: string; expectedOnHand: string; reason: string; unitCost: string | null }>()
@@ -99,7 +99,7 @@ export function StockDetail({ item, access, close, changed }: { item: Item; acce
   const currency = access.currencyCode
 
   async function apply() {
-    if (busy) return
+    if (busy || item.onHand === null) return
     const value = target.trim()
     const delta = Number((Number(value) - Number(item.onHand)).toFixed(6))
     if (!pending && (!/^\d{1,9}(\.\d{1,6})?$/.test(value) || !reason || !delta || (delta > 0 && item.averageUnitCost == null))) {
@@ -116,10 +116,10 @@ export function StockDetail({ item, access, close, changed }: { item: Item; acce
     } finally { setBusy(false) }
   }
 
-  return <Panel drawer title={item.name} sub={[item.units[0]?.barcode, item.sku].filter(Boolean).join(' · ')} onClose={busy ? undefined : close}
-    footer={owner && !editing ? <button className="btn" onClick={() => setEditing(true)}>库存调整</button> : null}>
+  return <Panel drawer title={item.name} sub={item.units[0]?.barcode ?? ''} onClose={busy ? undefined : close}
+    footer={owner && item.onHand !== null && !editing ? <button className="btn" onClick={() => setEditing(true)}>库存调整</button> : null}>
     <div className="stats">
-      <div className="stat"><small>当前库存</small><b>{item.tracked ? item.onHand : '—'} {unit}</b></div>
+      <div className="stat"><small>当前库存</small><b>{item.onHand ?? '—'} {unit}</b></div>
       {owner && <><div className="stat"><small>平均进货成本</small><b>{money(item.averageUnitCost, currency)}</b></div>
         <div className="stat"><small>最近进货价</small><b>{money(last?.unitCost, currency)}</b></div></>}
       <div className="stat"><small>零售价</small><b>{money(item.sellPrice, currency)}</b></div>
@@ -144,7 +144,7 @@ export function StockDetail({ item, access, close, changed }: { item: Item; acce
   </Panel>
 }
 
-type CatalogProduct = { id: string; name: string; barcode: string; sku: string | null; mainUnitName: string | null }
+type CatalogProduct = { id: string; name: string; barcode: string }
 
 export function CatalogSetup({ close, saved }: { close: () => void; saved: () => void }) {
   const [kind, setKind] = useState('可售商品')
@@ -171,12 +171,12 @@ export function CatalogSetup({ close, saved }: { close: () => void; saved: () =>
     }}>
       <div className="frow"><Choices values={kindFilters.slice(1)} value={kind} onChange={(next) => { setKind(next); setUnitName('') }} /></div>
       {kind === '可售商品' ? <>
-        <label className="field">商品名称 / 条码 / SKU<input className="inp" maxLength={120} value={query} onChange={(e) => { setQuery(e.target.value); setProduct(undefined) }} /></label>
-        {!product && <div className="results" style={{ maxHeight: 240, overflow: 'auto' }}>{catalog?.data?.map((p) => <button className="res" type="button" key={p.id} onClick={() => { setProduct(p); setUnitName(p.mainUnitName ?? '') }}><b>{p.name}</b><small>{p.barcode}</small></button>)}
+        <label className="field">商品名称 / 条码<input className="inp" maxLength={120} value={query} onChange={(e) => { setQuery(e.target.value); setProduct(undefined) }} /></label>
+        {!product && <div className="results" style={{ maxHeight: 240, overflow: 'auto' }}>{catalog?.data?.map((p) => <button className="res" type="button" key={p.id} onClick={() => setProduct(p)}><b>{p.name}</b><small>{p.barcode}</small></button>)}
           {catalog?.data?.length === 0 && <Empty title="没有需要建档的商品" />}{!!catalog?.error && <p className="err">{message(catalog.error)}</p>}</div>}
         {product && <p className="hint">{product.name} · {product.barcode}</p>}
       </> : <label className="field">原材料名称<input className="inp" required maxLength={120} value={materialName} onChange={(e) => setMaterialName(e.target.value)} /></label>}
-      <label className="field">基本单位<input className="inp" required maxLength={40} readOnly={kind === '可售商品' && !!product?.mainUnitName} value={baseUnitName} onChange={(e) => setUnitName(e.target.value)} /></label>
+      <label className="field">基本单位<input className="inp" required maxLength={40} value={baseUnitName} onChange={(e) => setUnitName(e.target.value)} /></label>
       <label className="field">低库存阈值<input className="inp" inputMode="decimal" value={threshold} onChange={(e) => setThreshold(e.target.value)} /></label>
       {error && <p className="err" role="alert">{error}</p>}
       <div className="mfoot"><button className="btn" type="button" disabled={busy} onClick={close}>取消</button><button className="btn primary" disabled={busy}>建档</button></div>
