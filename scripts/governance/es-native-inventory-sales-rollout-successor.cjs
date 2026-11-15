@@ -28,7 +28,7 @@ const GOVERNANCE = [SCOPE, RECORD, REVIEW, PRIOR_REVIEW, MAIN_VERIFIER, SUCCESSO
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 const samePaths = (a, b) => a.length === b.length && new Set(a).size === a.length && a.every(path => b.includes(path))
 
-function verifySalesRollout({ git, text, blob, parents, pathsBetween, matches, atHead, trusted, head, branch, root }) {
+function verifySalesRollout({ git, text, blob, parents, pathsBetween, matches, atHead, trusted, head, branch, root, releaseHandoff }) {
   const commits = (from, to) => text('rev-list', '--first-parent', '--reverse', `${from}..${to}`).split('\n').filter(Boolean)
   const [registration, product, closure] = commits(BASE, head)
   if (!registration || parents(registration).join(' ') !== BASE ||
@@ -47,7 +47,7 @@ function verifySalesRollout({ git, text, blob, parents, pathsBetween, matches, a
       !samePaths(Object.keys(record.frozenSuccessor), FROZEN_APIS) ||
       !samePaths(Object.keys(record.frozenManifestSupplement), [INTEGRATION_MANIFEST])) return null
   for (const [path, digest] of Object.entries(record.governancePathsSha256)) {
-    if (!matches(registration, path, digest) || !atHead(path, digest)) return null
+    if (!matches(registration, path, digest) || !atHead(path, releaseHandoff?.verifierSha256[path] ?? digest)) return null
   }
 
   const activeBytes = blob(registration, SCOPE)
@@ -71,7 +71,7 @@ function verifySalesRollout({ git, text, blob, parents, pathsBetween, matches, a
     if (!matches(BASE, path, pair.previousSha256) || hashes[path] !== pair.candidateSha256) return null
   }
 
-  const successors = new Map([[MAIN_VERIFIER, record.governancePathsSha256[MAIN_VERIFIER]]])
+  const successors = new Map([[MAIN_VERIFIER, releaseHandoff?.verifierSha256[MAIN_VERIFIER] ?? record.governancePathsSha256[MAIN_VERIFIER]]])
   const accepted = new Set([registration])
   if (!product) {
     if (head !== registration || trusted !== registration || !atHead(SCOPE, sha(activeBytes))) return null
@@ -115,6 +115,7 @@ function verifySalesRollout({ git, text, blob, parents, pathsBetween, matches, a
   const protectedPaths = new Set([...GOVERNANCE, ...FROZEN_APIS, ...PRISMA, INTEGRATION_MANIFEST].map(path => path.toLowerCase()))
   for (const line of text('rev-list', '--parents', `${closure}..${head}`).split('\n').filter(Boolean)) {
     const [commit, parent] = line.split(' ')
+    if (commit === releaseHandoff?.registration) continue
     if (!parent || pathsBetween(parent, commit).some(path => protectedPaths.has(path.toLowerCase()))) return null
   }
   return { successors, accepted }

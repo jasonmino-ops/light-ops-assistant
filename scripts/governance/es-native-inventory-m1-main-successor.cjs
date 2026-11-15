@@ -24,6 +24,14 @@ const HANDOFF_EXECUTABLES = [
 ]
 const RECORD_KEYS = ['schemaVersion', 'taskId', 'status', 'requiredApprover', 'activationCondition', 'baseOriginMainSha',
   'productCommitSha', 'priorSignatureSha256', 'deadlineExclusive', 'closedScopeSha256', 'executablePathsSha256']
+const RELEASE_SOURCE = 'db16177d311dc6b070f98f5dc2ebb8048c9e5957'
+const RELEASE_BASE = '1f33d03bcba0bc5d2173be7afe0e3cb0694345c8'
+const RELEASE_RECORD = 'docs/change-gates/ES-NATIVE-INVENTORY-V1-RELEASE-HANDOFF.json'
+const RELEASE_VERIFIERS = [
+  'scripts/governance/es-native-inventory-m1-main-successor.cjs',
+  'scripts/governance/es-native-inventory-sales-rollout-successor.cjs',
+]
+const RELEASE_PROOF = ['scripts/check-selective-release.sh', 'scripts/lib/release-provenance.mjs']
 const CLOSED_SCOPE_SHA = 'ea4e49bff0749310c80b20222fca57d10f01c02742022ceea7fec0538cd5a55e'
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 const samePaths = (a, b) => a.length === b.length && new Set(a).size === a.length && a.every(path => b.includes(path))
@@ -64,15 +72,53 @@ function readNativeInventoryM1MainSuccessor(root) {
     const head = text('rev-parse', '--verify', 'HEAD')
     const branch = text('branch', '--show-current')
     const mainline = head === trusted && ['main', ''].includes(branch)
-    if ((!mainline && (!branch || branch === 'main')) ||
-        existsSync(resolve(root, text('rev-parse', '--git-path', 'info/grafts'))) ||
+    if (existsSync(resolve(root, text('rev-parse', '--git-path', 'info/grafts'))) ||
         text('status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none') ||
         /^[a-zS] /m.test(text('ls-files', '-v'))) return null
 
+    // A normal release may introduce already-published cherry-pick history.
+    // Bind that bridge to a canonical, immutable registration and the
+    // existing provenance checks before scanning the full trusted source.
+    let releaseHandoff
+    if (existsSync(resolve(root, RELEASE_RECORD))) {
+      git('merge-base', '--is-ancestor', RELEASE_SOURCE, trusted)
+      const [registration] = text('rev-list', '--first-parent', '--reverse', `${RELEASE_SOURCE}..${trusted}`)
+        .split('\n').filter(Boolean)
+      if (!registration || parents(registration).join(' ') !== RELEASE_SOURCE ||
+          !samePaths(pathsBetween(RELEASE_SOURCE, registration), [RELEASE_RECORD, ...RELEASE_VERIFIERS])) return null
+      const bytes = blob(registration, RELEASE_RECORD)
+      const handoff = JSON.parse(bytes)
+      if (!samePaths(Object.keys(handoff), ['schemaVersion', 'activationCondition', 'sourceBaseSha', 'releaseBaseSha', 'verifierSha256']) ||
+          handoff.schemaVersion !== 1 || handoff.activationCondition !== 'EXACT_FOUNDER_APPROVAL_BEFORE_CANONICAL_MAIN_INTEGRATION' ||
+          handoff.sourceBaseSha !== RELEASE_SOURCE || handoff.releaseBaseSha !== RELEASE_BASE ||
+          !samePaths(Object.keys(handoff.verifierSha256), RELEASE_VERIFIERS) ||
+          !atHead(RELEASE_RECORD, sha(bytes)) ||
+          RELEASE_VERIFIERS.some(path => !matches(registration, path, handoff.verifierSha256[path]) ||
+            !atHead(path, handoff.verifierSha256[path])) ||
+          RELEASE_PROOF.some(path => !git('ls-tree', 'HEAD', '--', path).equals(git('ls-tree', RELEASE_SOURCE, '--', path)) ||
+            !lstatSync(resolve(root, path)).isFile() || !blob('', path).equals(blob(RELEASE_SOURCE, path)) ||
+            !readFileSync(resolve(root, path)).equals(blob(RELEASE_SOURCE, path)))) return null
+
+      const releaseCandidate = trusted === registration && parents(head).join(' ') === `${RELEASE_BASE} ${registration}`
+      if (releaseCandidate) {
+        const releaseRef = text('rev-parse', '--verify', 'refs/remotes/origin/release')
+        if (![RELEASE_BASE, head].includes(releaseRef)) return null
+        const proofOptions = { cwd: root, stdio: 'pipe', env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' } }
+        execFileSync('bash', [RELEASE_PROOF[0], '--mode', 'normal', '--release-base', RELEASE_BASE,
+          '--approved-main', registration, '--result', head], proofOptions)
+        execFileSync(process.execPath, [RELEASE_PROOF[1], 'content-subset', '--production', RELEASE_BASE,
+          '--main', RELEASE_SOURCE], proofOptions)
+      }
+      releaseHandoff = { registration, verifierSha256: handoff.verifierSha256, releaseCandidate }
+    }
+
+    const releaseCandidate = releaseHandoff?.releaseCandidate === true
+    if (!mainline && (branch === 'main' || (!branch && !releaseCandidate))) return null
+    const sourceHead = releaseCandidate ? trusted : head
     const rolloutRecord = 'docs/change-gates/ES-NATIVE-INVENTORY-V1-SALES-ROLLOUT-SUCCESSOR.json'
     const rollout = existsSync(resolve(root, rolloutRecord))
       ? require('./es-native-inventory-sales-rollout-successor.cjs').verifySalesRollout({
-        git, text, blob, parents, pathsBetween, matches, atHead, trusted, head, branch, root,
+        git, text, blob, parents, pathsBetween, matches, atHead, trusted, head: sourceHead, branch, root, releaseHandoff,
       }) : null
     if (existsSync(resolve(root, rolloutRecord)) && !rollout) return null
     const atApprovedHead = (path, digest) => atHead(path, rollout?.successors.get(path) ?? digest)
@@ -161,7 +207,7 @@ function readNativeInventoryM1MainSuccessor(root) {
     }
 
     const { absolute, glob_patterns: globs } = config.forbidden_paths
-    const protectedFiles = new Set([...inherited, RECORD, ...HANDOFF_EXECUTABLES, ...(rollout?.successors.keys() ?? [])].map(path => path.toLowerCase()))
+    const protectedFiles = new Set([...inherited, RECORD, ...HANDOFF_EXECUTABLES, ...(rollout?.successors.keys() ?? []), RELEASE_RECORD, ...RELEASE_VERIFIERS, ...RELEASE_PROOF].map(path => path.toLowerCase()))
     const prefixes = FROZEN_PREFIXES.map(path => path.toLowerCase())
     const absoluteRules = absolute.map(path => path.toLowerCase())
     const globRules = globs.map(path => path.toLowerCase())
@@ -184,10 +230,10 @@ function readNativeInventoryM1MainSuccessor(root) {
     // Check commits introduced after closing, including side history brought
     // in by merges. Checking only the tip would allow a protected edit+revert.
     if (closure) {
-      const later = text('rev-list', '--parents', `${closure}..${head}`).split('\n').filter(Boolean)
+      const later = text('rev-list', '--parents', `${closure}..${sourceHead}`).split('\n').filter(Boolean)
       for (const item of later) {
         const [commit, parent] = item.split(' ')
-        if (rollout?.accepted.has(commit)) continue
+        if (rollout?.accepted.has(commit) || commit === releaseHandoff?.registration) continue
         if (!parent || pathsBetween(parent, commit).some(path => isFrozen(path.toLowerCase()))) return null
       }
     }
@@ -200,7 +246,8 @@ function readNativeInventoryM1MainSuccessor(root) {
       cashierHash: signature.candidatePathsSha256[CASHIER],
       scannerPath: 'app/sale/page.tsx',
       corePaths: new Set(corePaths),
-      mainline,
+      // The exact release tree inherits the canonical CLOSED mainline authority.
+      mainline: mainline || releaseCandidate,
       closedBaseline: scopeStatus === 'CLOSED',
     }
   } catch {
