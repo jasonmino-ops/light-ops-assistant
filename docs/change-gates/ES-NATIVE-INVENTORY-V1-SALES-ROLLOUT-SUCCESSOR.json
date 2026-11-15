@@ -1,0 +1,53 @@
+{
+  "taskId": "ES-NATIVE-INVENTORY-V1",
+  "trustedOriginMainSha": "24528f1e346b2c83913bdfa0a841b5e0ca6a6fd4",
+  "candidateTree": "50ee7db6f640d9a7cc6b22e81280769faae1d4fa",
+  "candidatePatchSha256": "18728415d76510b19ed18f570463d2e9985547cac61d6cd64e33061b480811aa",
+  "approvalPackageSha256": "16ad90a3771d07846cfce7d888b8b2f23a3746b487e99a8cd7be147d28834bfd",
+  "reviewedBy": "Claude independent governance reviewer (fresh context, read-only), 2026-11-15",
+  "reviewDocument": "docs/freezes/ES-NATIVE-INVENTORY-V1-SALES-ROLLOUT-REVIEW.md",
+  "frozenSuccessor": {
+    "app/api/native-inventory/[resource]/route.ts": {
+      "previousSha256": "d4ddc9a128aed317850bce579cb9ce0f5c86db324606d48726f97a898a95233a",
+      "candidateSha256": "f60534b68493f0a62a46de58a268a7559d31992b69f691113c530ee4f3280222"
+    },
+    "app/api/native-inventory/desktop-operator/route.ts": {
+      "previousSha256": "492816332a50169725fd2294001ead209a7be7b93a341b8307b0c38fc007625d",
+      "candidateSha256": "4a33754da870d301dd8bf0eb17fa36eb07ed9332f976e7b72b8dea3dc9e38fd8"
+    },
+    "app/api/public/orders/route.ts": {
+      "previousSha256": "6275e27422133addbe3f9eff6a29a2676dcbe483860b079b805d3df8c6a569c7",
+      "candidateSha256": "6f93ca638f80b2ca7f592c1d2c042fc65de36a59cafc397e453f18eac3ecae83"
+    }
+  },
+  "schemaVersion": 1,
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "candidatePathsSha256": {
+    "app/api/native-inventory/[resource]/route.ts": "f60534b68493f0a62a46de58a268a7559d31992b69f691113c530ee4f3280222",
+    "app/api/native-inventory/desktop-operator/route.ts": "4a33754da870d301dd8bf0eb17fa36eb07ed9332f976e7b72b8dea3dc9e38fd8",
+    "app/api/public/orders/route.ts": "6f93ca638f80b2ca7f592c1d2c042fc65de36a59cafc397e453f18eac3ecae83",
+    "app/components/InventoryEntry.tsx": "fe7d747c6f5acbb7fbc398566b49f70db223cff56f97375e103ff517e062e085",
+    "app/components/MerchantInventoryEntry.tsx": "89334960d6312f6b352ec1c8bc49dfd6ee8aafb0d9c75c35152481ac7627e9df",
+    "app/products/layout.tsx": "8d1687c9c0df127a9597196896bd88552d05741670f0f3a92d469d90f3e0c6fd",
+    "lib/native-inventory/rollout.ts": "e1219a7295346b8766989b37d156c7dea048492305ade11289fa64a81b3234c9",
+    "prisma/migrations/20261115120000_separate_native_inventory_sales/migration.sql": "ce2105e55ec065c0932c1566304208c82c65a99b54e8fa4730a7adfaf08dba6a",
+    "prisma/schema.prisma": "485e160deb84909a3cebb8f94a6bb68c6d7e6bd61f79aa5cd57426a5a15e4634",
+    "scripts/test/manifests/root-integration-tests.json": "8c855abc582121055bc5c48be944fb8c08be3e081695ea18cdd527747c7145e9",
+    "tests/native-inventory-sales-rollout.test.ts": "ac07528a5761dbfc88dfb56cae09a43b8ddc3dc6f5e87346f437bd60bfbe1239"
+  },
+  "governancePathsSha256": {
+    "scripts/governance/es-native-inventory-m1-main-successor.cjs": "cf2eb66011934e15361833af73c5110b4ac4875d35d75ae70dcca84d5b865b0f",
+    "scripts/governance/es-native-inventory-sales-rollout-successor.cjs": "4970d7ac2db84cbce9537ac631b7763290acf87fed10214dcaecb473bc3545ba",
+    "docs/freezes/ES-NATIVE-INVENTORY-V1-SALES-ROLLOUT-REVIEW.md": "b87e239cc0aff4f4de7154df4996ee3cc92a6a63a03d5ed9c680386cc54ff4a4",
+    "docs/freezes/ES-NATIVE-INVENTORY-V1-SALES-ROLLOUT-PRIOR-REVIEW.md": "e861e18c91103dd201bead38f7662dd71d57a12f0cbd922ced4780c082d6ae6b"
+  },
+  "scopeTaskId": "ES-NATIVE-INVENTORY-V1-SALES-ROLLOUT-01",
+  "frozenManifestSupplement": {
+    "scripts/test/manifests/root-integration-tests.json": {
+      "previousSha256": "23fcb97dee9ed3119d4991087c73b782fa977bf6b03832c774a795eb19fd3ce5",
+      "candidateSha256": "8c855abc582121055bc5c48be944fb8c08be3e081695ea18cdd527747c7145e9"
+    }
+  },
+  "manifestSupplementApproval": "Founder instruction naming f1ba6cc4172c9031d2bd7f14da69e126ff501f8b, restricted to the addition of the rollout integration test with the existing 23 entries preserved."
+}

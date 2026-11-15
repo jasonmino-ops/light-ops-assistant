@@ -69,6 +69,14 @@ function readNativeInventoryM1MainSuccessor(root) {
         text('status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none') ||
         /^[a-zS] /m.test(text('ls-files', '-v'))) return null
 
+    const rolloutRecord = 'docs/change-gates/ES-NATIVE-INVENTORY-V1-SALES-ROLLOUT-SUCCESSOR.json'
+    const rollout = existsSync(resolve(root, rolloutRecord))
+      ? require('./es-native-inventory-sales-rollout-successor.cjs').verifySalesRollout({
+        git, text, blob, parents, pathsBetween, matches, atHead, trusted, head, branch, root,
+      }) : null
+    if (existsSync(resolve(root, rolloutRecord)) && !rollout) return null
+    const atApprovedHead = (path, digest) => atHead(path, rollout?.successors.get(path) ?? digest)
+
     git('merge-base', '--is-ancestor', PRODUCT, trusted)
     git('merge-base', '--is-ancestor', trusted, head)
     const [handoff, closure] = text('rev-list', '--first-parent', '--reverse', `${PRODUCT}..${trusted}`)
@@ -105,7 +113,7 @@ function readNativeInventoryM1MainSuccessor(root) {
         !atHead(RECORD, sha(recordBytes))) return null
     for (const path of HANDOFF_EXECUTABLES) {
       const hash = record.executablePathsSha256[path]
-      if (!matches(handoff, path, hash) || !atHead(path, hash)) return null
+      if (!matches(handoff, path, hash) || !atApprovedHead(path, hash)) return null
     }
 
     const activeBytes = blob(BASE, SCOPE)
@@ -149,11 +157,11 @@ function readNativeInventoryM1MainSuccessor(root) {
     const inherited = new Set([...corePaths, GUARD, CONFIG, OLD_ACTIVATION, ACTIVE,
       ...Object.keys(prior.executablePathsSha256), ...Object.keys(original.executablePathsSha256)])
     for (const path of inherited) {
-      if (path !== SCOPE && !HANDOFF_EXECUTABLES.includes(path) && !atHead(path, sha(blob(PRODUCT, path)))) return null
+      if (path !== SCOPE && !HANDOFF_EXECUTABLES.includes(path) && !atApprovedHead(path, sha(blob(PRODUCT, path)))) return null
     }
 
     const { absolute, glob_patterns: globs } = config.forbidden_paths
-    const protectedFiles = new Set([...inherited, RECORD, ...HANDOFF_EXECUTABLES].map(path => path.toLowerCase()))
+    const protectedFiles = new Set([...inherited, RECORD, ...HANDOFF_EXECUTABLES, ...(rollout?.successors.keys() ?? [])].map(path => path.toLowerCase()))
     const prefixes = FROZEN_PREFIXES.map(path => path.toLowerCase())
     const absoluteRules = absolute.map(path => path.toLowerCase())
     const globRules = globs.map(path => path.toLowerCase())
@@ -179,6 +187,7 @@ function readNativeInventoryM1MainSuccessor(root) {
       const later = text('rev-list', '--parents', `${closure}..${head}`).split('\n').filter(Boolean)
       for (const item of later) {
         const [commit, parent] = item.split(' ')
+        if (rollout?.accepted.has(commit)) continue
         if (!parent || pathsBetween(parent, commit).some(path => isFrozen(path.toLowerCase()))) return null
       }
     }
