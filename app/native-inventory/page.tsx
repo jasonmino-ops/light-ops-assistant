@@ -1,18 +1,19 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { endDesktopInventoryClaim, isInventoryDesktop, RequestError, useInventory, type Access, type Draft, type Item, type Receipt, type Supplier } from './client'
 import { newDraft, openDraft, Receiving, SupplierForm, type PendingReceipt } from './receiving'
 import { ProfitReport, ReceiptDetail, Receipts, SupplierDetail, Suppliers } from './reports'
-import { CatalogSetup, ReadState, StockDetail, StockList } from './stock'
+import { CatalogSetup, ReadState, StockDetail, StockList, type CatalogProduct } from './stock'
 import { Choices, Icon } from './ui'
 import { DesktopPairing } from './desktop-pairing'
 import './inventory.css'
 
 const BarcodeScanner = dynamic(() => import('@/app/components/BarcodeScanner'), { ssr: false })
 type Destination = 'stock' | 'suppliers' | 'profit'
-type Overlay = { kind: 'catalog' } | { kind: 'stock'; item: Item } | { kind: 'receipt'; receipt: Receipt } | { kind: 'supplier'; supplier: Supplier } | { kind: 'supplier-form'; supplier?: Supplier }
+type Overlay = { kind: 'catalog'; product?: CatalogProduct } | { kind: 'stock'; item: Item } | { kind: 'receipt'; receipt: Receipt } | { kind: 'supplier'; supplier: Supplier } | { kind: 'supplier-form'; supplier?: Supplier }
 
 const nav = [
   { kind: 'stock', desktop: '库存管理', mobile: '库存' },
@@ -139,15 +140,17 @@ function Inventory({ access, endDesktopSession }: { access: Access; endDesktopSe
         {available.map(({ kind, desktop }) => <button className={`nav-btn ${destination === kind ? 'on' : ''}`} disabled={!!draft} aria-current={destination === kind ? 'page' : undefined} key={kind} onClick={() => { setDestination(kind); reload() }}><Icon kind={kind} />{desktop}</button>)}
       </nav>
       <main className="main">
+        {!desktop && !draft && access.role === 'OWNER' && <div className="phead">
+          <Link className="link" href="/products" style={{ display: 'inline-flex', alignItems: 'center' }}>← 返回商品中心</Link>
+        </div>}
         {draft ? <Receiving key={draft.id} draft={draft} setDraft={(value) => setDraft((current) => current ? typeof value === 'function' ? value(current) : value : current)}
           access={access} refresh={refresh} reload={reload} close={showRecords} openStock={showStock} openRecords={showRecords} pending={pending} setPending={setPending} saveLocal={saveLocal} scan={beginScan} />
           : destination === 'stock' ? <section className="page">
             <div className="phead"><h1>库存管理</h1><Choices tabs values={['当前库存', '入库记录']} value={tab} onChange={(t) => { setTab(t); reload() }} />
               <span className="grow" /><button className="btn primary" disabled={!!pending} onClick={() => setDraft(localDraft ?? newDraft())}>＋ {localDraft ? '继续本地草稿' : '新建入库单'}</button></div>
             {tab === '当前库存' ? <StockList access={access} refresh={refresh} reload={reload} query={query} setQuery={setQuery} justReceived={received}
-              scan={() => beginScan(setQuery)} setup={() => setOverlay({ kind: 'catalog' })} open={(item) => setOverlay({ kind: 'stock', item })} />
+              scan={() => beginScan(setQuery)} setup={(product) => setOverlay({ kind: 'catalog', product })} open={(item) => setOverlay({ kind: 'stock', item })} />
               : <Receipts access={access} refresh={refresh} reload={reload} open={openReceipt} localDrafts={localDrafts} resumeLocal={setDraft} pending={pending} clearPending={() => setPending(null)} />}
-            {!desktop && <div className="foot"><a href="/desktop/inventory/authorize">配对桌面</a></div>}
             {pending && tab === '当前库存' && <div className="foot"><button className="btn" onClick={showRecords}>查看待确认入库单</button></div>}
           </section> : destination === 'suppliers' ? <Suppliers access={access} refresh={refresh} reload={reload} open={(supplier) => setOverlay({ kind: 'supplier', supplier })} add={() => setOverlay({ kind: 'supplier-form' })} />
             : <ProfitReport access={access} refresh={refresh} reload={reload} />}
@@ -156,7 +159,7 @@ function Inventory({ access, endDesktopSession }: { access: Access; endDesktopSe
     <nav className="tabbar" aria-label="主导航">
       {available.map(({ kind, mobile }) => <button className={`tab-btn ${destination === kind ? 'on' : ''}`} disabled={!!draft} aria-current={destination === kind ? 'page' : undefined} key={kind} onClick={() => { setDestination(kind); reload() }}><Icon kind={kind} />{mobile}</button>)}
     </nav>
-    {overlay?.kind === 'catalog' && <CatalogSetup close={close} saved={() => { close(); setQuery(''); reload() }} />}
+    {overlay?.kind === 'catalog' && <CatalogSetup initialProduct={overlay.product} close={close} saved={() => { close(); setQuery(''); reload() }} />}
     {overlay?.kind === 'stock' && <StockDetail key={overlay.item.id} item={overlay.item} access={access} close={close} changed={() => { close(); reload() }} />}
     {overlay?.kind === 'receipt' && <ReceiptDetail key={overlay.receipt.id} receipt={overlay.receipt} pending={pending}
       close={close} changed={reload} clearPending={() => setPending(null)} openStock={showStock} edit={(receipt) => { close(); setDraft(openDraft(receipt)) }} />}

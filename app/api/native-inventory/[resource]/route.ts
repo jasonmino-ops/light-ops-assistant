@@ -52,6 +52,8 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
     switch (resource) {
       case 'access':
         return success({ role: person.role, currencyCode: person.currencyCode, storeName: person.storeName, storeId: person.storeId, userId: person.userId })
+      case 'stock-overview':
+        return success(await inventory.listStockOverview(person, q, query.get('catalog') === 'true', query.get('after') || undefined))
       case 'items':
         return success(await inventory.listItems(person, q, query.get('mode') === 'barcode', query.get('after') || undefined))
       case 'receipt-result':

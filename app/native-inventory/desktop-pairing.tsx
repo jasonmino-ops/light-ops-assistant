@@ -60,7 +60,7 @@ export function DesktopPairing({ authorized }: { authorized: () => void }) {
 
   return <section className="page">
     <h1>验证桌面操作员</h1>
-    <p>请在手机 Telegram 的进销存页面打开「配对桌面」，输入本机显示的配对码。</p>
+    <p>请在手机 Telegram 打开「管理」。店主进入「电脑与桌面激活」，入库员工直接选择「授权桌面库存操作员」，然后输入本机显示的配对码。</p>
     {pending && <p>{pending.storeName} · <strong aria-label="配对码">{pending.code.match(/.{4}/g)?.join('-')}</strong> · 五分钟内有效</p>}
     {error && <p role="alert">{error}</p>}
     <button className="btn primary" type="button" onClick={begin} disabled={busy}>{pending ? '重新生成配对码' : '生成配对码'}</button>
@@ -88,7 +88,7 @@ export function ApproveDesktopPairing() {
   }
 
   return <div className="native-inventory"><section className="page">
-    <h1>配对桌面</h1>
+    <h1>授权桌面库存操作员</h1>
     <p>请核对实体桌面上的配对码，只授权自己正在操作的设备。</p>
     {state === 'APPROVED' ? <p role="status">桌面已授权，可以返回电脑操作。</p> : <form onSubmit={approve}>
       <label className="field">配对码<input className="inp" autoComplete="off" maxLength={19} value={code} onChange={(event) => setCode(event.target.value)} required /></label>
