@@ -20,7 +20,13 @@ jobs:
         id: diamond
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node .github/release-validator/diamond.mjs preflight
+        run: |
+          canonical=https://github.com/jasonmino-ops/light-ops-assistant.git
+          case "$(git remote get-url origin)" in
+            "$canonical"|"${canonical%.git}") git remote set-url origin "$canonical" ;;
+            *) echo 'Unexpected checkout origin'; exit 1 ;;
+          esac
+          node .github/release-validator/diamond.mjs preflight
       - name: Publish exact status with the protected App
         env:
           ADMISSION_MAIN: ${{ steps.diamond.outputs.main }}

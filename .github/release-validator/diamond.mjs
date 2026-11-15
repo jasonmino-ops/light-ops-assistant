@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
+import { readOriginCorrection } from './diamond-origin-correction.mjs'
 
 const repo = 'jasonmino-ops/light-ops-assistant'
 const url = 'https://github.com/' + repo + '.git'
@@ -16,7 +17,6 @@ const base = '1f33d03bcba0bc5d2173be7afe0e3cb0694345c8'
 const candidate = 'cf3960dc953eb58c48dd50edefe605aa4327abd8'
 const parent = '50d47a1e9555e1919f7b0017a860132e8ba66930'
 const tree = '923ed8b4aa864e8ad7e929545355263ac6ce2889'
-const recordPath = 'docs/change-gates/ES-NATIVE-INVENTORY-DIAMOND-PHASE1-B-ADMISSION.json'
 const sourceVerifier = 'scripts/governance/verify-diamond-phase1-b.mjs'
 const context = 'eshop/selective-release-validator'
 const assert = (check, reason) => { if (!check) throw new Error(reason) }
@@ -47,16 +47,16 @@ function verifiedRefs() {
 }
 
 function validRecord(main, expectedDigest) {
-  const bytes = execFileSync('git',['--no-replace-objects','show',main+':'+recordPath],
+  const exactGit=(...args)=>execFileSync('git',['--no-replace-objects',...args],
     {env:cleanEnv,timeout:10000,stdio:['ignore','pipe','pipe']})
-  const digest = sha(bytes)
+  const control=remote().get(controlRef)
+  assert(control===process.env.GITHUB_SHA && control===git('rev-parse','HEAD'),'Live protected control ref drifted')
+  const {record,recordSha256:digest}=readOriginCorrection(exactGit,main,control)
   if (expectedDigest !== undefined) assert(digest === expectedDigest,'Preflight digest changed')
-  const record = JSON.parse(bytes)
   const now = Date.now()
   assert(record.status === 'APPROVED' && record.approvedBy === 'Founder' &&
     record.path === 'B' && record.runtime === 'R2' && record.candidate === candidate &&
     record.releaseBase === base && record.candidateTree === tree &&
-    record.signingControlSha === process.env.GITHUB_SHA &&
     Date.parse(record.issuedAt) <= now && now < Date.parse(record.expiresAt), 'Invalid or expired admission record')
   return {digest,record}
 }
@@ -88,7 +88,8 @@ function preflight() {
     const manifest = resolve(dirname(fileURLToPath(import.meta.url)),'diamond.paths.sha256')
     const env = {PATH:cleanEnv.PATH, HOME:dir, LC_ALL:cleanEnv.LC_ALL,
       GIT_NO_REPLACE_OBJECTS:cleanEnv.GIT_NO_REPLACE_OBJECTS, GH_TOKEN:process.env.GH_TOKEN}
-    const result=JSON.parse(execFileSync(process.execPath,[resolve(trusted,sourceVerifier),
+    const correctedVerifier=resolve(dirname(fileURLToPath(import.meta.url)),'diamond-corrected-verifier.mjs')
+    const result=JSON.parse(execFileSync(process.execPath,[correctedVerifier,
       product,candidate,manifest,'--verify-for-app',trusted],{env,timeout:90000,stdio:['ignore','pipe','pipe']}).toString())
     assert(result.state==='VERIFIED_FOR_SIGNING' && result.main===main && result.candidate===candidate &&
       result.recordSha256===digest,'Scoped admission did not pass')
