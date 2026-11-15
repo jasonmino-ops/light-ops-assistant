@@ -43,13 +43,26 @@ BEGIN
     RAISE EXCEPTION 'Application login must have a non-owner, non-privileged ACL';
   END IF;
 
+  -- Managed Supabase PostgreSQL 17 records the creator's bootstrap grant
+  -- to postgres. It confers neither inheritance nor SET and must never be
+  -- reachable from the application login. Every other extra edge is rejected.
   IF NOT EXISTS (
     SELECT 1 FROM pg_auth_members
     WHERE roleid = inventory AND member = app AND inherit_option AND NOT set_option AND NOT admin_option
   ) OR EXISTS (
-    SELECT 1 FROM pg_auth_members
-    WHERE member = inventory OR (
-      roleid = inventory AND (member <> app OR NOT inherit_option OR set_option OR admin_option)
+    SELECT 1 FROM pg_auth_members m
+    WHERE m.member = inventory OR (
+      m.roleid = inventory
+      AND NOT (m.member = app AND m.inherit_option AND NOT m.set_option AND NOT m.admin_option)
+      AND NOT (
+        m.member = COALESCE(to_regrole('postgres')::oid, 0::oid)
+        AND m.grantor = COALESCE(to_regrole('supabase_admin')::oid, 0::oid)
+        AND NOT m.inherit_option AND NOT m.set_option AND m.admin_option
+        AND EXISTS (SELECT 1 FROM pg_roles r WHERE r.oid = m.grantor AND r.rolsuper)
+        AND EXISTS (SELECT 1 FROM pg_roles r WHERE r.oid = m.member AND r.rolcreaterole AND r.rolbypassrls AND NOT r.rolsuper)
+        AND NOT pg_has_role(app, m.member, 'MEMBER')
+        AND NOT pg_has_role(app, m.grantor, 'MEMBER')
+      )
     )
   ) THEN
     RAISE EXCEPTION 'Inventory capability must be inherited only by the application login without SET or ADMIN';
