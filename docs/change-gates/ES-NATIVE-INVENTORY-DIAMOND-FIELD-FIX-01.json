@@ -1,0 +1,73 @@
+{
+  "kind": "EXACT_L2_BASELINE_ADAPTATION",
+  "status": "APPROVED",
+  "approvedBy": "Founder",
+  "approvalSource": "Diamond FIELD FIX 01 最终发布收口",
+  "approvalQuote": "目标：尽快将返回商品中心、未建档商品搜索和桌面授权入口三项 L2 修复发布到 Production。",
+  "store": "ST883DC00C",
+  "source": "91c67aab00abe80f14d1929021fc8d79c5277e6c",
+  "sourceBase": "8873afe3efe4e0ff8c2238c7c38251da0c0ab4f0",
+  "releaseBase": "cf3960dc953eb58c48dd50edefe605aa4327abd8",
+  "candidate": "fd4b626ba6381743edde1449fc269cda7ab0a936",
+  "candidateTree": "4bcf8d18190aa7b270ef4c9424243f0e9b681187",
+  "testedTree": "4bcf8d18190aa7b270ef4c9424243f0e9b681187",
+  "productionDeployment": "dpl_4PkKC2eKKTSNTS9zssD5BEBb924X",
+  "signingControlSha": "2c1482c4a1da33e6c90e7c3e49ef3a8d5427c266",
+  "controlPathsSha256": {
+    ".github/release-validator/diamond-field01.mjs": "6297ef5726797862dc00e4a8c8f945ab20493a57ab45312d10c3eafa4d2c5e75",
+    ".github/release-validator/diamond-field01.paths.json": "12875ecfde2922d6e7a1157d60db8a1d14f05be31368c3b5a63f91670fdca607",
+    ".github/workflows/selective-release-validator.yml": "cc3320d349cf22525e8c1222e34ee3c5b81118b38ef7b23dfe6e2143533f5866"
+  },
+  "manifestSha256": "12875ecfde2922d6e7a1157d60db8a1d14f05be31368c3b5a63f91670fdca607",
+  "frozenSuccessor": {
+    "kind": "EXACT_RELEASE_ONLY",
+    "approvedBy": "Founder",
+    "files": {
+      "app/api/native-inventory/[resource]/route.ts": {
+        "before": "f2b83453db94ea5ba7cfea39e46a7be84337cae9ff1f9904f1d764fedb567a1f",
+        "after": "6854bb3ddf4d9f4f336e55ea7c7d3085108ca135e20a1cb95407c36137e268b4"
+      },
+      "app/home/computer-client/layout.tsx": {
+        "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "after": "fd4e5c99731456b642cac51e0eadc4a5bcb66d2f195085e8d227baecaa20eb07"
+      },
+      "app/native-inventory/desktop-pairing.tsx": {
+        "before": "25beab9d5ad6a04a0f8145ce48f5bd36629fde71cb648e0b9efb34fc31f4b82c",
+        "after": "9a5738ebac819420790215f38605fb46cdbec9f6edb379c505532afaa93e42c0"
+      },
+      "app/native-inventory/page.tsx": {
+        "before": "86161e4fb0f28181223056bdb753da701c481cfb3a374f5610451f3f9173f2e2",
+        "after": "2b963988ca1ba44a158c8097df2a857d0860e6d2cd70eea918532cc260484b1d"
+      },
+      "app/native-inventory/stock.tsx": {
+        "before": "31a2fcdce07992e1af713e6f6b6ebb6b49dbdaea234a15796136af8dacd3cc56",
+        "after": "72af04ba6d17746e42c596842cb10c6448c30bdf05fa69ef4ba972f265856f55"
+      },
+      "lib/native-inventory/service.ts": {
+        "before": "b642828685d33d95f9bf9f7a62ff050dcf3497c1732fc5217d93229426767dbe",
+        "after": "7b3477cc16ec67294c06e1ef91cf8f209b001e9aedd17f7296fbaf912f3fe2ca"
+      }
+    }
+  },
+  "adaptations": {
+    "app/api/native-inventory/[resource]/route.ts": "Adds the stock overview GET and preserves the production salesTracking access response and profit API gate.",
+    "app/management/page.tsx": "Adds the receiver authorization link next to computer activation while retaining the production Desktop print settings bridge and its state handling.",
+    "app/native-inventory/page.tsx": "Adds the in-app product return and catalog selection, relocates pairing, and keeps the production sales-off banner and profit gate.",
+    "app/native-inventory/stock.tsx": "Adds unregistered catalog search and pagination while retaining production name/barcode searches, unknown stock, manual base unit input, and the adjustment guard.",
+    "lib/i18n/en.ts": "Adds only two English desktop inventory authorization strings and preserves production printing descriptions.",
+    "lib/i18n/km.ts": "Adds only two Khmer desktop inventory authorization strings and preserves production printing descriptions.",
+    "lib/i18n/zh.ts": "Adds only two Chinese desktop inventory authorization strings and preserves the production print settings title and descriptions.",
+    "lib/native-inventory/service.ts": "Adds owner-scoped snapshot reads and keyset pagination while preserving the old catalog response, sales state, nullable inventory and receipt/adjustment behavior."
+  },
+  "independentReview": {
+    "verdict": "PASS",
+    "releaseCandidate": "fd4b626ba6381743edde1449fc269cda7ab0a936",
+    "control": "2c1482c4a1da33e6c90e7c3e49ef3a8d5427c266",
+    "manifestSha256": "12875ecfde2922d6e7a1157d60db8a1d14f05be31368c3b5a63f91670fdca607",
+    "evidence": "Business three-way review: PASS. Exact production candidate fd4b626ba6381743edde1449fc269cda7ab0a936 equals the tested 55a06a1 Git tree. The eight adaptations preserve the production sales flags, print settings bridge, name/barcode and unknown-stock semantics, localized printing labels and read/write contracts. Scope ten paths. The other two files match the source bytes.\nControl review: PASS. Independent read-only reviewer diamond_field01_signing_review selected immutable control 2c1482c4a1da33e6c90e7c3e49ef3a8d5427c266 and candidate fd4b626ba6381743edde1449fc269cda7ab0a936, manifest 12875ecfde2922d6e7a1157d60db8a1d14f05be31368c3b5a63f91670fdca607. Replayed actual verifyFiles on 10 paths and 40 byte/mode assertions. Verified the exact source trailer and parent pair, eight adaptations and six protected successors. Scope and the existing main frozen check passed. Pinned checkout, App key handling, repository and ruleset constraints retained. Revalidate live status, expiry, signed digest and refs immediately before the release write.\n"
+  },
+  "independentReviewSha256": "d52643df12e5d12fff18972f14275b9a9e724a546185c84777109911cf34d70b",
+  "testEvidence": "Identical production tree to 55a06a1. Build, Scope Guard, independent review and 390px Playwright with isolated PostgreSQL passed.",
+  "issuedAt": "2026-11-15T17:21:46.904Z",
+  "expiresAt": "2026-11-15T19:21:46.904Z"
+}
