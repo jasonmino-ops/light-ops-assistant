@@ -1,0 +1,31 @@
+{
+  "status": "APPROVED",
+  "approvedBy": "Founder",
+  "candidate": "cf3960dc953eb58c48dd50edefe605aa4327abd8",
+  "sourceCommit": "86edad14bbc548fd9bc83720e2a40250f2c594aa",
+  "store": "ST883DC00C",
+  "path": "B",
+  "runtime": "R2",
+  "candidateTree": "923ed8b4aa864e8ad7e929545355263ac6ce2889",
+  "releaseBase": "1f33d03bcba0bc5d2173be7afe0e3cb0694345c8",
+  "manifestSha256": "8d0e4e2193795e234ae5c867339b03b487598cb0bb15ad5e8ac0cb2c2ee19a2b",
+  "signingControlSha": "8b887af6194b3f5b04f29b13c580c16db0f3ef43",
+  "issuedAt": "2026-11-15T15:37:50.000Z",
+  "expiresAt": "2026-11-15T17:37:50.000Z",
+  "productionPreflight": {
+    "sha": "1f33d03bcba0bc5d2173be7afe0e3cb0694345c8",
+    "deploymentId": "dpl_NYkFAHe9NbLxyhzdhSNQi2wNW4JS",
+    "state": "READY",
+    "observedAt": "2026-11-15T15:37:50.296Z"
+  },
+  "founderRecordSha256": "05b76df6e6fb2696e3256b105a775260903367d6d6767c94b3048fed7309fd4b",
+  "independentReviewSha256": "fa4a9f49e3f6371935f182678634b7e06ad951f2d28230493a1e48e1a2ece690",
+  "governancePathsSha256": {
+    "scripts/governance/es-native-inventory-m1-main-successor.cjs": "61d53dd5b449dd5bf09bc4419e99768ea5b79b4900f681d85e4aef278daae36d",
+    "scripts/governance/es-native-inventory-diamond-phase1-freeze.cjs": "f2f65fe8cb8a5933d136b6ccd83b0f96ea7ef0cb5e6d209910105df8caa7d1b7",
+    "scripts/governance/verify-diamond-phase1-b.mjs": "ac5cce37343405922149cdf3dd9a16948fb60021c50707555e307e6e1c9d8a7e",
+    "docs/governance/ES-RELEASE-DIAMOND-PHASE1-B-ADDENDUM.md": "7babcdadd6c2186c222f84cc1002c79eae08d8d01aa9cc1ef245212aa60c433c",
+    "docs/freezes/ES-NATIVE-INVENTORY-DIAMOND-PHASE1-B-INDEPENDENT-REVIEW.json": "fa4a9f49e3f6371935f182678634b7e06ad951f2d28230493a1e48e1a2ece690",
+    "docs/change-gates/ES-NATIVE-INVENTORY-DIAMOND-PHASE1-B-FOUNDER-RECORD.json": "05b76df6e6fb2696e3256b105a775260903367d6d6767c94b3048fed7309fd4b"
+  }
+}

@@ -7,7 +7,7 @@
   "trustedRef": "origin/main",
   "reason": "Converge the one Founder-approved Supabase migration variant for exact Diamond phase 1 B / R2 admission.",
   "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "approvedBy": "Founder",
   "closeAfter": "FEATURE_MERGE",
   "createdAt": "2026-11-15T15:37:50.000Z",
@@ -17,5 +17,7 @@
   ],
   "authorizedPathSha256": {
     "prisma/migrations/20261112133000_isolate_native_inventory_capability/migration.sql": "94ddb2a8ef3ebff029437361e31033ca9a5e31aeaf64ecffd6523ac11d4ca8f8"
-  }
+  },
+  "closedAt": "2026-11-15T15:38:54.000Z",
+  "featureMergeCommitSha": "86edad14bbc548fd9bc83720e2a40250f2c594aa"
 }
