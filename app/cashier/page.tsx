@@ -3937,7 +3937,7 @@ export default function CashierPage() {
         body: JSON.stringify({
           storeCode,
           items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
-          paymentMethod: apiPayment,
+          paymentMethod: apiPayment, displayedCurrency: currencyCode,
           manualPaymentConfirmed: apiPayment === 'KHQR',
           ...(networkPrint ? { printing: { profile: 'network-v2', mode: networkMode, lang } } : {}),
         }),
@@ -4046,7 +4046,7 @@ export default function CashierPage() {
   }
 
   async function patchH5Order(id: string, action: { status?: 'CONFIRMED' | 'COMPLETED'; paymentMethod?: 'CASH' | 'QR' }) {
-    const res = await h5Fetch(`/api/customer-orders/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(action) })
+    const res = await h5Fetch(`/api/customer-orders/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ ...action, ...(action.paymentMethod ? { displayedCurrency: currencyCode } : {}) }) })
     const value = await res.json()
     if (!res.ok || value.businessStatus !== 'SUCCEEDED' || value.id !== id) throw new Error(value.error ?? 'H5_ACTION_NOT_CONFIRMED')
     return value
@@ -4242,6 +4242,38 @@ export default function CashierPage() {
     focusScannerInput()
   }
   const d = desktopCopy(lang as DeskLang)
+  const [nativeInventoryEntry, setNativeInventoryEntry] = useState(false)
+  useEffect(() => {
+    setNativeInventoryEntry(false)
+    if (!isDesktopPos || !storeCode || !isOnline) return
+    const controller = new AbortController()
+    let timer: number
+    let attempts = 0
+    async function checkAvailability() {
+      try {
+        const result = await fetch('/api/native-inventory/desktop-operator', {
+          headers: posDeviceHeaders(storeCode), cache: 'no-store', signal: controller.signal,
+        })
+        if (result.ok && (await result.json()).enabled && !controller.signal.aborted) {
+          setNativeInventoryEntry(true)
+        } else if (result.status === 403 && ++attempts < 5 && !controller.signal.aborted) {
+          timer = window.setTimeout(checkAvailability, 1000)
+        }
+      } catch {}
+    }
+    void checkAvailability()
+    return () => { controller.abort(); window.clearTimeout(timer) }
+  }, [isDesktopPos, isOnline, storeCode])
+
+  function openNativeInventory() {
+    if (!storeCode || !nativeInventoryEntry) return
+    if (cart.length > 0 || checkoutStep !== 'SELECT_ITEMS' || saleResult || submitting || h5Order || h5ActionInFlight.current) {
+      showToast(d.managementBlockedDesktop)
+      return
+    }
+    router.push('/desktop/inventory?' + new URLSearchParams({ storeCode, lang }))
+  }
+
   function handleOpenManagement() {
     const desktopContext = isDesktopPos || (typeof window !== 'undefined' && window.location.pathname === '/desktop/pos')
     if (cart.length > 0) {
@@ -4859,6 +4891,10 @@ export default function CashierPage() {
               >
                 {d.managementCenter}
               </button>
+              {nativeInventoryEntry && <button type="button" onClick={openNativeInventory}
+                style={{ ...s.kioskBtn, ...s.managementBtn, gridColumn: '1 / -1' }}>
+                {lang === 'en' ? 'Inventory and purchasing' : lang === 'km' ? 'ស្តុក និងការទិញ' : '库存与采购'}
+              </button>}
               {!isDesktopPos && (
                 <>
                   <button

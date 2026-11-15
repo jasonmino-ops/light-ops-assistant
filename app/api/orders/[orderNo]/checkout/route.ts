@@ -1,5 +1,8 @@
 import { after, NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { lockOrderSettlement, orderRecordStore } from '@/lib/order-settlement-lock'
+import { inventoryDisplayedCurrency, recordInventoryOrderCurrency } from '@/lib/native-inventory/order-currency'
 import { getContext } from '@/lib/context'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
@@ -42,9 +45,10 @@ export async function POST(
     )
   }
 
+  const tenantScope = { tenantId: ctx.tenantId, ...(ctx.role === 'STAFF' ? { storeId: ctx.storeId } : {}) }
   // Verify PENDING_PAYMENT records exist for this order
   const records = await prisma.saleRecord.findMany({
-    where: { orderNo, tenantId: ctx.tenantId, status: 'PENDING_PAYMENT' },
+    where: { orderNo, ...tenantScope, status: 'PENDING_PAYMENT' },
   })
 
   if (records.length === 0) {
@@ -64,53 +68,60 @@ export async function POST(
     )
   }
 
-  // Check PaymentIntent doesn't already exist (idempotency guard)
-  const existingPi = await prisma.paymentIntent.findFirst({
-    where: { orderNo, tenantId: ctx.tenantId },
-  })
-  if (existingPi) {
-    return NextResponse.json(
-      { error: 'ALREADY_CHECKED_OUT', paymentIntentId: existingPi.id, status: existingPi.status },
-      { status: 409 },
-    )
-  }
-
+  const storeId = records[0].storeId
+  if (records.some((record) => record.storeId !== storeId)) return NextResponse.json({ error: 'INVALID_ORDER_SCOPE' }, { status: 409 })
+  const scope = { orderNo, tenantId: ctx.tenantId, storeId }
+  const paymentScope = { orderNo, tenantId: ctx.tenantId }
   const totalAmount = records.reduce((sum, r) => sum + r.lineAmount.toNumber(), 0)
 
-  // KHQR config pre-check
+  // Prepare KHQR outside the transaction. A locked replay of an existing
+  // intent takes precedence even if the store can no longer create one.
   let khqrConfig: MerchantKhqrConfig | null = null
+  let khqrUnavailable: { status: number; error: string; message?: string } | null = null
   if (paymentMethod === 'KHQR') {
     const store = await prisma.store.findFirst({
-      where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
+      where: { id: storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
       select: { currencyCode: true },
     })
-    if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
-    if (!isKhqrSupportedCurrency(store.currencyCode)) {
-      return NextResponse.json(
-        { error: 'KHQR_UNSUPPORTED_CURRENCY', message: '当前门店货币不支持 KHQR，请使用现金收款' },
-        { status: 422 },
-      )
-    }
-    khqrConfig = await findKhqrConfig(ctx.tenantId, ctx.storeId)
-    if (!khqrConfig) {
-      return NextResponse.json(
-        { error: 'KHQR_NOT_CONFIGURED', message: '当前门店未配置 KHQR 收款，请联系老板' },
-        { status: 422 },
-      )
+    if (!store) {
+      khqrUnavailable = { status: 404, error: 'STORE_NOT_FOUND' }
+    } else if (!isKhqrSupportedCurrency(store.currencyCode)) {
+      khqrUnavailable = { status: 422, error: 'KHQR_UNSUPPORTED_CURRENCY', message: '当前门店货币不支持 KHQR，请使用现金收款' }
+    } else {
+      khqrConfig = await findKhqrConfig(ctx.tenantId, storeId)
+      if (!khqrConfig) {
+        khqrUnavailable = { status: 422, error: 'KHQR_NOT_CONFIGURED', message: '当前门店未配置 KHQR 收款，请联系老板' }
+      }
     }
   }
 
   try {
-    const pi = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
+      await lockOrderSettlement(tx, ctx.tenantId, orderNo)
+      if (await orderRecordStore(tx, scope) !== storeId) return { kind: 'CHANGED' as const }
+      const prior = await tx.paymentIntent.findFirst({ where: paymentScope })
+      if (prior) return { kind: 'REPLAY' as const, intent: prior }
+      if (khqrUnavailable) return { kind: 'KHQR_UNAVAILABLE' as const, failure: khqrUnavailable }
+      const pending = await tx.saleRecord.count({ where: { ...scope, status: 'PENDING_PAYMENT' } })
+      if (pending !== records.length) return { kind: 'CHANGED' as const }
+
       const khqrPayload =
         paymentMethod === 'KHQR' && khqrConfig
           ? generateKhqrPayload({ amount: totalAmount, orderNo, config: khqrConfig })
           : null
 
+      const store = await tx.store.findFirstOrThrow({
+        where: { id: storeId, tenantId: ctx.tenantId },
+        select: { currencyCode: true },
+      })
+      await recordInventoryOrderCurrency(tx, {
+        tenantId: ctx.tenantId, storeId, kind: 'POS_PAYMENT',
+        currencyCode: khqrConfig?.currency ?? inventoryDisplayedCurrency(body.displayedCurrency, store.currencyCode),
+      })
       const intent = await tx.paymentIntent.create({
         data: {
           tenantId: ctx.tenantId,
-          storeId: ctx.storeId,
+          storeId,
           operatorUserId: ctx.userId,
           orderNo,
           paymentMethod: paymentMethod as 'CASH' | 'KHQR',
@@ -126,14 +137,23 @@ export async function POST(
       // CASH: immediately mark records as COMPLETED
       if (paymentMethod === 'CASH') {
         await tx.saleRecord.updateMany({
-          where: { orderNo, tenantId: ctx.tenantId, status: 'PENDING_PAYMENT' },
+          where: { ...scope, status: 'PENDING_PAYMENT' },
           data: { status: 'COMPLETED' },
         })
       }
       // KHQR: records remain PENDING_PAYMENT until /api/payments/:id/confirm
 
-      return intent
+      return { kind: 'CHECKED_OUT' as const, intent }
     })
+    if (result.kind === 'CHANGED') return NextResponse.json({ error: 'ORDER_STATE_CHANGED' }, { status: 409 })
+    if (result.kind === 'KHQR_UNAVAILABLE') {
+      const { status, ...failure } = result.failure
+      return NextResponse.json(failure, { status })
+    }
+    const pi = result.intent
+    if (result.kind === 'REPLAY') {
+      return NextResponse.json({ error: 'ALREADY_CHECKED_OUT', paymentIntentId: pi.id, status: pi.status }, { status: 409 })
+    }
 
     if (paymentMethod === 'CASH') {
       after(() => notifyCashierGateway({
@@ -156,6 +176,15 @@ export async function POST(
       { status: 201 },
     )
   } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      const committed = await prisma.paymentIntent.findFirst({ where: paymentScope })
+      if (committed && (ctx.role === 'OWNER' || committed.storeId === storeId)) {
+        return NextResponse.json(
+          { error: 'ALREADY_CHECKED_OUT', paymentIntentId: committed.id, status: committed.status },
+          { status: 409 },
+        )
+      }
+    }
     console.error('[POST /api/orders/checkout]', err)
     return NextResponse.json({ error: 'INTERNAL_ERROR' }, { status: 500 })
   }

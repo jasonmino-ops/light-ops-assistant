@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, FormEvent } from 'react'
 import { apiFetch } from '@/lib/api'
+import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 
@@ -145,6 +146,7 @@ function buildOrderGroups(items: SaleListItem[]): OrderGroup[] {
 
 export default function RefundPage() {
   const { t } = useLocale()
+  const { currencyCode } = useWorkMode()
   // ── List phase ─────────────────────────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>('list')
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('recent')
@@ -325,7 +327,7 @@ export default function RefundPage() {
       const res = await apiFetch('/api/sales', {
         method: 'POST',
         body: JSON.stringify({
-          saleType: 'REFUND',
+          saleType: 'REFUND', displayedCurrency: currencyCode,
           originalSaleRecordId: item.saleRecordId,
           refundQty: rQty,
           refundReason: finalReason,

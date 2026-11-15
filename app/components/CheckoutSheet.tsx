@@ -87,7 +87,7 @@ export default function CheckoutSheet({
     try {
       const res = await apiFetch(`/api/orders/${encodeURIComponent(orderNo)}/checkout`, {
         method: 'POST',
-        body: JSON.stringify({ paymentMethod: method }),
+        body: JSON.stringify({ paymentMethod: method, displayedCurrency: currencyCode }),
       })
       const body = await res.json()
       if (res.ok) {
