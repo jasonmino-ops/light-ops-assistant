@@ -69,13 +69,28 @@ function readNativeInventoryM1MainSuccessor(root) {
         text('status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none') ||
         /^[a-zS] /m.test(text('ls-files', '-v'))) return null
 
+    const diamondAdmission = require('./es-native-inventory-diamond-phase1-freeze.cjs')
+    const diamond = existsSync(resolve(root, diamondAdmission.RECORD))
+      ? diamondAdmission.verifyDiamondPhase1Freeze({
+        git, text, blob, parents, pathsBetween, matches, atHead, trusted, head, branch, root,
+      }) : null
+    if (existsSync(resolve(root, diamondAdmission.RECORD)) && !diamond) return null
+
+    // The historical sales-rollout proof remains intact. Only the exact,
+    // separately verified successor can hand over the legacy verifier.
+    const legacyAtHead = (path, digest) => diamond && path === diamondAdmission.MAIN_VERIFIER
+      ? digest === diamond.legacyVerifierSha256 : atHead(path,digest)
+    const legacyPathsBetween = (base, tip) => diamond && tip === diamond.registration
+      ? pathsBetween(base,tip).filter(path => path !== diamondAdmission.MAIN_VERIFIER)
+      : pathsBetween(base,tip)
     const rolloutRecord = 'docs/change-gates/ES-NATIVE-INVENTORY-V1-SALES-ROLLOUT-SUCCESSOR.json'
     const rollout = existsSync(resolve(root, rolloutRecord))
       ? require('./es-native-inventory-sales-rollout-successor.cjs').verifySalesRollout({
-        git, text, blob, parents, pathsBetween, matches, atHead, trusted, head, branch, root,
+        git, text, blob, parents, pathsBetween: legacyPathsBetween, matches, atHead:legacyAtHead, trusted, head, branch, root,
       }) : null
     if (existsSync(resolve(root, rolloutRecord)) && !rollout) return null
-    const atApprovedHead = (path, digest) => atHead(path, rollout?.successors.get(path) ?? digest)
+    const successors = new Map([...(rollout?.successors ?? []), ...(diamond?.successors ?? [])])
+    const atApprovedHead = (path, digest) => atHead(path, successors.get(path) ?? digest)
 
     git('merge-base', '--is-ancestor', PRODUCT, trusted)
     git('merge-base', '--is-ancestor', trusted, head)
@@ -161,7 +176,7 @@ function readNativeInventoryM1MainSuccessor(root) {
     }
 
     const { absolute, glob_patterns: globs } = config.forbidden_paths
-    const protectedFiles = new Set([...inherited, RECORD, ...HANDOFF_EXECUTABLES, ...(rollout?.successors.keys() ?? [])].map(path => path.toLowerCase()))
+    const protectedFiles = new Set([...inherited, RECORD, ...HANDOFF_EXECUTABLES, ...successors.keys(), ...(diamond?.protectedPaths ?? [])].map(path => path.toLowerCase()))
     const prefixes = FROZEN_PREFIXES.map(path => path.toLowerCase())
     const absoluteRules = absolute.map(path => path.toLowerCase())
     const globRules = globs.map(path => path.toLowerCase())
@@ -187,7 +202,7 @@ function readNativeInventoryM1MainSuccessor(root) {
       const later = text('rev-list', '--parents', `${closure}..${head}`).split('\n').filter(Boolean)
       for (const item of later) {
         const [commit, parent] = item.split(' ')
-        if (rollout?.accepted.has(commit)) continue
+        if (rollout?.accepted.has(commit) || diamond?.accepted.has(commit)) continue
         if (!parent || pathsBetween(parent, commit).some(path => isFrozen(path.toLowerCase()))) return null
       }
     }

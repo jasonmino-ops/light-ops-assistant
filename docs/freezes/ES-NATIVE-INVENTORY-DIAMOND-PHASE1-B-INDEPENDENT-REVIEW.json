@@ -1,0 +1,22 @@
+{
+  "kind": "INDEPENDENT_READ_ONLY",
+  "result": "PASS",
+  "reviewedBy": "Claude Code",
+  "candidate": "cf3960dc953eb58c48dd50edefe605aa4327abd8",
+  "releaseBase": "1f33d03bcba0bc5d2173be7afe0e3cb0694345c8",
+  "manifestSha256": "8d0e4e2193795e234ae5c867339b03b487598cb0bb15ad5e8ac0cb2c2ee19a2b",
+  "store": "ST883DC00C",
+  "path": "B",
+  "runtime": "R2",
+  "inputSha256": "e2f28b04f186d63356edc1af1ee9564fc21fa27a1adb679673f9d02a1e70db47",
+  "verdictSha256": "303d4513fdeb623648ea4f6dbe2056565af49dde1b3382b7d74d68bfdf9e1b47",
+  "verdict": "TECHNICAL VERDICT: PASS (within explicitly accepted scope only)",
+  "verifierSha256": "ac5cce37343405922149cdf3dd9a16948fb60021c50707555e307e6e1c9d8a7e",
+  "governancePathsSha256": {
+    "scripts/governance/es-native-inventory-m1-main-successor.cjs": "61d53dd5b449dd5bf09bc4419e99768ea5b79b4900f681d85e4aef278daae36d",
+    "scripts/governance/es-native-inventory-diamond-phase1-freeze.cjs": "f2f65fe8cb8a5933d136b6ccd83b0f96ea7ef0cb5e6d209910105df8caa7d1b7",
+    "scripts/governance/verify-diamond-phase1-b.mjs": "ac5cce37343405922149cdf3dd9a16948fb60021c50707555e307e6e1c9d8a7e",
+    "docs/governance/ES-RELEASE-DIAMOND-PHASE1-B-ADDENDUM.md": "7babcdadd6c2186c222f84cc1002c79eae08d8d01aa9cc1ef245212aa60c433c"
+  },
+  "evidence": "Exact governance bytes reviewed with PostgreSQL 17 comparison of bootstrap ADMIN OPTION. R2 and the delegation capability remain explicitly disclosed."
+}

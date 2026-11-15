@@ -1,0 +1,29 @@
+{
+  "admissionStatus": "APPROVED",
+  "approvedBy": "Founder",
+  "approvalSource": "Founder conversation: Diamond Founder Production Authorization",
+  "approvalQuote": "我作为 Founder，明确接受本次 R2 临时运行方案及已披露的 postgres ADMIN OPTION 角色转授权限风险。",
+  "candidate": "cf3960dc953eb58c48dd50edefe605aa4327abd8",
+  "store": "ST883DC00C",
+  "path": "B",
+  "runtime": "R2",
+  "releaseBase": "1f33d03bcba0bc5d2173be7afe0e3cb0694345c8",
+  "mainBefore": "db16177d311dc6b070f98f5dc2ebb8048c9e5957",
+  "candidateTree": "923ed8b4aa864e8ad7e929545355263ac6ce2889",
+  "manifestSha256": "8d0e4e2193795e234ae5c867339b03b487598cb0bb15ad5e8ac0cb2c2ee19a2b",
+  "managedMigrationSha256": "94ddb2a8ef3ebff029437361e31033ca9a5e31aeaf64ecffd6523ac11d4ca8f8",
+  "signingControlSha": "8b887af6194b3f5b04f29b13c580c16db0f3ef43",
+  "mainPatchSha256": "a0840196b7c90cd8f3a16b2ae25dbd2f3641a49d8ee42c810db66eca2c656101",
+  "controlPatchSha256": "69092003083b75f069162a174d67feccf447c4a02055aeb6fe690af0d5ed9d3a",
+  "independentReviewSha256": "fa4a9f49e3f6371935f182678634b7e06ad951f2d28230493a1e48e1a2ece690",
+  "productionPreflight": {
+    "sha": "1f33d03bcba0bc5d2173be7afe0e3cb0694345c8",
+    "deploymentId": "dpl_NYkFAHe9NbLxyhzdhSNQi2wNW4JS",
+    "state": "READY",
+    "observedAt": "2026-11-15T15:37:50.296Z"
+  },
+  "issuedAt": "2026-11-15T15:37:50.000Z",
+  "expiresAt": "2026-11-15T17:37:50.000Z",
+  "databaseAuthorityDecision": "Founder explicitly accepts the Supabase postgres ADMIN OPTION capability to delegate the inventory role for temporary R2 use at Diamond phase 1 only.",
+  "productionScope": "ST883DC00C only. Seven sealed migrations. Archive old Sheets Feed after safe stop. Auto sales deduction, refund restocking and sales margin remain disabled."
+}
