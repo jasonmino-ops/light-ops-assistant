@@ -670,16 +670,21 @@ export async function hasRecoverableMeals(db: Db, scope: DiningScope): Promise<b
 /**
  * Whether the dine-in page still has something for a person to do: a meal on a table,
  * or an ended meal with a void notice that has no sending evidence. This keeps the way
- * into the page open when new business is switched off.
+ * into the page open when new business is switched off. Null means the query
+ * could not establish whether recovery is needed.
  */
-export async function hasActiveMeals(db: Db, scope: DiningScope): Promise<boolean> {
+export async function hasActiveMeals(db: Db, scope: DiningScope): Promise<boolean | null> {
   const meal = await db.diningMeal.findFirst({
     where: { tenantId: scope.tenantId, storeId: scope.storeId, state: { in: ['OPEN', 'PAID'] } },
     select: { id: true },
   })
   if (meal !== null) return true
-  // If the question cannot be answered, the way into the page stays open; hiding it could strand a void notice.
-  return hasRecoverableMeals(db, scope).catch((error) => { console.error('[dine-in] recovery check unavailable', error); return true })
+  try {
+    return await hasRecoverableMeals(db, scope)
+  } catch (error) {
+    console.error('[dine-in] recovery check unavailable', error)
+    return null
+  }
 }
 
 function tableName(value: unknown): string {

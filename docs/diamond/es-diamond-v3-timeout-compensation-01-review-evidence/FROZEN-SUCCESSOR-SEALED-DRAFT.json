@@ -1,0 +1,44 @@
+{
+  "status": "SEALED_DRAFT_NOT_ACTIVE",
+  "kind": "EXACT_FROZEN_SUCCESSOR_AND_TASK_SPECIFIC_CORE_DISPOSITION_PROPOSAL",
+  "approval": null,
+  "authority": "ES-ENG-001 Founder Approval: Exception to frozen baseline; Workflow V1 6.1-6.2",
+  "candidateSha": "b558dcd197f166936610b5c7c140c0acb5f55a86",
+  "trustedMain": "c1041533abca99657edc09c2e69e2c18d9df13d5",
+  "productionSha": "9e717439569c0485c703367b668b31ed8a7505e6",
+  "productPathSha256": {
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts": "7fbcf5ce177e482668f34fc3fe00cbc752c8dff0ba26c387f089b4111fd28113",
+    "tests/v3-print-control-plane-service.test.ts": "7c4c8fc250ea1488fc8066da89839061c5d761b55060370052fdfa9d95e174e3"
+  },
+  "frozenTest": {
+    "path": "tests/cashier-realtime-integration.test.ts",
+    "sha256": "4a76962e28336391d30810d4476d2bad3b94eb09c0496a1649b13d0cd4757dc3",
+    "modified": false
+  },
+  "releaseDraftSha": "1427131e94aba6a19c52dee61f531fec2c9213b3",
+  "releaseTree": "178bfec6bb55616c7f0c02e16422f413c6149e0d",
+  "includedSourceCommits": [
+    "ca7e04ec9d600e568d29258f1e0dc9879c96a72c",
+    "b558dcd197f166936610b5c7c140c0acb5f55a86"
+  ],
+  "deadlineExclusive": "2026-11-08T00:00:00.000Z",
+  "rawCore": "103 executed /101 PASS /2 FAIL /BLOCKED",
+  "failureIdentities": [
+    "tests/cashier-realtime-integration.test.ts: Diamond trusted main may differ only by exact registrations and approved baseline fixes",
+    "tests/customer-order-recovery.test.ts: unstubbed eshopTrayPrintJob.findUnique;503 vs200/999 vs1"
+  ],
+  "noTestAssertionKtfManifestRegistryChanges": true,
+  "proposedNewGovernancePaths": [
+    "docs/freezes/ES-DIAMOND-V3-EXPIRE-TIMEOUT-COMPENSATION-01.md",
+    "docs/change-gates/ES-DIAMOND-V3-EXPIRE-TIMEOUT-RECOVERY-01 CORE Admission Disposition.md"
+  ],
+  "conditions": [
+    "explicit exact Founder frozen approval, not inherited UX disposition",
+    "fresh independent L3 code+draft review PASS",
+    "all candidate/source/release/parent/tree/failure/hash bindings exact",
+    "policy admission never extended and original audit/job/fence/identity checks remain strict",
+    "new candidate-bound selective-release validation after approved main merge",
+    "do not relabel raw CORE PASS; do not issue check or deploy based on this draft",
+    "any extra failure, changed content/ref/fingerprint/scope or deadline invalidates proposal"
+  ]
+}

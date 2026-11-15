@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "taskId": "ES-NATIVE-INVENTORY-V1-SUPABASE-STAGING-01",
+  "featureBranch": "codex/es-native-inventory-vercel-staging",
+  "baseOriginMainSha": "5dde594c980eb118fa9d87002d2fee720658fd3d",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "reason": "Exact one-file Supabase managed creator membership compatibility for Staging project fvdhumqcjdacnpqnlirf and isolated Vercel Preview only. No application privilege, main migration contents, release or Production change.",
+  "approvalSource": "Founder exact Staging re-signing of migration SHA-256 94ddb2a8ef3ebff029437361e31033ca9a5e31aeaf64ecffd6523ac11d4ca8f8",
+  "sealedCandidatePatchSha256": "ef5c3dba0e3e89fab11c6e47ac23e0ae39a0db91ee49f7c4de281e11b07a2f97",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "closeAfter": "FEATURE_MERGE",
+  "createdAt": "2026-11-13T08:00:39Z",
+  "approvedAt": "2026-11-13T08:00:39Z",
+  "authorizedPaths": [
+    "prisma/migrations/20261112133000_isolate_native_inventory_capability/migration.sql"
+  ],
+  "authorizedPathSha256": {
+    "prisma/migrations/20261112133000_isolate_native_inventory_capability/migration.sql": "94ddb2a8ef3ebff029437361e31033ca9a5e31aeaf64ecffd6523ac11d4ca8f8"
+  }
+}

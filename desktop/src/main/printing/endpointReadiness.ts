@@ -1,3 +1,4 @@
+import { isWindowsUsbEndpointKey } from './windowsUsbEndpoint'
 import net from 'node:net'
 import type { ConfiguredLocalEndpoint, PrinterRole } from './localEndpointAuthority'
 
@@ -18,6 +19,7 @@ export class NoPayloadEndpointReadiness {
   public constructor(
     private readonly timeoutMs = 3_000,
     private readonly createSocket: ReadinessSocketFactory = (options) => net.createConnection(options),
+    private readonly checkUsb?: (endpointKey: string) => Promise<boolean>,
   ) {}
 
   public async check(endpoints: readonly ConfiguredLocalEndpoint[]): Promise<
@@ -29,7 +31,9 @@ export class NoPayloadEndpointReadiness {
     }
     const roles: Record<PrinterRole, boolean> = { FRONT: false, KITCHEN: false }
     for (const endpoint of endpoints) {
-      roles[endpoint.role] = await this.probe(endpoint.endpointKey)
+      roles[endpoint.role] = isWindowsUsbEndpointKey(endpoint.endpointKey)
+        ? endpoint.role === 'FRONT' && this.checkUsb !== undefined && await this.checkUsb(endpoint.endpointKey)
+        : await this.probe(endpoint.endpointKey)
     }
     return { ok: true, roles }
   }

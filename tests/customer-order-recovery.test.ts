@@ -61,6 +61,8 @@ function setup(includeBadRow = false) {
     return intent
   })
   stub('v3PrintControlPlane', 'findUnique', async () => ({ tenantId: 'tenant-a', mode: controlPlaneMode }))
+  // None of these unsealed intents has an associated print job.
+  stub('eshopTrayPrintJob', 'findUnique', async () => null)
   const originalTransaction = db.$transaction
   db.$transaction = async (operation: (tx: Row) => Promise<unknown>) => operation(db)
   originals.push(() => { db.$transaction = originalTransaction })

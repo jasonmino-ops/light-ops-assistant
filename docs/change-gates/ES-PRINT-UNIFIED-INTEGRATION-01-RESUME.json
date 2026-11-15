@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-PRINT-UNIFIED-INTEGRATION-01",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "reviewedBy": "Claude",
+  "deadlineExclusive": "2026-11-19T16:00:00Z",
+  "priorMain": "332137496dd3578a0a8eb3fcc83e5e835f52aae1",
+  "dependencyCommit": "7be99248e08bce235dc74fa04655d3c82289ea0c",
+  "dependencyTree": "1d638334df000fb03b4c865657acc8233a991559",
+  "dependencyPathsSha256": {
+    ".github/workflows/desktop-windows-build.yml": "7f8c118114c794e1e4de73a648d8cd8c5b4f29911cc8bf69b34588467a233809",
+    "desktop/scripts/release-foundation.mjs": "36885f8eccc3e74b2e700a5888a58313ea63346706482d8e9c09fd6714503472",
+    "desktop/tests/release-foundation.test.ts": "c84af430bdc69785bf52bba0dbc430c9f8437a40642165217f030b3f9c044a29",
+    "scripts/governance/es-print-unified-integration-01.cjs": "7bedb11852616cc7a793de15e99c57d80a675e6c79a678ce5114018a95937d44"
+  },
+  "productCommit": "a8c13b2da80ce3311945cb6ad3f4ab1672c7b044",
+  "productTree": "85a84d6a888421bfadb5e7e6813edb3fd54961e2",
+  "requestSha256": "dc307db660126ee8e86bdc20c7b2d9e82af0e7ceecab42ecd585ceba67765054",
+  "reviewSha256": "0d8ac601e00f4f2cf03e02c3c72e5d2dd880114eb553ac7dbc3b1e50328001d9"
+}

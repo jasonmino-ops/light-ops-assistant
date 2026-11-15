@@ -394,7 +394,7 @@ export default function HomePage() {
     const res = await apiFetch(`/api/customer-orders/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentMethod: method === 'KHQR' ? 'QR' : 'CASH' }),
+      body: JSON.stringify({ paymentMethod: method === 'KHQR' ? 'QR' : 'CASH', displayedCurrency: currencyCode }),
     }, effectiveRole === 'OWNER' ? DEV_OWNER_CTX : DEV_STAFF_CTX)
     const body = await res.json().catch(() => ({})) as { error?: string; printStatus?: string }
     if (!res.ok) {

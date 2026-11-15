@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-NATIVE-INVENTORY-V1",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "reviewedBy": "Codex independent reviewer m1_runtime_fix_review",
+  "signatureSha256": "ecfe94be4744bf4ec0ea8751d51cb4cd5d630b1f8ee7be25be79894b098c83eb",
+  "deadlineExclusive": "2026-11-19T23:59:59Z",
+  "executablePathsSha256": {
+    "docs/change-gates/ES-NATIVE-INVENTORY-V1-M1-RUNTIME-SIGNATURE.json": "ecfe94be4744bf4ec0ea8751d51cb4cd5d630b1f8ee7be25be79894b098c83eb",
+    "docs/change-gates/exceptions/ES-NATIVE-INVENTORY-V1.json": "604397c6d2573351b6ba8ebf62221c15af0f5baad4e3b7b5067a4e493ea98dbf",
+    "docs/freezes/ES-NATIVE-INVENTORY-V1-M1-RUNTIME-REVIEW.md": "0694525027edb1c8f9c8bb8b804e4de55b239438cbd44a93c8093871ae2344fa",
+    "scripts/governance/es-native-inventory-m1-successor.cjs": "2a19e9cda385a240e8e60bd14286fdd85c860bc809ed12f8f8fb38ffe2ef1164",
+    "scripts/governance/es-native-inventory-m1-runtime-successor.cjs": "768215e5c3dfcbb442640082cc08b9c8bacc294b38265d0358076b3d5ae40205",
+    "tests/native-inventory-m1-successor.test.cjs": "3688f1c00b28910f563f180469ce90d8e29e80bf07cadf062b74ca9b278f7ec0"
+  }
+}

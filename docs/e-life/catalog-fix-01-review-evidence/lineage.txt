@@ -1,0 +1,19 @@
+E-Shop Release Lineage Gate
+Production SHA:
+c5e109864259a7961c256518b8a68f1605af897f
+origin/main:
+36ab0226363d71c4d2b42b6cfed58af3e27f6627
+Lineage Mode:
+CONTENT_SUBSET
+Production ancestor of origin/main:
+NO
+Working tree:
+CLEAN
+Safe Development Base:
+YES
+RESULT:
+PASS
+REASON:
+CONTENT_SUBSET_PROVENANCE
+CONTENT_SUBSET: PASS
+MAPPINGS: 

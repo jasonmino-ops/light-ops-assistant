@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { promises as nodeFs } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
+import type { CrossingProof } from "./sharedPrintingCore";
 
 export type LedgerState =
   | "NOT_CROSSED"
@@ -711,17 +712,21 @@ export class ExecutionLedger {
   }
 
   public markCrossed(
-    guard: LedgerGuard & { allBytesWritten: true; flushAndFinConfirmed: true },
+    guard: LedgerGuard & CrossingProof,
   ): Promise<LedgerResult<LedgerRecord>> {
     return this.runExclusive(() => this.markCrossedInternal(guard));
   }
 
   private async markCrossedInternal(
-    guard: LedgerGuard & { allBytesWritten: true; flushAndFinConfirmed: true },
+    guard: LedgerGuard & CrossingProof,
   ): Promise<LedgerResult<LedgerRecord>> {
     const ready = this.ensureReady();
     if (!ready.ok) return ready;
-    if (guard.allBytesWritten !== true || guard.flushAndFinConfirmed !== true) {
+    const validProof = "spoolerJobId" in guard
+      ? Number.isInteger(guard.spoolerJobId) && guard.spoolerJobId > 0 &&
+        guard.spoolerJobId <= 0xffffffff && guard.rawDocumentCommitted === true
+      : guard.allBytesWritten === true && guard.flushAndFinConfirmed === true;
+    if (!validProof) {
       return failure("LEDGER_INVALID_INPUT", "Crossing proof is incomplete.");
     }
     const guarded = this.guardRecord(guard);

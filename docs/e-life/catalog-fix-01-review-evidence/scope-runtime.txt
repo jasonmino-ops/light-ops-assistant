@@ -1,0 +1,4 @@
+lib/public-menu-data.ts ALLOWED
+tests/electronic-menu-data.test.ts ALLOWED
+tests/e-life-product-catalog.browser.spec.ts ALLOWED
+PASS

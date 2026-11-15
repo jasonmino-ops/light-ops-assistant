@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "taskId": "ES-SHIFT-REPORT-FOLLOW-FRONT-PRINT-01",
+  "featureBranch": "codex/es-shift-report-follow-front-print-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "2269d34bfabfa808f7d3e5e7caaf5c77b6425fb5",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "approvedAt": "2026-11-09T16:39:46Z",
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Exact two-file report-print adapter: current shift report and button, native Desktop dialog and report-only print media; no runtime, sale, close-shift, V2 or schema change.",
+  "authorizedPaths": [
+    "app/cashier/page.tsx",
+    "app/components/ShiftReportPrint.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "5698c31fb723a498ba3b4775aca4d547ff6d80cb201e2d9a6124e3f70d9e251f",
+    "app/components/ShiftReportPrint.tsx": "8837662bc20f2950f15cfc971c06570d30611b5418a889517748c7dfe9962c5e"
+  },
+  "sealedCandidatePatchSha256": "64291f345bc69d6ae9fd02c7403161ad33960dde513015bcb04c774be2aa8be9",
+  "createdAt": "2026-11-09T16:06:20Z",
+  "approvalSource": {
+    "source": "Founder Formal Admission Decision in this task",
+    "decision": "APPROVED — EXACT SCOPE EXCEPTION, FROZEN SUCCESSORS & LIMITED GOVERNANCE REGISTRATION",
+    "statement": "批准 Codex 在完成精确字节、父链、Scope、Lineage 和独立审查绑定校验后，将本任务专属 Scope Exception 与三项冻结后继按现行正式流程登记到可信 main。",
+    "approvedAtMeaning": "UTC registration timestamp recorded after the explicit Founder decision.",
+    "scopeDraftSha256": "23b78ddf65512c2285e68e415e59623fcef0292b0a1868224c1a6a12e7a35cb6",
+    "freezeDraftSha256": "a8e7a25a03cbf536be54e01d50ebeb3619b7a4c1ab13b270f25153cb6af53a33",
+    "admissionManifestSha256": "a29c20f9cad31c6db4166424f3261b702d81c959252fbcc909b6f6b618c18bf9"
+  }
+}

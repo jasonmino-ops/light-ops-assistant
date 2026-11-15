@@ -45,7 +45,7 @@ type Gate = {
   eligible: boolean
   reasons: string[]
   recoveryAvailable: boolean
-  hasActiveMeals: boolean
+  hasActiveMeals: boolean | null
   role: 'OWNER' | 'STAFF'
   operatorSource: 'ACCOUNT' | 'DEVICE' | 'STORE_CODE'
   store: { code: string; name: string; currencyCode: string; printKitchenTicket: boolean }

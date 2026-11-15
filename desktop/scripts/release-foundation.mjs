@@ -16,6 +16,9 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const { evaluateFile, validateException } = require('../../scripts/guards/check-change-scope.js')
+const { readUsbFrontSuccessor } = require('../../scripts/governance/es-print-usb-baseline-01.cjs')
+const { readUnifiedPrintSuccessor } = require('../../scripts/governance/es-print-unified-integration-01.cjs')
+const { readDirectShiftSuccessor } = require('../../scripts/governance/es-shift-report-direct-print-01.cjs')
 const { validateRegister, validatePilot, validatePilotSourcePaths } = require('../../scripts/governance/delivery-classification.cjs')
 
 const scriptDir = resolve(fileURLToPath(new URL('.', import.meta.url)))
@@ -92,6 +95,15 @@ const FROZEN_BOUNDARY_SUCCESSORS = new Map([
   ['Scanner', '8317b4c2bd0ee0a90b7df4b2fe64b3489ebd6a99'],
   ['Prisma', 'cb55c5a9e78cb7f80c8295a0387bb82cb0af8494'],
   ['cashier/customer/mobile business', '8fdf9b310a9b23e1e3c9e02cf88ec2790a9f879c'],
+])
+
+// Four independent historical anchors take effect only in the exact,
+// newly authorized software-closure composition.
+const SOFTWARE_CLOSURE_FOUNDATION_SUCCESSORS = new Map([
+  ['Scanner', '5211e38dd2d3c1636f76673ab3dd2816a9657b12'],
+  ['Prisma', '52bdd9836327505623177b4624920fb6d0a277ed'],
+  ['Payment', '52bdd9836327505623177b4624920fb6d0a277ed'],
+  ['cashier/customer/mobile business', '5211e38dd2d3c1636f76673ab3dd2816a9657b12'],
 ])
 
 function parseArgs(argv) {
@@ -423,27 +435,51 @@ async function runPolicy(options) {
 
   const baseline = options.baseline ?? BASELINE_FREEZE_TAG
   const allowAuthorizedSuccessors = options.baseline == null
+  const usb = allowAuthorizedSuccessors ? readUsbFrontSuccessor(repoRoot) : null
+  const unified = allowAuthorizedSuccessors && !usb ? readUnifiedPrintSuccessor(repoRoot) : null
+  const directShift = allowAuthorizedSuccessors ? readDirectShiftSuccessor(repoRoot) : null
   const frozenBoundary = []
   for (const group of FROZEN_BOUNDARY_GROUPS) {
     const changed = git(['diff', '--name-only', baseline, '--', ...group.paths])
       .split('\n')
       .filter(Boolean)
-    const successorSnapshot = allowAuthorizedSuccessors ? FROZEN_BOUNDARY_SUCCESSORS.get(group.label) : undefined
+    const directSnapshot = directShift?.foundationSnapshot(group.label, group.paths)
+    const softwareClosureSnapshot = (unified?.allowsFoundationHistory() || directSnapshot)
+      ? SOFTWARE_CLOSURE_FOUNDATION_SUCCESSORS.get(group.label)
+      : undefined
+    // The current main already contains the exact shift-report Cashier
+    // successor. Use that subtree only under the separately approved resumption.
+    const resumedCashierSnapshot = group.label === 'cashier/customer/mobile business'
+      ? unified?.resumedCashierSnapshot()
+      : undefined
+    const successorSnapshot = allowAuthorizedSuccessors
+      ? (group.label === 'cashier/customer/mobile business'
+        ? (directSnapshot === '304c03695bf904b5e179da8e19de2275eec9ea13'
+          ? '332137496dd3578a0a8eb3fcc83e5e835f52aae1' : directSnapshot) ?? resumedCashierSnapshot
+        : undefined) ?? softwareClosureSnapshot ?? FROZEN_BOUNDARY_SUCCESSORS.get(group.label)
+      : undefined
     const matchesAuthorizedSuccessor =
       changed.length > 0 &&
       successorSnapshot != null &&
       gitIsAncestor(successorSnapshot, 'HEAD') &&
       git(['diff', '--name-only', successorSnapshot, '--', ...group.paths]) === ''
+    const exactUsb = usb?.evaluateReleaseGroup(group.label, successorSnapshot ?? baseline, group.paths)
+    const exactStartup = unified?.admitsStartup(group.label, successorSnapshot, group.paths) ||
+      (group.label === 'main startup gate' && Boolean(directSnapshot))
     frozenBoundary.push({
       label: group.label,
-      status: changed.length === 0 || matchesAuthorizedSuccessor ? 'PASS' : 'FAIL',
+      status: changed.length === 0 || matchesAuthorizedSuccessor || exactUsb?.admitted || exactStartup ? 'PASS' : 'FAIL',
+      ...(exactStartup ? { unifiedPrintSuccessor: 'EXACT_STARTUP_GATE' } : {}),
+      ...(exactUsb ? { usbFrontHistoricalPaths: exactUsb.paths } : {}),
       changed,
       ...(matchesAuthorizedSuccessor ? { authorizedSuccessorSnapshot: successorSnapshot } : {}),
     })
   }
   const failed = frozenBoundary.filter((group) => group.status !== 'PASS')
   if (failed.length > 0) {
-    throw new Error(`frozen boundary changed: ${failed.map((group) => group.label).join(', ')}`)
+    const details = frozenBoundary.flatMap(group => (group.usbFrontHistoricalPaths ?? [])
+      .map(({ path, status }) => `ES-PRINT-USB-BASELINE-01 ${status} ${path}`))
+    throw new Error([`frozen boundary changed: ${failed.map((group) => group.label).join(', ')}`, ...details].join('\n'))
   }
 
   return {
@@ -842,8 +878,37 @@ async function verifyManifests(options) {
   }
 }
 
+function runNativeInventoryM1SourcePolicy(args) {
+  const rehearsal = args.length === 1 && args[0] === '--rehearsal'
+  if (args.length && !rehearsal) throw new Error('usage: m1-source-policy [--rehearsal]')
+  const { readNativeInventoryM1Successor, verifyNativeInventoryM1Remote } =
+    require('../../scripts/governance/es-native-inventory-m1-successor.cjs')
+  const successor = readNativeInventoryM1Successor(repoRoot)
+  if (!successor) throw new Error('M1 exact frozen successor is not active on this checkout')
+  const frozenGroups = FROZEN_BOUNDARY_GROUPS.map(({ label, paths }) => ({
+    label,
+    changed: [...successor.corePaths].filter(path =>
+      paths.some(prefix => path === prefix || path.startsWith(prefix + '/'))).sort(),
+  })).filter(group => group.changed.length)
+  const labels = frozenGroups.map(group => group.label).sort()
+  const expected = ['Prisma', 'Payment', 'Scanner', 'cashier/customer/mobile business'].sort()
+  if (JSON.stringify(labels) !== JSON.stringify(expected)) throw new Error('M1 exact frozen groups do not match')
+  if (!rehearsal) verifyNativeInventoryM1Remote(repoRoot, successor)
+  return {
+    mode: rehearsal ? 'NON_PRODUCTION_M1_REHEARSAL' : 'NON_PRODUCTION_M1_SOURCE_POLICY',
+    result: 'PASS',
+    registrationSha: successor.registrationSha,
+    cashierHash: successor.cashierHash,
+    frozenGroups,
+  }
+}
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2)
+  if (command === 'm1-source-policy') {
+    console.log(JSON.stringify(runNativeInventoryM1SourcePolicy(rest), null, 2))
+    return
+  }
   const options = parseArgs(rest)
   let result
   if (command === 'policy') {
@@ -855,7 +920,7 @@ async function main() {
   } else if (command === 'verify') {
     result = await verifyManifests(options)
   } else {
-    throw new Error(`usage: release-foundation.mjs <policy|source-policy|write|verify> [options]`)
+    throw new Error(`usage: release-foundation.mjs <policy|source-policy|m1-source-policy|write|verify> [options]`)
   }
   console.log(JSON.stringify(result, null, 2))
 }

@@ -1,0 +1,13 @@
+{
+  "failedTestNames": [
+    "V2_ACTIVE never creates an H5 job and recovery remains visible",
+    "expired intent is visible and removed from the actionable set",
+    "recovery advances beyond ten pages and keeps renderer-blocked intents visible",
+    "recovery persists a retry backoff for a bad row instead of leaving it at the queue head"
+  ],
+  "summary": [
+    "\u2139 tests 39",
+    "\u2139 pass 35",
+    "\u2139 fail 4"
+  ]
+}

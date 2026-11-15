@@ -1,5 +1,6 @@
 import { after, NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { lockOrderSettlement, orderRecordStore } from '@/lib/order-settlement-lock'
 import { getContext } from '@/lib/context'
 import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
 
@@ -24,33 +25,33 @@ export async function POST(
     return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
   }
 
-  if (pi.status !== 'PENDING') {
-    return NextResponse.json(
-      { error: 'INVALID_STATE', status: pi.status },
-      { status: 422 },
-    )
-  }
+  const result = await prisma.$transaction(async (tx) => {
+    await lockOrderSettlement(tx, pi.tenantId, pi.orderNo)
+    const current = await tx.paymentIntent.findUniqueOrThrow({ where: { id: paymentId }, select: { status: true } })
+    const storeId = await orderRecordStore(tx, pi)
+    if (!storeId || (ctx.role === 'STAFF' && ctx.storeId !== storeId)) return { scopeDenied: true }
+    if (current.status !== 'PENDING') return { status: current.status }
+    const scope = { tenantId: pi.tenantId, storeId, orderNo: pi.orderNo }
+    const paidAt = new Date()
+    await tx.paymentIntent.update({ where: { id: paymentId }, data: { status: 'PAID', paidAt } })
+    // Direct retail lines are already COMPLETED; only deferred rows transition.
+    const changed = await tx.saleRecord.updateMany({
+      where: { ...scope, status: 'PENDING_PAYMENT' }, data: { status: 'COMPLETED' },
+    })
+    return { paidAt, pendingRecordCount: changed.count, storeId }
+  })
+  if ('scopeDenied' in result) return ctx.role === 'STAFF'
+    ? NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+    : NextResponse.json({ error: 'ORDER_SCOPE_MISMATCH' }, { status: 409 })
+  if ('status' in result) return NextResponse.json({ error: 'INVALID_STATE', status: result.status }, { status: 422 })
 
-  const [updated, pendingTransition] = await prisma.$transaction([
-    prisma.paymentIntent.update({
-      where: { id: paymentId },
-      data: { status: 'PAID', paidAt: new Date() },
-    }),
-    // Deferred orders: KHQR confirm transitions PENDING_PAYMENT → COMPLETED
-    // Direct retail orders: records are already COMPLETED, updateMany is a no-op
-    prisma.saleRecord.updateMany({
-      where: { orderNo: pi.orderNo, tenantId: ctx.tenantId, status: 'PENDING_PAYMENT' },
-      data: { status: 'COMPLETED' },
-    }),
-  ])
-
-  if (pendingTransition.count > 0) {
+  if (result.pendingRecordCount > 0) {
     after(() => notifyCashierGateway({
       tenantId: pi.tenantId,
-      storeId: pi.storeId,
+      storeId: result.storeId,
       type: 'pending_orders_changed',
     }))
   }
 
-  return NextResponse.json({ id: updated.id, status: updated.status, paidAt: updated.paidAt })
+  return NextResponse.json({ id: paymentId, status: 'PAID', paidAt: result.paidAt })
 }

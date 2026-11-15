@@ -1,0 +1,48 @@
+{
+  "status": "SEALED_DRAFT_NOT_ACTIVE_NOT_RUNTIME_AUTHORIZATION",
+  "admissionId": "ES-DIAMOND-V3-EXPIRE-TIMEOUT-COMPENSATION-01",
+  "scope": {
+    "tenantId": "cmvulpn2e000006jvsqrt3y2n",
+    "storeId": "cmvulpn8r000106jvpo58kye4",
+    "storeCode": "ST883DC00C",
+    "deviceId": "cmvyx1jes000208l14t5vf9ur",
+    "jobIds": [
+      "cmw0jlsme000v08kzgyiybcqg",
+      "cmw0k7dgw001c08kz5xirfxzv",
+      "cmw0kwwta001v08jv6q6rl2f4"
+    ]
+  },
+  "originalReview": {
+    "id": "cmw53mwgf000108i4xv786pi5",
+    "requestId": "5937c41d-ccdb-487c-82bd-645d07f38d9f",
+    "reviewerId": "cmnko00l2000004juew5h2djr",
+    "storedPayloadSha256": "454fba878535554acebf4ba8d47ed57d338b7abaf59b47683ce8c85181f573fe"
+  },
+  "failure": {
+    "requestId": "a890b5c7-ee21-4458-99cc-8abdc978fd80",
+    "logId": "85xn9-1793977117530-8f1feb2fca13",
+    "deploymentId": "dpl_752r158kNqz3WwX1ixPjeGqYHaEn",
+    "logSha256": "10e59f70b711a885a538f55332b4c12f964ff39d950c81a02de9737eb837c54f",
+    "code": "HTTP500_P2028_EXPIRED_INTERACTIVE_TRANSACTION",
+    "budgetMs": 5000,
+    "observedMs": 5775,
+    "rollbackConfirmedAt": "2026-11-06T15:02:50.681800Z"
+  },
+  "fence": {
+    "expectedStateVersion": 696,
+    "ownerEpoch": 1,
+    "releasedAt": "2026-11-03T11:42:48.649Z",
+    "releasedBatchId": "cmw0mbrad001h07l61ak5u0yy"
+  },
+  "authority": {
+    "founderExactContentApproval": null,
+    "approvedProductSha": null,
+    "notBefore": null,
+    "expiresAt": null,
+    "newReviewUses": 1,
+    "freshCaptureRequired": true,
+    "oldCaptureReusable": false,
+    "silentGrantResetPermitted": false
+  },
+  "implementation": "PROPOSAL_ONLY_NO_NEW_API_OR_ONE_USE_CODE_IN_THIS_CANDIDATE"
+}

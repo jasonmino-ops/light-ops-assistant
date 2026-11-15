@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -99,17 +100,54 @@ describe('EP-MB3-07A release foundation policy', () => {
   it('accepts only the exact authorized frozen-boundary successor bytes', () => {
     const output = runReleaseFoundation(['policy'])
     const result = JSON.parse(output)
-    const authorized = result.frozenBoundary
+    const authorized: { label: string; snapshot: string }[] = result.frozenBoundary
       .filter((group: { authorizedSuccessorSnapshot?: string }) => group.authorizedSuccessorSnapshot)
       .map((group: { label: string; authorizedSuccessorSnapshot: string }) => ({
         label: group.label,
         snapshot: group.authorizedSuccessorSnapshot,
       }))
 
-    expect(authorized).toEqual([
-      { label: 'ActivationRuntime', snapshot: '227146b9e215e1441082c04e8941de8611592226' },
-      { label: 'main startup gate', snapshot: '227146b9e215e1441082c04e8941de8611592226' },
+    const cashierDigest = createHash('sha256')
+      .update(readFileSync(join(repositoryRoot, 'app/cashier/page.tsx'))).digest('hex')
+    const expectedCashierSnapshotByDigest = new Map([
+      ['8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6', '5211e38dd2d3c1636f76673ab3dd2816a9657b12'],
+      ['5698c31fb723a498ba3b4775aca4d547ff6d80cb201e2d9a6124e3f70d9e251f', '332137496dd3578a0a8eb3fcc83e5e835f52aae1'],
     ])
+    if (cashierDigest === '5c00b6d10ee6deb79b9574cf0d0bcfe9d18c6d7456fcd2adbca3af8265b9320c') {
+      const exactProduct = execFileSync('git', ['log', '-1', '--format=%H', '--', 'app/cashier/page.tsx'], {
+        cwd: repositoryRoot, encoding: 'utf8',
+      }).trim()
+      expectedCashierSnapshotByDigest.set(cashierDigest, exactProduct)
+    }
+    expect(expectedCashierSnapshotByDigest.has(cashierDigest)).toBe(true)
+    expect(authorized.filter(({ label }) => label !== 'main startup gate')).toEqual([
+      { label: 'ActivationRuntime', snapshot: '227146b9e215e1441082c04e8941de8611592226' },
+      { label: 'Prisma', snapshot: '52bdd9836327505623177b4624920fb6d0a277ed' },
+      { label: 'Payment', snapshot: '52bdd9836327505623177b4624920fb6d0a277ed' },
+      { label: 'Scanner', snapshot: '5211e38dd2d3c1636f76673ab3dd2816a9657b12' },
+      { label: 'cashier/customer/mobile business', snapshot: expectedCashierSnapshotByDigest.get(cashierDigest) },
+    ])
+    const startupPath = 'desktop/src/main/main.ts'
+    const startupDigest = createHash('sha256').update(readFileSync(join(repositoryRoot, startupPath))).digest('hex')
+    const expectedStartupByDigest = new Map([
+      // Startup snapshot 227146b9.
+      ['ae6dc84429ccb32e79586c7d92dda451465af6bfac86ae4dd6e9f8e5cd4ea2a9', {
+        label: 'main startup gate',
+        status: 'PASS',
+        changed: [startupPath],
+        authorizedSuccessorSnapshot: '227146b9e215e1441082c04e8941de8611592226',
+      }],
+      // Exact unified product a8c13b2d, additionally requiring the startup admission marker.
+      ['d107112f589beb9a08c426e5aeff48bb659670f604e93960ce24d50022d92664', {
+        label: 'main startup gate',
+        status: 'PASS',
+        changed: [startupPath],
+        unifiedPrintSuccessor: 'EXACT_STARTUP_GATE',
+      }],
+    ])
+    expect(expectedStartupByDigest.has(startupDigest)).toBe(true)
+    expect(result.frozenBoundary.filter((group: { label: string }) => group.label === 'main startup gate'))
+      .toEqual([expectedStartupByDigest.get(startupDigest)])
     expect(() => runReleaseFoundation([
       'policy',
       '--baseline',

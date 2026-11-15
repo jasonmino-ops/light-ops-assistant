@@ -1,0 +1,82 @@
+{
+  "taskId": "ES-DIAMOND-V3-EXPIRE-TIMEOUT-RECOVERY-01",
+  "steering": "ES-DIAMOND-V3-BUSINESS-CONTINUITY-01",
+  "productCandidate": "ca7e04ec9d600e568d29258f1e0dc9879c96a72c",
+  "parentMain": "c1041533abca99657edc09c2e69e2c18d9df13d5",
+  "production": "9e717439569c0485c703367b668b31ed8a7505e6",
+  "deploymentId": "dpl_752r158kNqz3WwX1ixPjeGqYHaEn",
+  "lineage": "CONTENT_SUBSET PASS; STRICT ancestry NO",
+  "productFiles": {
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts": "b8f770327615e1e0f258ce2e5eb0e026340d5ef3572f3d82a66bea23d037978a",
+    "tests/v3-print-control-plane-service.test.ts": "1c62c5e32a3adee1ef7db7be091f9f70175f2290cf54a2f06cf595736c66cb64"
+  },
+  "changes": [
+    "EXPIRE-only transaction10000ms",
+    "one guarded CAS batch retains alloldperrowpredicates/countcheck andmandatoryauditatomicity"
+  ],
+  "unchanged": [
+    "all REVIEW policy/timeouts",
+    "oldone-use authorization",
+    "SUPER_ADMIN/OPS roles",
+    "capture clocks/identity/HMAC/fence/lease/owner",
+    "mode transitions andDesktop",
+    "schema/migration/globalPrisma/locks/financialcode"
+  ],
+  "tests": {
+    "targeted": {
+      "total": 124,
+      "pass": 124,
+      "fail": 0,
+      "skip": 0,
+      "rawSha256": "5bed6569c91a41fadd78184279fd0fa71e27ae1fc63c9bedc16588f5e4796423"
+    },
+    "typescript": "PASS",
+    "build": "PASS",
+    "scope": "PASS",
+    "core": {
+      "status": "BLOCKED",
+      "counts": {
+        "expected": 103,
+        "collected": 103,
+        "executed": 103,
+        "passed": 101,
+        "failed": 2,
+        "knownFailures": 0,
+        "newFailures": 2,
+        "recoveredFailures": 1,
+        "knownEnvironmentBlocked": 0,
+        "skipped": 0,
+        "uncollected": 0,
+        "environmentFailures": 0
+      },
+      "summarySha256": "c146d65f16ecbec7d47013cbe4388f65f2bb0931091114ee3c35771cae90cace",
+      "baselineComparison": "Cashier baseline PASS / candidate FAIL (new exact admission failure); customer-order-recovery baseline FAIL / candidate FAIL (unstubbed DB read)"
+    }
+  },
+  "originalFailureLogSha256": "10e59f70b711a885a538f55332b4c12f964ff39d950c81a02de9737eb837c54f",
+  "compensationProposalSha256": "070284dda522ae71a3f08d746f0b3276f780017c0c5307e90aa0056e0c901f66",
+  "compensationRuntimeImplemented": false,
+  "compensationActive": false,
+  "productionDeployOrRecoveryAuthorized": false,
+  "review": {
+    "status": "PASS",
+    "scope": "technical L3 code only; release/recovery NOT READY",
+    "productCandidate": "ca7e04ec9d600e568d29258f1e0dc9879c96a72c",
+    "governanceSnapshot": "6f8a7a76ff67bb155a2dbd8c44d7fd21eb3a14ea",
+    "rawSha256": "cc7fc6afb3567aab54d128d2ad875cb168606680ee24947b93783d06aa12781c",
+    "freshContext": true,
+    "filesModified": false,
+    "externalActions": false
+  },
+  "latestReadOnlyStatus": {
+    "at": "2026-11-06T15:26:51.918853Z",
+    "mode": "BLOCKED_UNKNOWN",
+    "stateVersion": 696,
+    "owner": null,
+    "leasePresent": false,
+    "historicalJobs": "3 PENDING / expired / zero attempts and claims",
+    "validHeldFront": 21,
+    "kitchen": 0,
+    "executionOrDeploymentPerformed": false
+  }
+}

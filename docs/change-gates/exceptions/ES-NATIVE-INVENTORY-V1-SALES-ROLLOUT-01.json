@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "taskId": "ES-NATIVE-INVENTORY-V1-SALES-ROLLOUT-01",
+  "featureBranch": "codex/es-native-inventory-sales-rollout",
+  "baseOriginMainSha": "24528f1e346b2c83913bdfa0a841b5e0ca6a6fd4",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "reason": "Exact two-file Prisma scope for the sealed 11-file native inventory sales rollout candidate. Development branch commit, push and Cloud CI only. No Production deployment, Production migration, store enablement or Diamond Sheets change.",
+  "approvalSource": "Founder instruction 2026-11-15T06:30Z naming candidate tree 50ee7db6f640d9a7cc6b22e81280769faae1d4fa and approval package release-approval.tar.gz SHA-256 16ad90a3771d07846cfce7d888b8b2f23a3746b487e99a8cd7be147d28834bfd",
+  "sealedCandidatePatchSha256": "18728415d76510b19ed18f570463d2e9985547cac61d6cd64e33061b480811aa",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "status": "CLOSED",
+  "approvedBy": "Founder",
+  "closeAfter": "FEATURE_MERGE",
+  "createdAt": "2026-11-15T06:30:00Z",
+  "approvedAt": "2026-11-15T06:30:00Z",
+  "authorizedPaths": [
+    "prisma/migrations/20261115120000_separate_native_inventory_sales/migration.sql",
+    "prisma/schema.prisma"
+  ],
+  "authorizedPathSha256": {
+    "prisma/migrations/20261115120000_separate_native_inventory_sales/migration.sql": "ce2105e55ec065c0932c1566304208c82c65a99b54e8fa4730a7adfaf08dba6a",
+    "prisma/schema.prisma": "485e160deb84909a3cebb8f94a6bb68c6d7e6bd61f79aa5cd57426a5a15e4634"
+  },
+  "closedAt": "2026-11-15T06:51:42Z",
+  "featureMergeCommitSha": "3243b3cad4632da4905d77b0f2a00c8c46fee853"
+}

@@ -2,6 +2,8 @@ import { after, NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { inventoryDisplayedCurrency, recordInventoryOrderCurrency } from '@/lib/native-inventory/order-currency'
+import { nativeInventoryAvailable } from '@/lib/native-inventory/rollout'
 import { sendAndLogMessage } from '@/lib/telegram'
 import {
   cleanTrackingText,
@@ -60,8 +62,8 @@ function submissionConflict(error: unknown): 'KEY' | 'ORDER_NO' | null {
   return null
 }
 
-function replaySubmission(row: { submissionHash: string | null; submissionVersion: number | null; submissionResponse: Prisma.JsonValue; orderNo: string }, hash: string) {
-  if (row.submissionHash !== hash || row.submissionVersion !== 1) throw new SubmissionError(409, 'IDEMPOTENCY_KEY_CONFLICT')
+function replaySubmission(row: { submissionHash: string | null; submissionVersion: number | null; submissionResponse: Prisma.JsonValue; orderNo: string }, hash: string, priorCurrencyHash: string | null) {
+  if (!row.submissionHash || (row.submissionHash !== hash && row.submissionHash !== priorCurrencyHash) || row.submissionVersion !== 1) throw new SubmissionError(409, 'IDEMPOTENCY_KEY_CONFLICT')
   const receipt = row.submissionResponse
   if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)
     || receipt.orderNo !== row.orderNo || typeof receipt.totalAmount !== 'number') {
@@ -158,18 +160,25 @@ export async function POST(req: NextRequest) {
     const landingCampaign = cleanTrackingText(raw.campaign, 120)
     const landingVisitorId = cleanVisitorId(raw.visitorId)
     const lang = pickLang(raw.lang), T = MSG[lang]
+    // Preserve the production v1 identity across rollout and rollback.
     const normalized = { version: 1, storeCode, items, tableNo, remark, customerTelegramId: trimmedTgId,
       couponId, pickupMethod, customerName, customerPhone, deliveryAddress, deliveryNote, deliveryLat, deliveryLng,
       deliveryAddressPhotoUrl, campaignCode: rawCampaignCode, campaignIntent: rawCampaignIntent,
       orderSource, source: landingSource, campaign: landingCampaign, visitorId: landingVisitorId, lang }
     const hash = createHash('sha256').update(JSON.stringify(normalized), 'utf8').digest('hex')
+    const inventoryAvailable = nativeInventoryAvailable()
+    const claimedCurrency = typeof raw.displayedCurrency === 'string' ? raw.displayedCurrency.trim() : ''
+    const { version, storeCode: normalizedStore, ...orderFields } = normalized
+    const priorCurrencyHash = /^[A-Z]{3}$/.test(claimedCurrency)
+      ? createHash('sha256').update(JSON.stringify({ version, storeCode: normalizedStore, displayedCurrency: claimedCurrency, ...orderFields }), 'utf8').digest('hex')
+      : null
     const store = await prisma.store.findUnique({
       where: { code: storeCode }, select: { id: true, name: true, code: true, status: true, tenantId: true },
     })
     if (!store) throw new SubmissionError(404, 'STORE_NOT_FOUND', T.storeNotFound)
     const whereKey = { tenantId_storeId_submissionKey: { tenantId: store.tenantId, storeId: store.id, submissionKey: key } }
     const existing = await prisma.customerOrder.findUnique({ where: whereKey })
-    if (existing) return NextResponse.json(replaySubmission(existing, hash))
+    if (existing) return NextResponse.json(replaySubmission(existing, hash, priorCurrencyHash))
 
     // Attribution is optional and outside the short transaction. SQL failures must
     // not be caught inside a PostgreSQL transaction and then treated as recoverable.
@@ -191,9 +200,20 @@ export async function POST(req: NextRequest) {
       await tx.$queryRaw`SELECT set_config('lock_timeout', '3000', true)`
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint) IS NULL AS locked`
       const prior = await tx.customerOrder.findUnique({ where: whereKey })
-      if (prior) return { kind: 'REPLAY' as const, receipt: replaySubmission(prior, hash) }
+      if (prior) return { kind: 'REPLAY' as const, receipt: replaySubmission(prior, hash, priorCurrencyHash) }
       const currentStore = await tx.store.findFirst({ where: { id: store.id, tenantId: store.tenantId, code: storeCode } })
       if (!currentStore || currentStore.status !== 'ACTIVE') throw new SubmissionError(404, 'STORE_NOT_FOUND', T.storeNotFound)
+      const displayedCurrency = inventoryAvailable ? claimedCurrency || null : null
+      if (inventoryAvailable) {
+        const [inventory] = await tx.$queryRaw<{ active: boolean }[]>`
+          SELECT native_inventory.pin_sales_epoch(${store.tenantId}, ${store.id}) IS NOT NULL AS active
+        `
+        if (inventory.active) {
+          if (raw.displayedCurrency != null && (typeof raw.displayedCurrency !== 'string' ||
+              (displayedCurrency && !/^[A-Z]{3}$/.test(displayedCurrency)))) throw new SubmissionError(400, 'INVALID_CURRENCY')
+          if (displayedCurrency && displayedCurrency !== currentStore.currencyCode) throw new SubmissionError(409, 'ORDER_CURRENCY_CHANGED')
+        }
+      }
       if (pickupMethod === 'delivery' && (!customerPhone || !deliveryAddress)) throw new SubmissionError(400, 'DELIVERY_INFO_REQUIRED', '请填写联系电话和送货/上门地址')
 
       const products = await tx.product.findMany({
@@ -240,6 +260,10 @@ export async function POST(req: NextRequest) {
       const receipt = { orderNo, totalAmount: payableAmount, subtotal, discountAmount, payableAmount, coupon: couponSnapshot,
         itemCount: items.reduce((n, i) => n + i.quantity, 0), message: T.submitted,
         labels: { submitted: T.submitted, orderNo: T.orderNo, total: T.total, statusPending: T.statusPending }, lang }
+      await recordInventoryOrderCurrency(tx, {
+        tenantId: store.tenantId, storeId: store.id, kind: 'H5',
+        currencyCode: inventoryDisplayedCurrency(displayedCurrency, currentStore.currencyCode),
+      })
       const created = await tx.customerOrder.create({ data: {
         tenantId: store.tenantId, storeId: store.id, storeCode: store.code, orderNo,
         submissionKey: key, submissionHash: hash, submissionVersion: 1, submissionResponse: receipt,
@@ -269,7 +293,7 @@ export async function POST(req: NextRequest) {
         if (conflict) {
           // The rejected transaction has ended. Never query inside an aborted tx.
           const prior = await prisma.customerOrder.findUnique({ where: whereKey })
-          if (prior) return NextResponse.json(replaySubmission(prior, hash))
+          if (prior) return NextResponse.json(replaySubmission(prior, hash, priorCurrencyHash))
           if (conflict === 'ORDER_NO' && attempt < 2) continue
           throw new SubmissionError(503, 'SUBMISSION_RETRY_SAME_KEY')
         }

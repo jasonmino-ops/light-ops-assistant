@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-PRINT-UNIFIED-INTEGRATION-01",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "reviewedBy": "Claude",
+  "registrationCommit": "948d31b396602a18e515e7fab1cf629491b0a9b3",
+  "executableCommit": "49f731e76a50d92ed97ed02cf5660ff323f996b4",
+  "productCommit": "a8c13b2da80ce3311945cb6ad3f4ab1672c7b044",
+  "productTree": "85a84d6a888421bfadb5e7e6813edb3fd54961e2",
+  "requestSha256": "434e725b7c4cf2935db64e33a8dbb3f7dbba193ed29f1ca3b82e51dd68bbb3cc",
+  "reviewSha256": "b04a75749f235ea56c7ecd819746aed0345e653f9f4a1e818965a27721785b66",
+  "deadlineExclusive": "2026-11-18T16:00:00Z",
+  "executablePathsSha256": {
+    "desktop/scripts/release-foundation.mjs": "a2a50d83feb4373d406fd81782a9dfc886e224e75ff5f993532bb91945d15d3a",
+    "scripts/governance/es-print-unified-integration-01.cjs": "955fbdc6e82839ab1a9135c2a085449f4c5f4873171fc7e694a6c807244029dc",
+    "scripts/governance/es-print-unified-successor.test.cjs": "498e2e5bfb95961d345457d5be8a15518505c83778db0d9d8ab41a7dc9d776d5",
+    "tests/cashier-realtime-integration.test.ts": "7cdb477bc1957232f5bb02d3cfe541e8165466c467f52b8671f52037b4c9b585"
+  }
+}

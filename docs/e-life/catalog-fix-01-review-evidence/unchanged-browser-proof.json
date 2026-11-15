@@ -1,0 +1,26 @@
+{
+  "app/menu/page.tsx": {
+    "main": "94a72b90a093c33c86dd889962bf62e0f36eedfa",
+    "candidateWorktreeUnchanged": true
+  },
+  "app/electronic-menu/page.tsx": {
+    "main": "5fbe4e54a113752ab0ffacd576fceb17c7a7f042",
+    "candidateWorktreeUnchanged": true
+  },
+  "lib/electronic-menu.ts": {
+    "main": "38d6b0ab3355bbf8a5c24b8235135f746faf82e1",
+    "candidateWorktreeUnchanged": true
+  },
+  "tests/electronic-menu.browser.spec.ts": {
+    "main": "6f9a0d899543fa9b3907cb5dca2148d53d98de54",
+    "candidateWorktreeUnchanged": true
+  },
+  "legacyFailure": {
+    "test": "anonymous display paginates all products, refreshes, survives temporary errors and clears a disabled store",
+    "expectedRows": 12,
+    "actualRows": 28,
+    "apiIntercepted": true,
+    "modifiedLoaderReached": false,
+    "status": "Existing UI/test timing failure; no baseline Build/browser rerun claimed"
+  }
+}

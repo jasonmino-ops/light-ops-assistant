@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "activationCondition": "EXACT_FOUNDER_APPROVAL_BEFORE_CANONICAL_MAIN_INTEGRATION",
+  "sourceBaseSha": "db16177d311dc6b070f98f5dc2ebb8048c9e5957",
+  "releaseBaseSha": "1f33d03bcba0bc5d2173be7afe0e3cb0694345c8",
+  "verifierSha256": {
+    "scripts/governance/es-native-inventory-m1-main-successor.cjs": "b1b6b341d752f25b5ab5befeed968b0ae5b304403caabcd10015d23606288638",
+    "scripts/governance/es-native-inventory-sales-rollout-successor.cjs": "55ec323a81e24fc7a0ad43a1d61afc1b05cdb73af05ee831ed792ee8bbb5f364"
+  }
+}

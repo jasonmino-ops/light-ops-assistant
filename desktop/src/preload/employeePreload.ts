@@ -24,6 +24,7 @@ const EMPLOYEE_FULLSCREEN_STATE_CHANNEL = 'eshop:employee-fullscreen:state'
 const POS_SESSION_TAKE_CHANNEL = 'eshop:pos-session:take'
 const V3_PRINT_SUBMIT_CHANNEL = 'eshop:v3-print:submit'
 const V3_OPERATOR_RECOVERY_PROOF_GET_CHANNEL = 'eshop:v3-print:operator-recovery-proof:get'
+const V3_PRINT_SETTINGS_CHANNEL = 'eshop:v3-print:settings'
 const NETWORK_PRINT_SETTINGS_OPEN_CHANNEL = 'eshop:network-print:settings:open'
 const WEB_REALTIME_BROADCAST_CHANNEL = 'light-ops:customer-display:realtime:v1'
 const DESKTOP_RELAY_FLAG = 'relayedByDesktop'
@@ -60,6 +61,10 @@ contextBridge.exposeInMainWorld('eshopV3Printing', Object.freeze({
 
 contextBridge.exposeInMainWorld('eshopDesktopPrintSettings', Object.freeze({
   open: () => ipcRenderer.invoke(NETWORK_PRINT_SETTINGS_OPEN_CHANNEL),
+}))
+
+contextBridge.exposeInMainWorld('eshopDesktopV3PrintSettings', Object.freeze({
+  request: (input: unknown) => ipcRenderer.invoke(V3_PRINT_SETTINGS_CHANNEL, input),
 }))
 
 type PosSessionPayload = {
