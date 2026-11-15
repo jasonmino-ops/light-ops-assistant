@@ -67,7 +67,7 @@ async function move(
   return applied
 }
 
-export async function listItems(person: InventoryPerson, query: string, exact = false, after?: string) {
+export async function listItems(person: InventoryPerson, query: string, exact = false, after?: string, db: Pick<Prisma.TransactionClient, 'nativeInventoryItem'> = prisma) {
   const scope = scopeFor(person)
   const match = exact ? { equals: query } : { contains: query, mode: 'insensitive' as const }
   const where = query ? {
@@ -77,7 +77,7 @@ export async function listItems(person: InventoryPerson, query: string, exact = 
       ...(!exact ? [{ product: { name: match } }, { materialName: match }, { productName: match }] : []),
     ],
   } : {}
-  const items = await prisma.nativeInventoryItem.findMany({
+  const items = await db.nativeInventoryItem.findMany({
     where: { ...scope, ...where, ...(after ? { id: { gt: after } } : {}) },
     include: itemIncludes,
     orderBy: { id: 'asc' },
@@ -497,19 +497,32 @@ export async function setReceiver(person: InventoryPerson, userId: string, enabl
   })
 }
 
-export async function listCatalog(person: InventoryPerson, query: string) {
+export async function listCatalog(person: InventoryPerson, query: string, page?: { after?: string }, db: Pick<Prisma.TransactionClient, 'product'> = prisma) {
   const contains = { contains: query, mode: 'insensitive' as const }
-  return prisma.product.findMany({
+  return db.product.findMany({
     where: {
       tenantId: person.tenantId,
       status: 'ACTIVE',
       OR: [{ name: contains }, { barcode: contains }],
       nativeInventoryItems: { none: scopeFor(person) },
+      ...(page?.after ? { id: { gt: page.after } } : {}),
     },
     select: { id: true, name: true, barcode: true },
-    orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    orderBy: page ? { id: 'asc' } : [{ name: 'asc' }, { id: 'asc' }],
     take: limit,
   })
+}
+
+export async function listStockOverview(person: InventoryPerson, query: string, includeCatalog: boolean, catalogAfter?: string) {
+  if (person.role !== 'OWNER' || !includeCatalog) {
+    return { items: await listItems(person, query), catalog: [], registeredCount: null }
+  }
+
+  return prisma.$transaction(async (tx) => ({
+    items: catalogAfter ? [] : await listItems(person, query, false, undefined, tx),
+    catalog: await listCatalog(person, query, { after: catalogAfter }, tx),
+    registeredCount: await tx.nativeInventoryItem.count({ where: { ...scopeFor(person), productId: { not: null } } }),
+  }), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead })
 }
 
 export async function listMovements(person: InventoryPerson, itemId?: string) {

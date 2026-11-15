@@ -272,6 +272,8 @@ const zh = {
     campaignDesc: '管理推广短链与活动',
     computerActivation: '电脑与桌面激活',
     computerActivationDesc: '审批收银电脑，生成桌面激活码',
+    inventoryDesktopOperator: '授权桌面库存操作员',
+    inventoryDesktopOperatorDesc: '输入已激活电脑上显示的配对码',
     printJobs: '打印任务记录',
     printJobsDesc: '只读查看网络打印任务',
     backToManagement: '返回管理中心',

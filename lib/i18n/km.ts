@@ -272,6 +272,8 @@ const km = {
     campaignDesc: 'គ្រប់គ្រងតំណផ្សព្វផ្សាយ និងយុទ្ធនាការ',
     computerActivation: 'កុំព្យូទ័រ និងការធ្វើឱ្យ Desktop សកម្ម',
     computerActivationDesc: 'អនុម័តកុំព្យូទ័រកាសា និងបង្កើតលេខកូដធ្វើឱ្យ Desktop សកម្ម',
+    inventoryDesktopOperator: 'អនុញ្ញាតអ្នកប្រតិបត្តិការស្តុកលើកុំព្យូទ័រ',
+    inventoryDesktopOperatorDesc: 'បញ្ចូលលេខកូដផ្គូផ្គងដែលបង្ហាញលើកុំព្យូទ័រដែលបានធ្វើឱ្យសកម្ម',
     printJobs: 'កំណត់ត្រាការងារបោះពុម្ព',
     printJobsDesc: 'មើលប្រវត្តិការងារបោះពុម្ពតាមបណ្តាញ (អានតែប៉ុណ្ណោះ)',
     backToManagement: 'ត្រឡប់ទៅមជ្ឈមណ្ឌលគ្រប់គ្រង',
