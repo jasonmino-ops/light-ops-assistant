@@ -1,5 +1,7 @@
 'use client'
 
+import { finishPosRequest, posRequestKey } from '@/lib/pos-request-client'
+
 import { useState, useEffect, useCallback, FormEvent } from 'react'
 import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
@@ -322,17 +324,21 @@ export default function RefundPage() {
     setSubmitState('submitting')
 
     try {
+      const payload = JSON.stringify({
+        saleType: 'REFUND',
+        originalSaleRecordId: item.saleRecordId,
+        refundQty: rQty,
+        refundReason: finalReason,
+        remark: remark.trim() || null,
+      })
+      const requestKey = await posRequestKey('POS_REFUND', payload)
       const res = await apiFetch('/api/sales', {
         method: 'POST',
-        body: JSON.stringify({
-          saleType: 'REFUND',
-          originalSaleRecordId: item.saleRecordId,
-          refundQty: rQty,
-          refundReason: finalReason,
-          remark: remark.trim() || null,
-        }),
+        headers: { 'Idempotency-Key': requestKey },
+        body: payload,
       })
       const body = await res.json()
+      finishPosRequest(requestKey, res)
       if (res.ok) {
         setResult({ ...body, productNameSnapshot: item.productNameSnapshot, quantity: rQty })
       } else {

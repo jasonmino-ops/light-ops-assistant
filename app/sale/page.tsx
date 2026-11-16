@@ -1,5 +1,7 @@
 'use client'
 
+import { finishPosRequest, posRequestKey } from '@/lib/pos-request-client'
+
 import { useState, useEffect, useRef, KeyboardEvent, useCallback } from 'react'
 import { apiFetch } from '@/lib/api'
 import BarcodeScanner from '@/app/components/BarcodeScanner'
@@ -1116,18 +1118,22 @@ export default function SalePage() {
     const cartSnapshot = [...cart]
 
     try {
+      const payload = JSON.stringify({
+        saleType: 'SALE',
+        paymentMethod: method,
+        items: cart.map((ci) => ({
+          barcode: ci.product.barcode,
+          quantity: ci.qty,
+        })),
+      })
+      const requestKey = await posRequestKey('TELEGRAM_SALE', payload)
       const res = await apiFetch('/api/sales', {
         method: 'POST',
-        body: JSON.stringify({
-          saleType: 'SALE',
-          paymentMethod: method,
-          items: cart.map((ci) => ({
-            barcode: ci.product.barcode,
-            quantity: ci.qty,
-          })),
-        }),
+        headers: { 'Idempotency-Key': requestKey },
+        body: payload,
       })
       const body = await res.json()
+      finishPosRequest(requestKey, res)
       if (res.ok) {
         setPayStep('none')
         setCart([])
@@ -1167,15 +1173,19 @@ export default function SalePage() {
     setStatus('submitting')
     const cartSnapshot = [...cart]
     try {
+      const payload = JSON.stringify({
+        saleType: 'SALE',
+        paymentMethod: 'DEFER',
+        items: cart.map((ci) => ({ barcode: ci.product.barcode, quantity: ci.qty })),
+      })
+      const requestKey = await posRequestKey('TELEGRAM_DEFER', payload)
       const res = await apiFetch('/api/sales', {
         method: 'POST',
-        body: JSON.stringify({
-          saleType: 'SALE',
-          paymentMethod: 'DEFER',
-          items: cart.map((ci) => ({ barcode: ci.product.barcode, quantity: ci.qty })),
-        }),
+        headers: { 'Idempotency-Key': requestKey },
+        body: payload,
       })
       const body = await res.json()
+      finishPosRequest(requestKey, res)
       if (res.ok) {
         setCart([])
         setDeferredOrder({ ...body, cartSnapshot })

@@ -10,6 +10,7 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { posRequestIdentity, replayPosRequest, writePosRequest } from '@/lib/pos-request-ledger'
 import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
@@ -55,6 +56,15 @@ export async function POST(req: NextRequest) {
   let body: any
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'INVALID_BODY' }, { status: 400 })
+  }
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'INVALID_BODY' }, { status: 400 })
+  }
+  let request
+  try { request = posRequestIdentity(req, body) } catch (error) {
+    if (error instanceof ProductUnitError) return NextResponse.json({ error: error.code }, { status: error.status })
+    throw error
   }
 
   const { storeCode, items, paymentMethod = 'CASH', manualPaymentConfirmed = false } = body as {
@@ -130,6 +140,17 @@ export async function POST(req: NextRequest) {
   if (!posAuth) {
     return unauthorizedPosResponse()
   }
+  const actor = { tenantId: store.tenantId, storeId: store.id, userId: posAuth.operatorUserId }
+  if (store.code === 'ST883DC00C' && request.key) {
+    try {
+      const replay = await replayPosRequest(prisma, actor, 'CASHIER_SALE', request)
+      if (replay !== null) return NextResponse.json(replay, { status: 201 })
+    } catch (error) {
+      if (error instanceof ProductUnitError) return NextResponse.json({ error: error.code, message: error.message }, { status: error.status })
+      throw error
+    }
+  }
+
   const desktopNetworkMode = desktopRequest
     ? await resolveDesktopNetworkMode({ tenantId: store.tenantId, storeId: store.id })
     : null
@@ -180,7 +201,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const writeSale = () => prisma.$transaction(async (tx) => {
+    const writeSale = async () => {
       const recordClock = new Date()
       // Preserve receipt order without backdating a line into a prior numbering or reporting day.
       const cambodiaOffsetMs = 7 * 3_600_000
@@ -192,6 +213,7 @@ export async function POST(req: NextRequest) {
       // Release the transaction before waiting at a day boundary. No numbers or rows have been written.
       if (lastLineMs > recordClock.getTime()) return { lineTimesReadyAt: lastLineMs } as const
 
+      return prisma.$transaction((tx) => writePosRequest(tx, actor, 'CASHIER_SALE', store.code, request, async () => {
       const orderNo = await generateRecordNo(tx, 'S', store.tenantId, store.id, store.code, recordClock)
       let totalAmount = 0
       const saleRecordData = saleLines.map((line, index) => {
@@ -299,18 +321,20 @@ export async function POST(req: NextRequest) {
         khqrFallback,
         ...(printing ? { printing } : {}),
       }
-    })
+      }))
+    }
 
     let result = await writeSale()
-    if (result.lineTimesReadyAt !== undefined) {
+    if ('lineTimesReadyAt' in result && result.lineTimesReadyAt !== undefined) {
       const remainingMs = result.lineTimesReadyAt - Date.now()
       if (remainingMs >= saleLines.length) throw new Error('SALE_RECORD_CLOCK_NOT_READY')
       if (remainingMs >= 0) await delay(remainingMs + 1)
       result = await writeSale()
-      if (result.lineTimesReadyAt !== undefined) throw new Error('SALE_RECORD_CLOCK_NOT_READY')
+      if ('lineTimesReadyAt' in result && result.lineTimesReadyAt !== undefined) throw new Error('SALE_RECORD_CLOCK_NOT_READY')
     }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
+    if (err instanceof ProductUnitError) return NextResponse.json({ error: err.code, message: err.message }, { status: err.status })
     console.error('[POST /api/cashier/sales]', err)
     return NextResponse.json({ error: 'INTERNAL_ERROR' }, { status: 500 })
   }

@@ -39,6 +39,17 @@ export async function GET(req: NextRequest) {
     select: { id: true, tenantId: true, code: true, status: true },
   })
   if (!store || store.status !== 'ACTIVE') return unavailable('PILOT_STORE_UNAVAILABLE')
+  if (store.code === 'ST883DC00C') {
+    try {
+      const [binding] = await prisma.$queryRaw<{ retired: boolean }[]>`
+        SELECT native_inventory.legacy_feed_retired(${store.id}) AS retired
+      `
+      if (binding?.retired) return unavailable('FEED_RETIRED')
+    } catch {
+      return unavailable('FEED_BINDING_UNAVAILABLE')
+    }
+  }
+
 
   const limit = parseFeedLimit(req.nextUrl.searchParams.get('limit'))
   const cursor = req.nextUrl.searchParams.get('cursor')?.trim() || null

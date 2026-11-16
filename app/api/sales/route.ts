@@ -1,6 +1,7 @@
 import { after, NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { posRequestIdentity, replayPosRequest, writePosRequest } from '@/lib/pos-request-ledger'
 import { getContext } from '@/lib/context'
 import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
@@ -48,11 +49,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_BODY' }, { status: 400 })
   }
 
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'INVALID_BODY' }, { status: 400 })
+  }
+  let request
+  try { request = posRequestIdentity(req, body) } catch (error) {
+    if (error instanceof ProductUnitError) return NextResponse.json({ error: error.code }, { status: error.status })
+    throw error
+  }
   const { saleType } = body
+  if (request.key && saleType === 'SALE') {
+    const store = await prisma.store.findFirst({
+      where: { id: ctx.storeId, tenantId: ctx.tenantId, code: 'ST883DC00C', status: 'ACTIVE' },
+      select: { id: true },
+    })
+    if (store) {
+      const operation = body.paymentMethod === 'DEFER' ? 'TELEGRAM_DEFER' : 'TELEGRAM_SALE'
+      try {
+        const replay = await replayPosRequest(prisma, ctx, operation, request)
+        if (replay !== null) return NextResponse.json(replay, { status: 201 })
+      } catch (error) {
+        if (error instanceof ProductUnitError) return NextResponse.json({ error: error.code, message: error.message }, { status: error.status })
+        throw error
+      }
+    }
+  }
 
-  if (saleType === 'SALE' && body.paymentMethod === 'DEFER') return handleDeferredSale(ctx, body)
-  if (saleType === 'SALE') return handleSale(ctx, body)
-  if (saleType === 'REFUND') return handleRefund(ctx, body)
+  if (saleType === 'SALE' && body.paymentMethod === 'DEFER') return handleDeferredSale(ctx, body, request)
+  if (saleType === 'SALE') return handleSale(ctx, body, request)
+  if (saleType === 'REFUND') return handleRefund(ctx, body, request)
 
   return NextResponse.json(
     { error: 'VALIDATION_ERROR', message: 'saleType must be SALE or REFUND' },
@@ -80,6 +105,7 @@ async function handleSale(
   ctx: { tenantId: string; userId: string; storeId: string },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   body: any,
+  request: ReturnType<typeof posRequestIdentity>,
 ) {
   const { items, paymentMethod = 'CASH' } = body as { items: CartItem[]; paymentMethod?: string }
 
@@ -160,7 +186,7 @@ async function handleSale(
   const totalAmount = saleLines.reduce((sum, line) => sum + line.lineAmount.toNumber(), 0)
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => writePosRequest(tx, ctx, 'TELEGRAM_SALE', store.code, request, async () => {
       // 生成第一条记录号，同时用作整单的 orderNo
       const orderNo = await generateRecordNo(tx, 'S', ctx.tenantId, ctx.storeId, store.code)
 
@@ -236,10 +262,11 @@ async function handleSale(
         khqrPayload,
         khqrImageUrl: khqrConfig?.khqrImageUrl ?? null,
       }
-    })
+    }))
 
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
+    if (err instanceof ProductUnitError) return NextResponse.json({ error: err.code, message: err.message }, { status: err.status })
     console.error('[POST /api/sales SALE]', err)
     return NextResponse.json({ error: 'INTERNAL_ERROR' }, { status: 500 })
   }
@@ -255,6 +282,7 @@ async function handleDeferredSale(
   ctx: { tenantId: string; userId: string; storeId: string },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   body: any,
+  request: ReturnType<typeof posRequestIdentity>,
 ) {
   const { items } = body as { items: CartItem[] }
 
@@ -303,7 +331,7 @@ async function handleDeferredSale(
   }
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => writePosRequest(tx, ctx, 'TELEGRAM_DEFER', store.code, request, async () => {
       const orderNo = await generateRecordNo(tx, 'S', ctx.tenantId, ctx.storeId, store.code)
 
       let totalAmount = 0
@@ -338,7 +366,7 @@ async function handleDeferredSale(
       }
 
       return { orderNo, totalAmount, itemCount: items.length, createdAt: firstCreatedAt!.toISOString() }
-    })
+    }))
 
     after(() => notifyCashierGateway({
       tenantId: store.tenantId,
@@ -348,6 +376,7 @@ async function handleDeferredSale(
 
     return NextResponse.json({ ...result, paymentMethod: 'DEFER' }, { status: 201 })
   } catch (err) {
+    if (err instanceof ProductUnitError) return NextResponse.json({ error: err.code, message: err.message }, { status: err.status })
     console.error('[POST /api/sales DEFER]', err)
     return NextResponse.json({ error: 'INTERNAL_ERROR' }, { status: 500 })
   }
@@ -359,6 +388,7 @@ async function handleRefund(
   ctx: { tenantId: string; userId: string; storeId: string },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   body: any,
+  request: ReturnType<typeof posRequestIdentity>,
 ) {
   const { originalSaleRecordId, refundQty, refundReason, remark } = body
 
@@ -396,7 +426,15 @@ async function handleRefund(
     typeof remark === 'string' && remark.trim() !== '' ? remark.trim() : null
 
   try {
-    const record = await prisma.$transaction(async (tx) => {
+    // Refunds journal against the original sale's store, even if an owner is
+    // working from another store in the same tenant.
+    const originalScope = await prisma.saleRecord.findFirst({
+      where: { id: originalSaleRecordId, tenantId: ctx.tenantId, saleType: 'SALE' },
+      select: { storeId: true, store: { select: { code: true } } },
+    })
+    const refundActor = originalScope ? { ...ctx, storeId: originalScope.storeId } : ctx
+    const refundStoreCode = originalScope?.store.code ?? store.code
+    const record = await prisma.$transaction(async (tx) => writePosRequest(tx, refundActor, 'POS_REFUND', refundStoreCode, request, async () => {
       const original = await tx.saleRecord.findFirst({
         where: {
           id: originalSaleRecordId,
@@ -501,19 +539,16 @@ async function handleRefund(
         },
       })
 
-      return refund
-    })
+      return {
+        id: refund.id,
+        recordNo: refund.recordNo,
+        saleType: refund.saleType,
+        lineAmount: refund.lineAmount.toNumber(),
+        createdAt: refund.createdAt.toISOString(),
+      }
+    }))
 
-    return NextResponse.json(
-      {
-        id: record.id,
-        recordNo: record.recordNo,
-        saleType: record.saleType,
-        lineAmount: record.lineAmount.toNumber(),
-        createdAt: record.createdAt.toISOString(),
-      },
-      { status: 201 },
-    )
+    return NextResponse.json(record, { status: 201 })
   } catch (err) {
     if (err instanceof ProductUnitError) {
       return NextResponse.json({ error: err.code, message: err.message, ...err.details }, { status: err.status })

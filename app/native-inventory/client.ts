@@ -142,19 +142,46 @@ export async function request<T>(resource: string, body?: object, signal?: Abort
   }
 }
 
-export function useInventory<T>(resource: string | null, refresh = 0) {
+export type InventoryReadCache<T> = Map<string, { data: T; expiresAt: number }>
+export const stockCacheLifetime = 20_000
+
+export function useInventory<T>(resource: string | null, refresh = 0, cache?: InventoryReadCache<T>) {
   const [response, setResponse] = useState<{ key: string; data?: T; error?: unknown }>()
   const key = resource && `${resource}#${refresh}`
+  const cached = key ? cache?.get(key) : undefined
+  const fresh = cached && cached.expiresAt > Date.now() ? cached : undefined
   useEffect(() => {
     if (!resource || !key) return
+    const entry = cache?.get(key)
+    if (entry && entry.expiresAt > Date.now()) return
     const controller = new AbortController()
     request<T>(resource, undefined, controller.signal).then(
-      (data) => { if (!controller.signal.aborted) setResponse({ key, data }) },
+      (data) => {
+        if (controller.signal.aborted) return
+        if (cache) {
+          cache.delete(key)
+          cache.set(key, { data, expiresAt: Date.now() + stockCacheLifetime })
+          const oldest = cache.keys().next().value
+          if (cache.size > 12 && oldest !== undefined) cache.delete(oldest)
+        }
+        setResponse({ key, data })
+      },
       (error) => { if (!controller.signal.aborted) setResponse({ key, error }) },
     )
     return () => controller.abort()
-  }, [key, resource])
+  }, [cache, key, resource])
+  if (fresh) return { data: fresh.data, error: undefined }
   return response?.key === key ? response : undefined
+}
+
+export function useInventoryQuery(query: string) {
+  const [settled, setSettled] = useState(query.trim())
+  const next = query.trim()
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(next), 140)
+    return () => clearTimeout(timer)
+  }, [next])
+  return settled
 }
 
 export function money(amount: string | number | null | undefined, currency: string) {

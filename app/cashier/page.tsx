@@ -1,5 +1,7 @@
 'use client'
 
+import { finishPosRequest, posRequestKey } from '@/lib/pos-request-client'
+
 import { Fragment, useState, useEffect, useLayoutEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import type { NetworkMode, NetworkRole } from '@/e-shop-tray/src/networkContract'
@@ -3931,18 +3933,21 @@ export default function CashierPage() {
         setSubmitting(false)
         return
       }
+      const payload = JSON.stringify({
+        storeCode,
+        items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
+        paymentMethod: apiPayment,
+        manualPaymentConfirmed: apiPayment === 'KHQR',
+        ...(networkPrint ? { printing: { profile: 'network-v2', mode: networkMode, lang } } : {}),
+      })
+      const requestKey = await posRequestKey('CASHIER_SALE', payload)
       const res = await fetch('/api/cashier/sales', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
-        body: JSON.stringify({
-          storeCode,
-          items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
-          paymentMethod: apiPayment,
-          manualPaymentConfirmed: apiPayment === 'KHQR',
-          ...(networkPrint ? { printing: { profile: 'network-v2', mode: networkMode, lang } } : {}),
-        }),
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestKey, ...posDeviceHeaders(storeCode) },
+        body: payload,
       })
       const body = await res.json()
+      finishPosRequest(requestKey, res)
       if (isPosUnauthorized(body, res.status)) {
         handlePosUnauthorized()
         return

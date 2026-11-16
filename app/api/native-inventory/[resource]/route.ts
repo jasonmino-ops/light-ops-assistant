@@ -49,11 +49,30 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
     const id = query.get('id')
     if (q.length > 120) throw new InventoryError('INVALID_QUERY')
 
+    const getAccess = () => ({ role: person.role, currencyCode: person.currencyCode, storeName: person.storeName, storeId: person.storeId, userId: person.userId, salesTracking: person.salesTracking })
     switch (resource) {
       case 'access':
-        return success({ role: person.role, currencyCode: person.currencyCode, storeName: person.storeName, storeId: person.storeId, userId: person.userId, salesTracking: person.salesTracking })
-      case 'stock-overview':
-        return success(await inventory.listStockOverview(person, q, query.get('catalog') === 'true', query.get('after') || undefined))
+        return success(getAccess())
+      case 'stock-overview': {
+        if (query.get('compact') !== 'true') {
+          return success(await inventory.listStockOverview(person, q, query.get('catalog') === 'true', query.get('after') || undefined))
+        }
+        const filter = query.get('filter')
+        const kind = query.get('kind')
+        const itemAfter = query.get('itemAfter')
+        const catalogAfter = query.get('catalogAfter')
+        if ((itemAfter && catalogAfter) || (itemAfter?.length ?? 0) > 128 || (catalogAfter?.length ?? 0) > 128) {
+          throw new InventoryError('INVALID_QUERY')
+        }
+        const page = await inventory.listStockPage(person, q, {
+          catalog: query.get('catalog') === 'true',
+          itemAfter: itemAfter || undefined,
+          catalogAfter: catalogAfter || undefined,
+          filter: filter === 'LOW' || filter === 'ZERO' || filter === 'NEGATIVE' || filter === 'UNTRACKED' ? filter : undefined,
+          kind: kind === 'PRODUCT' || kind === 'MATERIAL' ? kind : undefined,
+        })
+        return success(query.get('bootstrap') === 'true' ? { ...page, access: getAccess() } : page)
+      }
       case 'items':
         return success(await inventory.listItems(person, q, query.get('mode') === 'barcode', query.get('after') || undefined))
       case 'receipt-result':

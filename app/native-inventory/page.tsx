@@ -3,10 +3,10 @@
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
-import { endDesktopInventoryClaim, isInventoryDesktop, RequestError, useInventory, type Access, type Draft, type Item, type Receipt, type Supplier } from './client'
+import { endDesktopInventoryClaim, isInventoryDesktop, RequestError, stockCacheLifetime, useInventory, type InventoryReadCache, type Access, type Draft, type Item, type Receipt, type Supplier } from './client'
 import { newDraft, openDraft, Receiving, SupplierForm, type PendingReceipt } from './receiving'
 import { ProfitReport, ReceiptDetail, Receipts, SupplierDetail, Suppliers } from './reports'
-import { CatalogSetup, ReadState, StockDetail, StockList, type CatalogProduct } from './stock'
+import { CatalogSetup, ReadState, StockDetail, StockList, stockResource, type StockPage, type CatalogProduct } from './stock'
 import { Choices, Icon } from './ui'
 import { DesktopPairing } from './desktop-pairing'
 import './inventory.css'
@@ -23,7 +23,11 @@ const nav = [
 
 export default function NativeInventoryPage() {
   const [refresh, setRefresh] = useState(0)
-  const access = useInventory<Access>('access', refresh)
+  const entry = useInventory<StockPage & { access: Access }>(stockResource('', true, { bootstrap: 'true' }), refresh)
+  const bootstrapUnavailable = entry?.error instanceof RequestError && entry.error.code === 'INVENTORY_UNAVAILABLE'
+  const fallback = useInventory<Access>(bootstrapUnavailable ? 'access' : null, refresh)
+  const access = entry?.data?.access ?? fallback?.data
+  const error = bootstrapUnavailable ? fallback?.error : entry?.error
   const authorized = useCallback(() => setRefresh((value) => value + 1), [])
   const endDesktopSession = useCallback(() => {
     void endDesktopInventoryClaim().catch(() => {})
@@ -37,17 +41,26 @@ export default function NativeInventoryPage() {
     window.addEventListener('pageshow', restore)
     return () => { window.removeEventListener('pagehide', end); window.removeEventListener('pageshow', restore); end() }
   }, [authorized])
-  const pairingRequired = access?.error instanceof RequestError &&
-    ['DESKTOP_OPERATOR_REQUIRED', 'DESKTOP_OPERATOR_REVOKED'].includes(access.error.code)
+  const pairingRequired = error instanceof RequestError &&
+    ['DESKTOP_OPERATOR_REQUIRED', 'DESKTOP_OPERATOR_REVOKED'].includes(error.code)
   return <div className="native-inventory">
-    {pairingRequired ? <DesktopPairing authorized={authorized} /> :
-    <ReadState data={access?.data} error={access?.error} retry={() => setRefresh((v) => v + 1)} label="暂时无法访问进销存">
-      {access?.data && <Inventory key={access.data.storeId + ':' + access.data.userId} access={access.data} endDesktopSession={endDesktopSession} />}
-    </ReadState>}
+    {pairingRequired ? <DesktopPairing authorized={authorized} /> : access === undefined && !error ?
+      <div className="shell"><main className="main"><div className="phead"><h1>库存管理</h1></div>
+        <div className="scroll" role="status">正在读取库存…</div>
+      </main></div> :
+      <ReadState data={access} error={error} retry={authorized} label="暂时无法访问进销存">
+        {access && <Inventory key={access.storeId + ':' + access.userId + ':' + refresh}
+          access={access} initialStock={entry?.data} endDesktopSession={endDesktopSession} />}
+      </ReadState>}
   </div>
 }
 
-function Inventory({ access, endDesktopSession }: { access: Access; endDesktopSession: () => void }) {
+function Inventory({ access, initialStock, endDesktopSession }: { access: Access; initialStock?: StockPage; endDesktopSession: () => void }) {
+  // This cache belongs to the authenticated page instance, never another user
+  // or store. A mutation revision has a new key, and unmount discards the map.
+  const [stockCache] = useState<InventoryReadCache<StockPage>>(() => new Map(initialStock ? [
+    [stockResource('', access.role === 'OWNER') + '#0', { data: initialStock, expiresAt: Date.now() + stockCacheLifetime }],
+  ] : []))
   const [desktop] = useState(() => isInventoryDesktop())
   const source = desktop ? new URLSearchParams(window.location.search) : null
   const cashierPath = source ? '/desktop/pos?' + new URLSearchParams({
@@ -95,7 +108,7 @@ function Inventory({ access, endDesktopSession }: { access: Access; endDesktopSe
     } catch {}
   }
 
-  const reload = () => setRefresh((n) => n + 1)
+  const reload = useCallback(() => setRefresh((n) => n + 1), [])
   const close = () => setOverlay(null)
   const beginScan = (done: (barcode: string) => void) => setScanner(() => done)
   const closeScan = useCallback(() => setScanner(null), [])
@@ -137,7 +150,7 @@ function Inventory({ access, endDesktopSession }: { access: Access; endDesktopSe
           <button className="nav-btn" type="button" onClick={endDesktopSession}>切换库存操作员</button>
           <a className="nav-btn" href={cashierPath}>返回收银台</a>
         </>}
-        {available.map(({ kind, desktop }) => <button className={`nav-btn ${destination === kind ? 'on' : ''}`} disabled={!!draft} aria-current={destination === kind ? 'page' : undefined} key={kind} onClick={() => { setDestination(kind); reload() }}><Icon kind={kind} />{desktop}</button>)}
+        {available.map(({ kind, desktop }) => <button className={`nav-btn ${destination === kind ? 'on' : ''}`} disabled={!!draft} aria-current={destination === kind ? 'page' : undefined} key={kind} onClick={() => setDestination(kind)}><Icon kind={kind} />{desktop}</button>)}
       </nav>
       <main className="main">
         {!desktop && !draft && access.role === 'OWNER' && <div className="phead">
@@ -146,10 +159,10 @@ function Inventory({ access, endDesktopSession }: { access: Access; endDesktopSe
         {draft ? <Receiving key={draft.id} draft={draft} setDraft={(value) => setDraft((current) => current ? typeof value === 'function' ? value(current) : value : current)}
           access={access} refresh={refresh} reload={reload} close={showRecords} openStock={showStock} openRecords={showRecords} pending={pending} setPending={setPending} saveLocal={saveLocal} scan={beginScan} />
           : destination === 'stock' ? <section className="page">
-            <div className="phead"><h1>库存管理</h1><Choices tabs values={['当前库存', '入库记录']} value={tab} onChange={(t) => { setTab(t); reload() }} />
+            <div className="phead"><h1>库存管理</h1><Choices tabs values={['当前库存', '入库记录']} value={tab} onChange={setTab} />
               <span className="grow" /><button className="btn primary" disabled={!!pending} onClick={() => setDraft(localDraft ?? newDraft())}>＋ {localDraft ? '继续本地草稿' : '新建入库单'}</button></div>
             {!access.salesTracking && <p className="banner amber">当前仅记录入库和库存调整，销售和退款不会自动更新库存。</p>}
-            {tab === '当前库存' ? <StockList access={access} refresh={refresh} reload={reload} query={query} setQuery={setQuery} justReceived={received}
+            {tab === '当前库存' ? <StockList access={access} cache={stockCache} refresh={refresh} reload={reload} query={query} setQuery={setQuery} justReceived={received}
               scan={() => beginScan(setQuery)} setup={(product) => setOverlay({ kind: 'catalog', product })} open={(item) => setOverlay({ kind: 'stock', item })} />
               : <Receipts access={access} refresh={refresh} reload={reload} open={openReceipt} localDrafts={localDrafts} resumeLocal={setDraft} pending={pending} clearPending={() => setPending(null)} />}
             {pending && tab === '当前库存' && <div className="foot"><button className="btn" onClick={showRecords}>查看待确认入库单</button></div>}
@@ -158,7 +171,7 @@ function Inventory({ access, endDesktopSession }: { access: Access; endDesktopSe
       </main>
     </div>
     <nav className="tabbar" aria-label="主导航">
-      {available.map(({ kind, mobile }) => <button className={`tab-btn ${destination === kind ? 'on' : ''}`} disabled={!!draft} aria-current={destination === kind ? 'page' : undefined} key={kind} onClick={() => { setDestination(kind); reload() }}><Icon kind={kind} />{mobile}</button>)}
+      {available.map(({ kind, mobile }) => <button className={`tab-btn ${destination === kind ? 'on' : ''}`} disabled={!!draft} aria-current={destination === kind ? 'page' : undefined} key={kind} onClick={() => setDestination(kind)}><Icon kind={kind} />{mobile}</button>)}
     </nav>
     {overlay?.kind === 'catalog' && <CatalogSetup initialProduct={overlay.product} close={close} saved={() => { close(); setQuery(''); reload() }} />}
     {overlay?.kind === 'stock' && <StockDetail key={overlay.item.id} item={overlay.item} access={access} close={close} changed={() => { close(); reload() }} />}
