@@ -1,0 +1,82 @@
+{
+  "taskId": "ES-NATIVE-INVENTORY-DIAMOND-AB",
+  "base": "fd4b626ba6381743edde1449fc269cda7ab0a936",
+  "baseMain": "7c2e306133106ee5836ea8ca7c0d4ff902711fb9",
+  "tree": "7e7a429d032573e77238d27af0cc8000e2d216ab",
+  "sourceA": "1d5da26dd63f89198e0d8b537204bf8f0398e812",
+  "sourceBTree": "1903767352fb75d02ec5056c8b609df6858ead68",
+  "paths": {
+    "app/api/cashier/sales/route.ts": {
+      "before": "f1035a0a311cd475efd41ce58d30f63f19c9ae7460ec107c96f8456bc726cd88",
+      "after": "bbb997e296fc956250e547c693df5c5d28f97010b5abc438311e082603a827f2"
+    },
+    "app/api/external/inventory-profit/feed/route.ts": {
+      "before": "24fa50958ba80c9ae34673e337f0051783873827d4350a27bfb34af2022ff3c4",
+      "after": "59b223263dd9d823b2616cdc6ee14cd741a54252dbaba5b2370967d814940be2"
+    },
+    "app/api/native-inventory/[resource]/route.ts": {
+      "before": "6854bb3ddf4d9f4f336e55ea7c7d3085108ca135e20a1cb95407c36137e268b4",
+      "after": "f2c674592a6850ecf809a1d511221eb8c791044440dbf6ee8490780962df9894"
+    },
+    "app/api/sales/route.ts": {
+      "before": "0d256d55ee77963678c7cc5b820bb401cac195ebe851b675a2edb983ab9ebb2e",
+      "after": "832fc241f5cb046b993d17d641e3bae4a89ec857eceaae8e6f9e379ec35c5c01"
+    },
+    "app/cashier/page.tsx": {
+      "before": "5c00b6d10ee6deb79b9574cf0d0bcfe9d18c6d7456fcd2adbca3af8265b9320c",
+      "after": "b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575"
+    },
+    "app/native-inventory/client.ts": {
+      "before": "a683933a4f0f0129810a8b39c9e67ef8b7dafc7ccb97e1d0c6f68233ba58c662",
+      "after": "ad8fabd8f58e794b18ddb6708421b990a9952b9707daf345273bd01772cb1b31"
+    },
+    "app/native-inventory/page.tsx": {
+      "before": "2b963988ca1ba44a158c8097df2a857d0860e6d2cd70eea918532cc260484b1d",
+      "after": "27a0b9af35eed4dd33aeb35570ce6e975a9fb4cd6c18b7f8c42c764933a8620f"
+    },
+    "app/native-inventory/stock.tsx": {
+      "before": "72af04ba6d17746e42c596842cb10c6448c30bdf05fa69ef4ba972f265856f55",
+      "after": "517257cd407b14dbe480a0942bf4c04b47413f0cce7382d527b9d0085e282424"
+    },
+    "app/refund/page.tsx": {
+      "before": "cd92704749090a974a08924223522afbffd8bcb152b7c805d348803d407b8ff9",
+      "after": "d30f25b0f37ae28ef7274f89a0f1f548558e6481ea51853046e90488684c01e9"
+    },
+    "app/sale/page.tsx": {
+      "before": "6818f8b63ba25031a2501947baa0ca9a8e03959ee5d47a245ddad13f3a00980f",
+      "after": "1549dd2680dec688f355dae37e2fb7527d8daf7cb4bb7db014b1b98a00e4f4ce"
+    },
+    "lib/native-inventory/service.ts": {
+      "before": "7b3477cc16ec67294c06e1ef91cf8f209b001e9aedd17f7296fbaf912f3fe2ca",
+      "after": "496fe7932dcb85cc71f22af507823f35f5947661c2b44a3044ae1c5b10b4e2c7"
+    },
+    "lib/pos-request-client.ts": {
+      "before": null,
+      "after": "0c202d76d9457edb4ed95bed918c417c78b08bd366ec7cc0d85ba69897143e35"
+    },
+    "lib/pos-request-ledger.ts": {
+      "before": null,
+      "after": "e14ac283d9b208035502cff6eb5a75567d1ad9252c9e5d45ff98eadecf92f720"
+    },
+    "prisma/migrations/20261116130000_diamond_native_sales_phase2/migration.sql": {
+      "before": null,
+      "after": "91c3145cefe79556a10786b6ea1fd6ffa7cafe6d31fe56c04f67f5c14f330a7c"
+    },
+    "tests/diamond-native-sales-phase2.test.ts": {
+      "before": null,
+      "after": "f0699381a8e122a166a09152192615fe03f7604b31ffe9b438bb7fc335915be5"
+    }
+  },
+  "scopeHash": "cb8d8a4c4c34a6128aefbbe86d1e2dc297d019d0c1529271b216820b8d6b20d3",
+  "patchSha256": "172daecc22322160ceeea0cf0fb9d315a50ab92aa995c97d19a705fcdc459e8c",
+  "migrationPath": "prisma/migrations/20261116130000_diamond_native_sales_phase2/migration.sql",
+  "migrationSha256": "91c3145cefe79556a10786b6ea1fd6ffa7cafe6d31fe56c04f67f5c14f330a7c",
+  "productionDeployment": "dpl_Fsg17P9Rr4rJtiDFueDDnbU4MsYA",
+  "storeCode": "ST883DC00C",
+  "evidence": {
+    "combined-build.log": "92441d93ba31dd17fd700603388605992b692fb37b0f450c14fe8aadf694ee7a",
+    "combined-migration.log": "6eff30e190ad291b386d8f74366cbb98fcb0cbc602fbc996bc6e51827e273c63",
+    "combined-http.log": "3c6a3ba560ba7e289a58663209452e47304f25dd8367f3c9827fe3cc633d1d91",
+    "compat-old-app.log": "d9f8940d9c86d8b453af8ead21ce70712c0094903e11fa66354ebbabb1dcd59e"
+  }
+}
