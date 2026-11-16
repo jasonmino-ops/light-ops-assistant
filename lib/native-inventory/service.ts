@@ -67,7 +67,9 @@ async function move(
   return applied
 }
 
-export async function listItems(person: InventoryPerson, query: string, exact = false, after?: string, db: Pick<Prisma.TransactionClient, 'nativeInventoryItem'> = prisma) {
+type StockFilter = 'LOW' | 'ZERO' | 'NEGATIVE' | 'UNTRACKED'
+
+export async function listItems(person: InventoryPerson, query: string, exact = false, after?: string, db: Pick<Prisma.TransactionClient, 'nativeInventoryItem'> = prisma, page?: { size: number; filter?: StockFilter; kind?: 'PRODUCT' | 'MATERIAL' }) {
   const scope = scopeFor(person)
   const match = exact ? { equals: query } : { contains: query, mode: 'insensitive' as const }
   const where = query ? {
@@ -77,11 +79,19 @@ export async function listItems(person: InventoryPerson, query: string, exact = 
       ...(!exact ? [{ product: { name: match } }, { materialName: match }, { productName: match }] : []),
     ],
   } : {}
+  const tracked = { movements: { some: {} } }
+  const filter: Prisma.NativeInventoryItemWhereInput =
+    page?.filter === 'UNTRACKED' ? { movements: { none: {} } } :
+    page?.filter === 'NEGATIVE' ? { ...tracked, onHand: { lt: 0 } } :
+    page?.filter === 'ZERO' ? { ...tracked, onHand: 0 } :
+    page?.filter === 'LOW' ? { ...tracked, onHand: { gt: 0, lte: db.nativeInventoryItem.fields.lowStockAt } } : {}
+  const kind = page?.kind === 'MATERIAL' ? { materialName: { not: null } }
+    : page?.kind === 'PRODUCT' ? { materialName: null } : {}
   const items = await db.nativeInventoryItem.findMany({
-    where: { ...scope, ...where, ...(after ? { id: { gt: after } } : {}) },
+    where: { ...scope, ...where, ...filter, ...kind, ...(after ? { id: { gt: after } } : {}) },
     include: itemIncludes,
     orderBy: { id: 'asc' },
-    take: limit,
+    take: page?.size ?? limit,
   })
   return items.map((item) => serializeItem(item, person))
 }
@@ -497,19 +507,19 @@ export async function setReceiver(person: InventoryPerson, userId: string, enabl
   })
 }
 
-export async function listCatalog(person: InventoryPerson, query: string, page?: { after?: string }, db: Pick<Prisma.TransactionClient, 'product'> = prisma) {
+export async function listCatalog(person: InventoryPerson, query: string, page?: { after?: string; size?: number }, db: Pick<Prisma.TransactionClient, 'product'> = prisma) {
   const contains = { contains: query, mode: 'insensitive' as const }
   return db.product.findMany({
     where: {
       tenantId: person.tenantId,
       status: 'ACTIVE',
-      OR: [{ name: contains }, { barcode: contains }],
+      ...(query ? { OR: [{ name: contains }, { barcode: contains }] } : {}),
       nativeInventoryItems: { none: scopeFor(person) },
       ...(page?.after ? { id: { gt: page.after } } : {}),
     },
     select: { id: true, name: true, barcode: true },
     orderBy: page ? { id: 'asc' } : [{ name: 'asc' }, { id: 'asc' }],
-    take: limit,
+    take: page?.size ?? limit,
   })
 }
 
@@ -523,6 +533,33 @@ export async function listStockOverview(person: InventoryPerson, query: string, 
     catalog: await listCatalog(person, query, { after: catalogAfter }, tx),
     registeredCount: await tx.nativeInventoryItem.count({ where: { ...scopeFor(person), productId: { not: null } } }),
   }), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead })
+}
+
+const stockPageSize = 24
+
+export async function listStockPage(person: InventoryPerson, query: string, options: {
+  catalog: boolean
+  catalogAfter?: string
+  itemAfter?: string
+  filter?: StockFilter
+  kind?: 'PRODUCT' | 'MATERIAL'
+}) {
+  const { catalog, catalogAfter, itemAfter, filter, kind } = options
+  const catalogAllowed = catalog && person.role === 'OWNER' && kind !== 'MATERIAL'
+    && (!filter || filter === 'UNTRACKED') && !itemAfter
+  const size = stockPageSize + 1
+  const [itemRows, catalogRows] = await Promise.all([
+    catalogAfter ? [] : listItems(person, query, false, itemAfter, prisma, { size, filter, kind }),
+    catalogAllowed ? listCatalog(person, query, { after: catalogAfter, size }) : [],
+  ])
+  const items = itemRows.slice(0, stockPageSize)
+  const products = catalogRows.slice(0, stockPageSize)
+  return {
+    items,
+    catalog: products,
+    nextItem: itemRows.length > stockPageSize ? items.at(-1)!.id : null,
+    nextCatalog: catalogRows.length > stockPageSize ? products.at(-1)!.id : null,
+  }
 }
 
 export async function listMovements(person: InventoryPerson, itemId?: string) {
