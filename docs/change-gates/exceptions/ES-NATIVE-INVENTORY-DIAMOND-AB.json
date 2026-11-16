@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "taskId": "ES-NATIVE-INVENTORY-DIAMOND-AB",
+  "featureBranch": "codex/es-diamond-native-inventory-combined",
+  "baseOriginMainSha": "d441b55c8014642eb1b26b90d7bf5ce1b2df7941",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Founder authorized the exact Diamond A+B Scope/Frozen registration and Release Lineage successor for tree 7e7a429d032573e77238d27af0cc8000e2d216ab on Production fd4b626ba6381743edde1449fc269cda7ab0a936. The common ancestor proves only Scope branch ancestry. The exact Production parent, candidate tree and all release bytes are bound in the separate admission.",
+  "createdAt": "2026-11-16T13:35:29.151Z",
+  "approvedAt": "2026-11-16T13:35:29.151Z",
+  "authorizedPaths": [
+    "app/api/cashier/sales/route.ts",
+    "app/api/sales/route.ts",
+    "app/cashier/page.tsx",
+    "app/sale/page.tsx",
+    "prisma/migrations/20261116130000_diamond_native_sales_phase2/migration.sql"
+  ],
+  "authorizedPathSha256": {
+    "app/api/cashier/sales/route.ts": "bbb997e296fc956250e547c693df5c5d28f97010b5abc438311e082603a827f2",
+    "app/api/sales/route.ts": "832fc241f5cb046b993d17d641e3bae4a89ec857eceaae8e6f9e379ec35c5c01",
+    "app/cashier/page.tsx": "b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575",
+    "app/sale/page.tsx": "1549dd2680dec688f355dae37e2fb7527d8daf7cb4bb7db014b1b98a00e4f4ce",
+    "prisma/migrations/20261116130000_diamond_native_sales_phase2/migration.sql": "91c3145cefe79556a10786b6ea1fd6ffa7cafe6d31fe56c04f67f5c14f330a7c"
+  }
+}
