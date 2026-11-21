@@ -1,6 +1,6 @@
 # E-Shop Task State Template V1.0
 
-> 配套 `docs/workflows/E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V1.md` 第 8 节使用。
+> 配套当前 `docs/workflows/E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V2.md`（沿用 V1 第 8 节）使用；新增字段只是已有记录内的证据提示，不新增审批或状态体系。
 > 每个 L2 / L3 任务在任务 worktree 的 `.task-state/<TASK-ID>.md` 维护一份本地文件；L1 任务可选。
 > 活跃任务状态默认在本地维护，供主代理和子代理读取，不作为每个任务的强制入库文件。
 > 任务状态记录是代理之间的交接来源，但不能取代 Git、测试、真实代码和发布证据。接手代理必须用 Git 与真实代码核实其中每一项，再继续。
@@ -43,6 +43,8 @@
 
 <用户明确目标；明确不做的内容>
 
+- 最小方案 Preflight: <现有能力/正常路径能否复用；根因证据与假设；最小改动及选择理由；引用已有 Readiness 即可，不另建检查表>
+
 ## Frozen Boundaries
 
 - 不可改动文件 / 目录: <列表，或 NONE>
@@ -76,6 +78,9 @@
 - 已运行的检查及真实结果: <命令 → PASS / FAIL / N/A 及依据>
 - 未运行或未验证的项及原因: <列表，或 NONE>
 - Scope Guard: <PASS / BLOCKED / 未运行>
+- 证据复用: <已有证据及其字节/依赖/环境/范围/期限适用性；本次补验及失效重验原因；N/A>
+- 业务验收: <按风险关联订单/付款/库存/打印实体/报表交班等受影响结果及证据；未到时或未取得的项明确待验；不相关项 N/A>
+- UNKNOWN 处置: <NONE / 原业务标识、停止的副作用、只读核对结果及仍待确定的事实；不得以新 key/body/身份重提或重印>
 
 ## Independent Review
 
