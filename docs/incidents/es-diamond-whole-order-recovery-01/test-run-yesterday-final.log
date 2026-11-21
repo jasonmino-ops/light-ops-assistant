@@ -1,0 +1,67 @@
+whole54_single_order_cash_paid_print_and_cash_date_audit PASS
+[POST /api/cashier/sales] Error: INJECTED_BEFORE_PRINT
+    at db.$transaction.maxWait (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/recovery-candidate.cjs:39:36)
+    at async Proxy._transactionWithCallback (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/generated-client/runtime/client.js:79:4668)
+    at async POST (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/source/app/api/cashier/sales/route.ts:298:22)
+    at async /private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:23:243
+    at async trial (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:20:73)
+    at async /private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:23:68
+atomic_rollback_before-print PASS
+[POST /api/cashier/sales] Error: INJECTED_AFTER_PRINT
+    at db.$transaction.maxWait (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/recovery-candidate.cjs:43:35)
+    at async Proxy._transactionWithCallback (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/generated-client/runtime/client.js:79:4668)
+    at async POST (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/source/app/api/cashier/sales/route.ts:298:22)
+    at async /private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:23:243
+    at async trial (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:20:73)
+    at async /private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:23:68
+atomic_rollback_after-print PASS
+[POST /api/cashier/sales] Error: INJECTED_BEFORE_COMMIT
+    at db.$transaction.maxWait (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/recovery-candidate.cjs:45:37)
+    at async Proxy._transactionWithCallback (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/generated-client/runtime/client.js:79:4668)
+    at async POST (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/source/app/api/cashier/sales/route.ts:298:22)
+    at async /private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:23:243
+    at async trial (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:20:73)
+    at async /private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:23:68
+atomic_rollback_before-commit PASS
+unauthorized_request_no_writes PASS
+[POST /api/cashier/sales] Error: RECOVERY_BUSY_NO_RETRY
+    at db.$transaction.maxWait (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/recovery-candidate.cjs:22:26)
+    at async Proxy._transactionWithCallback (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/generated-client/runtime/client.js:79:4668)
+    at async POST (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/source/app/api/cashier/sales/route.ts:298:22)
+    at async Promise.all (index 1)
+    at async /private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:25:190
+    at async trial (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:20:73)
+    at async /private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:25:2
+concurrent_same_original_identity_one_commit PASS
+54_lines_with_200ms_per_db_roundtrip PASS
+existing_offline_sync_54_lines_at_80ms_rtt_fails_atomically PASS
+response_lost_after_commit_read_only_resolution_no_replay PASS
+unproved_outcome_stops_without_writes PASS
+sealed_request_rejects_other_key_extra_fields_or_store PASS
+[POST /api/cashier/sales] AssertionError [ERR_ASSERTION]: Original inventory configuration is missing
+    at db.$transaction.maxWait (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/recovery-candidate.cjs:24:89)
+    at async Proxy._transactionWithCallback (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/generated-client/runtime/client.js:79:4668)
+    at async POST (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/source/app/api/cashier/sales/route.ts:298:22)
+    at async /private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:32:633
+    at async trial (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:20:73)
+    at async /private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:32:2 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: null,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+inventory_configuration_missing_is_not_equivalent_to_disabled PASS
+production_entry_target_approval_and_quiet_window_guards_only PASS
+[POST /api/cashier/sales] Error: EXECUTION_WINDOW_EXPIRED
+    at assertExecutionWindow (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:36:199)
+    at Proxy.transaction (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/recovery-candidate.cjs:19:38)
+    at writeSale (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/source/app/api/cashier/sales/route.ts:193:36)
+    at POST (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/source/app/api/cashier/sales/route.ts:298:28)
+    at async /private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:36:252
+    at async trial (/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:20:73)
+    at async /private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/yesterday-attribution/test-recovery.cjs:36:2
+expired_window_after_product_reads_blocks_transaction PASS
+yesterday_records_and_numbering_today_unaffected PASS
+DONE 15 PASS

@@ -1,0 +1,13 @@
+▶ actual Next production artifact runs case API with in isolated DB with synthetic Gate; no production writes
+  ✔ compiled server packaging resolves all dependencies; authenticated GET is READY for complete synthetic Gate (637.550208ms)
+  ✔ cross-origin, malformed and injected payloads never cross business boundary (5.965583ms)
+  ✔ actual optimized server executes the sealed 54-line core once, persists reconciliation and preserves one original print (102.828375ms)
+✔ actual Next production artifact runs case API with in isolated DB with synthetic Gate; no production writes (1496.909166ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1614.76725

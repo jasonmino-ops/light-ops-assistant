@@ -1,5 +1,8 @@
 'use client'
 
+import DiamondRecoveryAction from './components/DiamondRecoveryAction'
+import { isDiamondRecoveryHold } from '@/lib/diamond-recovery/case'
+
 import { Fragment, useState, useEffect, useLayoutEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import type { NetworkMode, NetworkRole } from '@/e-shop-tray/src/networkContract'
@@ -5057,12 +5060,14 @@ export default function CashierPage() {
                                   <span style={s.sideEventCount}>{heldCount} 件 · {heldLabel.total}</span>
                                 </div>
                                 <div style={s.sideEventActions}>
+                                  {isDiamondRecoveryHold(storeCode, order.id) ? <DiamondRecoveryAction order={order} lang={lang} idle={isDesktopPos && cart.length === 0 && !submitting} /> : <>
                                   <button type="button" style={s.holdRestoreBtn} onClick={() => handleRestoreHoldOrder(order)}>
                                     {lang === 'en' ? 'Restore' : lang === 'km' ? 'យកត្រឡប់' : '恢复'}
                                   </button>
                                   <button type="button" style={s.holdDeleteBtn} onClick={() => handleDeleteHoldOrder(order.id)}>
                                     {lang === 'en' ? 'Delete' : lang === 'km' ? 'លុប' : '删除'}
                                   </button>
+                                  </>}
                                 </div>
                               </div>
                             )

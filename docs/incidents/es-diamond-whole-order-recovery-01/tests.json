@@ -1,0 +1,137 @@
+{
+  "kind": "REAL local PostgreSQL 18, all Production migrations and restricted app ACL; synthetic RTT where specified",
+  "results": [
+    {
+      "name": "whole54_single_order_cash_paid_print_and_cash_date_audit",
+      "status": "PASS",
+      "elapsedMs": 571,
+      "orderNo": "S-20261120-ST883DC00C-0001",
+      "lines": 54,
+      "sellingUnits": 92,
+      "baseUnits": 110,
+      "cents": 13543,
+      "cashCollectedDate": "2026-11-20",
+      "recoveryDate": "2026-11-21",
+      "newCashCents": 0,
+      "printJobs": 1,
+      "replay": true,
+      "payloadConflict": true,
+      "businessDate": "2026-11-20",
+      "todayCashDeltaCents": 0,
+      "yesterdayCashDeltaCents": 13543
+    },
+    {
+      "name": "atomic_rollback_before-print",
+      "status": "PASS",
+      "elapsedMs": 324,
+      "salePaymentLedgerPrintAuditAllRolledBack": true
+    },
+    {
+      "name": "atomic_rollback_after-print",
+      "status": "PASS",
+      "elapsedMs": 396,
+      "salePaymentLedgerPrintAuditAllRolledBack": true
+    },
+    {
+      "name": "atomic_rollback_before-commit",
+      "status": "PASS",
+      "elapsedMs": 431,
+      "salePaymentLedgerPrintAuditAllRolledBack": true
+    },
+    {
+      "name": "unauthorized_request_no_writes",
+      "status": "PASS",
+      "elapsedMs": 236
+    },
+    {
+      "name": "concurrent_same_original_identity_one_commit",
+      "status": "PASS",
+      "elapsedMs": 438,
+      "statuses": [
+        500,
+        201
+      ]
+    },
+    {
+      "name": "54_lines_with_200ms_per_db_roundtrip",
+      "status": "PASS",
+      "elapsedMs": 19663,
+      "syntheticRttMs": 200,
+      "transactionTimeoutMs": 60000,
+      "orderNo": "S-20261120-ST883DC00C-0001"
+    },
+    {
+      "name": "existing_offline_sync_54_lines_at_80ms_rtt_fails_atomically",
+      "status": "PASS",
+      "elapsedMs": 11396,
+      "failedCount": 1,
+      "salePaymentRolledBack": true,
+      "syntheticRttMs": 80
+    },
+    {
+      "name": "response_lost_after_commit_read_only_resolution_no_replay",
+      "status": "PASS",
+      "elapsedMs": 364,
+      "responseIntentionallyDiscarded": true,
+      "onlyReadAfterUnknown": true,
+      "noAdditionalSalesPaymentsOrPrints": true
+    },
+    {
+      "name": "unproved_outcome_stops_without_writes",
+      "status": "PASS",
+      "elapsedMs": 196
+    },
+    {
+      "name": "sealed_request_rejects_other_key_extra_fields_or_store",
+      "status": "PASS",
+      "elapsedMs": 207
+    },
+    {
+      "name": "inventory_configuration_missing_is_not_equivalent_to_disabled",
+      "status": "PASS",
+      "elapsedMs": 301
+    },
+    {
+      "name": "production_entry_target_approval_and_quiet_window_guards_only",
+      "status": "PASS",
+      "elapsedMs": 8,
+      "validationOnly": true,
+      "realProductionConnection": false,
+      "realApproval": false
+    },
+    {
+      "name": "expired_window_after_product_reads_blocks_transaction",
+      "status": "PASS",
+      "elapsedMs": 445,
+      "noWrite": true
+    },
+    {
+      "name": "yesterday_records_and_numbering_today_unaffected",
+      "status": "PASS",
+      "elapsedMs": 548,
+      "paymentCreatedAt": "2026-11-21T06:58:41.096Z",
+      "paymentPaidAt": "2026-11-21T06:58:41.096Z",
+      "historicRecoveredOrder": "S-20261120-ST883DC00C-0002",
+      "recordsYesterdayLines": 54,
+      "recordsTodayLines": 0,
+      "nextNormalOrder": "S-20261121-ST883DC00C-0002",
+      "paidAtBookkeepingDate": "2026-11-21",
+      "attributionAnchorKind": "ORIGINAL_FIRST_HOLD_NOT_CASH_TIME"
+    },
+    {
+      "name": "original_print_ttl_exact_53ms_offset_and_budget",
+      "status": "PASS",
+      "elapsedMs": 0,
+      "printExpiresAt": "2026-11-21T16:13:36.233Z",
+      "minimumBudgetMs": 65000
+    },
+    {
+      "name": "expiry_at_print_enqueue_rolls_back_whole_order",
+      "status": "PASS",
+      "elapsedMs": 365,
+      "windowChecks": 2,
+      "allRollback": true
+    }
+  ],
+  "totalElapsedMs": 35980
+}

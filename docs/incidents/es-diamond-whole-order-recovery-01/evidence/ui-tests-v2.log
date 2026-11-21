@@ -1,0 +1,19 @@
+▶ case-only browser entry: original retention, once-only POST, reload and paper confirmation
+  ✔ selection then one action; repeated synchronous clicks send one financial POST; original raw hold unchanged (546.774792ms)
+  ✔ lost response freezes; GET READY and page reload cannot re-enable financial POST (298.504459ms)
+  ✔ one known paper witness has separate audit-only action; finance is never repeated (268.164375ms)
+  ✔ changed cart disables recovery and does not send request (114.009833ms)
+  ✔ original alias retained without recovery action; active ordinary basket prevents execution (277.965ms)
+  ✔ proved not-accepted response re-arms only local guard; UNKNOWN never does (334.447209ms)
+  ✔ old timeout API is unnecessary; absent secure hashing blocks without writing an attempt (367.383209ms)
+  ✔ bounded polling stops at two minutes without additional POST or automatic resume (262.9075ms)
+  ✔ operator paper-problem action never invokes another recover or browser print (272.02075ms)
+✔ case-only browser entry: original retention, once-only POST, reload and paper confirmation (3226.642ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3512.923458

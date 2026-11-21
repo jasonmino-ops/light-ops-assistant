@@ -1,0 +1,323 @@
+{
+  "format": 1,
+  "productionSha": "b0aa38a1d1bf4d1aa0f375f1c42da6e4436dc481",
+  "parent17BundleSha256": "14a4f36f7847b73b37bbaf46b7fb6e5d8fce0d920f122766205b7d6d66234a4e",
+  "compiler": "5.9.3",
+  "sourceHashes": {
+    "app/api/cashier/sales/route.ts": "bbb997e296fc956250e547c693df5c5d28f97010b5abc438311e082603a827f2",
+    "lib/pos-request-ledger.ts": "e14ac283d9b208035502cff6eb5a75567d1ad9252c9e5d45ff98eadecf92f720",
+    "lib/product-unit.ts": "adf75e45cb8a904d180699958c8a6da8544d8df523c114c49efb8e31e4ba6978",
+    "lib/record-no.ts": "16030c67a8724f7f23d85f62cc1a3f457d694d63e1577db47acee6d0275a19e1",
+    "lib/khqr.ts": "41505274a7b93517f582c516cc44a7f69d9b5619b67b5f5466968d4759a8ccec",
+    "lib/merchant-config.ts": "6511963fde29c31f1b5382294caa6986123347a1f57f3f38ccb1936c9d0c608d",
+    "lib/desktop-pos-auth.ts": "acaf874e7d31b8758abb5095eba803989d1527bacc51b8f25a55d869cb602c80",
+    "lib/context.ts": "1147a0395ffdd42349d8a7c9bb2b287971852e7dfc35680a5c81f69589022d8c",
+    "lib/session.ts": "5e6f3efb8b86ee6d1cd0f5e9fd5b41ee40579e2acf4a790bf66f260c75764b79",
+    "lib/desktop-network-print.ts": "55e46c53e8f244708a3cd98e717051c37b73fe8bf759351bef46c2f79127496c",
+    "e-shop-tray/src/networkContract.ts": "a026dec9a85503404cdaa8ca6303258dcb235eea93046725233264b063a2f9af",
+    "lib/currency.ts": "f5cc622cb1ddbd54002873293735b5f9bcbc54b77c020397382cb7a2403bbfad",
+    "lib/es-tray-relay/cashier-network-producer.ts": "4b1f62b782c9224c0abe51f6278a58404bc0289857ec2324f6629253dfd6c8ea",
+    "lib/es-tray-relay/config.ts": "37890fb8c648d70871e87b900d165af49fd7f5cbdfc3fa4ae7818e0d823056cb",
+    "lib/es-tray-relay/service.ts": "271125bc69512d71d10a4c53e5e387d89cd4d9723aeb8583d7f5fc02444aaf17",
+    "lib/es-tray-relay/contract.ts": "7aaa3a61cb2ac8d5448fde6b7d02df2149185cc28f2214b760b88717a552da2c",
+    "lib/es-tray-relay/crypto.ts": "0c4554c7edf967438595414ab31b09f8395256bfc682c8afff56225f6cda536d",
+    "lib/computer-client/crypto.ts": "517b873ca1f988d3147b0cb0ce383ab98341669f0d3d9616e28765ed1e3e373c",
+    "lib/v3-print-job-adapter.ts": "992900c79a0d422e6d7c5359ebc15b628ceee31cbc84e19d5fbbb65076b2fb63",
+    "lib/v3-print-identity.ts": "848afc9a34a50e3183339934f83594bce2baabe7b7a8726f087e49a316a0e92e",
+    "lib/cashier-payment-confirmation.ts": "480fd15a2fd5d543ecbc3a0d8dc890b57c18bb26d5951381d6a30845b0857147"
+  },
+  "frozenHashes": {
+    "accounting-clock.cjs": "70e734de44a705f94b9b76d69f809570f75a43f711cabcb434556e8e4b167cc7",
+    "recovery-candidate.cjs": "f442802aae227e8eb2cc01e87e90bc219b89940a3498107bd938cc104d7d4c77",
+    "admission-evidence.cjs": "75bf770c5a8a206e4d0e10d27f2984d9a1f3bc92f70680fdd51a05b6160a4c70",
+    "held-orders.json": "f441511946d35aad6320f0528ba744e5193fe88c2609e89229ee14120e46ddd2",
+    "recovery-manifest.json": "130ed8c7c5120815daaf69f40907d42eff6ba8601f3ed484c4d6f2c6990fd10c"
+  },
+  "clockDomains": {
+    "app/api/cashier/sales/route.ts": {
+      "clock": "APPROVED_NOV20_BUSINESS_ANCHOR",
+      "uses": [
+        {
+          "line": 205,
+          "expression": "Date"
+        },
+        {
+          "line": 208,
+          "expression": "Date"
+        },
+        {
+          "line": 209,
+          "expression": "Date"
+        },
+        {
+          "line": 231,
+          "expression": "Date"
+        },
+        {
+          "line": 287,
+          "expression": "Date"
+        },
+        {
+          "line": 329,
+          "expression": "Date.now"
+        }
+      ]
+    },
+    "lib/pos-request-ledger.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": [
+        {
+          "line": 67,
+          "expression": "Date"
+        }
+      ]
+    },
+    "lib/product-unit.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": []
+    },
+    "lib/record-no.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": [
+        {
+          "line": 31,
+          "expression": "Date"
+        },
+        {
+          "line": 35,
+          "expression": "Date"
+        },
+        {
+          "line": 37,
+          "expression": "Date"
+        }
+      ]
+    },
+    "lib/khqr.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": []
+    },
+    "lib/merchant-config.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": []
+    },
+    "lib/desktop-pos-auth.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": [
+        {
+          "line": 60,
+          "expression": "Date.now"
+        },
+        {
+          "line": 86,
+          "expression": "Date"
+        },
+        {
+          "line": 87,
+          "expression": "Date"
+        },
+        {
+          "line": 157,
+          "expression": "Date.now"
+        },
+        {
+          "line": 206,
+          "expression": "Date"
+        }
+      ]
+    },
+    "lib/context.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": []
+    },
+    "lib/session.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": []
+    },
+    "lib/desktop-network-print.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": [
+        {
+          "line": 20,
+          "expression": "Date"
+        },
+        {
+          "line": 56,
+          "expression": "Date"
+        },
+        {
+          "line": 67,
+          "expression": "Date"
+        }
+      ]
+    },
+    "e-shop-tray/src/networkContract.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": [
+        {
+          "line": 69,
+          "expression": "Date"
+        }
+      ]
+    },
+    "lib/currency.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": []
+    },
+    "lib/es-tray-relay/cashier-network-producer.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": [
+        {
+          "line": 32,
+          "expression": "Date"
+        }
+      ]
+    },
+    "lib/es-tray-relay/config.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": []
+    },
+    "lib/es-tray-relay/service.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": [
+        {
+          "line": 151,
+          "expression": "Date"
+        },
+        {
+          "line": 162,
+          "expression": "Date"
+        },
+        {
+          "line": 163,
+          "expression": "Date"
+        },
+        {
+          "line": 188,
+          "expression": "Date"
+        },
+        {
+          "line": 190,
+          "expression": "Date"
+        },
+        {
+          "line": 202,
+          "expression": "Date"
+        },
+        {
+          "line": 542,
+          "expression": "Date"
+        },
+        {
+          "line": 685,
+          "expression": "Date"
+        },
+        {
+          "line": 742,
+          "expression": "Date"
+        },
+        {
+          "line": 760,
+          "expression": "Date"
+        },
+        {
+          "line": 805,
+          "expression": "Date"
+        }
+      ]
+    },
+    "lib/es-tray-relay/contract.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": []
+    },
+    "lib/es-tray-relay/crypto.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": []
+    },
+    "lib/computer-client/crypto.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": [
+        {
+          "line": 128,
+          "expression": "Date"
+        },
+        {
+          "line": 129,
+          "expression": "Date"
+        },
+        {
+          "line": 132,
+          "expression": "Date"
+        },
+        {
+          "line": 133,
+          "expression": "Date"
+        },
+        {
+          "line": 136,
+          "expression": "Date"
+        },
+        {
+          "line": 137,
+          "expression": "Date"
+        }
+      ]
+    },
+    "lib/v3-print-job-adapter.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": [
+        {
+          "line": 225,
+          "expression": "Date"
+        },
+        {
+          "line": 290,
+          "expression": "Date"
+        },
+        {
+          "line": 376,
+          "expression": "Date"
+        },
+        {
+          "line": 410,
+          "expression": "Date"
+        }
+      ]
+    },
+    "lib/v3-print-identity.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": [
+        {
+          "line": 11,
+          "expression": "Date"
+        },
+        {
+          "line": 12,
+          "expression": "Date"
+        }
+      ]
+    },
+    "lib/cashier-payment-confirmation.ts": {
+      "clock": "REAL_EXECUTION_TIME",
+      "uses": []
+    }
+  },
+  "authExports": {
+    "lib/session.ts": [
+      "verifySession"
+    ],
+    "lib/desktop-pos-auth.ts": [
+      "authorizeDesktopPosDevice",
+      "authorizeDesktopPosAccount",
+      "authorizeDesktopPosRequest",
+      "unauthorizedPosResponse",
+      "hashPosDeviceToken"
+    ]
+  },
+  "querySourceSha256": "63ca23e64bd71d66b74bd28b64d20b77eda5e0cb1082a0b606a4e34a8ffea340",
+  "rangeQueryStatementSha256": "5f0a2acf70f70fdf7e1e05e9ad3a0d64a3fc17b7dc37243073f70b6e234d919f",
+  "outputs": {
+    "packaged-core.cjs": "1a700399b50e2b2aa430bb197f78d42ad88b5fbdb3981c8adae2a91442fed7b0",
+    "packaged-admission.cjs": "3cad3146d62af251e20d9b532f1a0f29bbd30c60a21bc4d76405dc1d0f2da8f5"
+  }
+}

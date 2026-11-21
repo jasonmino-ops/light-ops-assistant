@@ -1,0 +1,101 @@
+{
+  "kind": "ISOLATED SYNTHETIC HUMAN EVIDENCE; NEVER PRODUCTION AUTHORIZATION",
+  "dossier": {
+    "schemaVersion": "diamond-recovery-admission/1",
+    "task": "ES-DIAMOND-WHOLE-ORDER-RECOVERY-01",
+    "storeCode": "ST883DC00C",
+    "terminal": "DESKTOP-N39GSA4",
+    "idempotencyKey": "3a3db8c9-3740-42d1-91d8-019939b26288",
+    "actorUserId": "cmvulpnf9000206jvi09qdgs9",
+    "accountingDate": "2026-11-20",
+    "anchor": "2026-11-20T16:13:36.286Z",
+    "after": null,
+    "countersignature": null,
+    "physicalPrintResult": null,
+    "handover": {
+      "recordId": "ISOLATED-ORIGINAL",
+      "custodianName": "ISOLATED keeper",
+      "storageLocation": "ISOLATED fixture",
+      "originalSignerName": "ISOLATED signer",
+      "originalRecordAlreadySigned": true,
+      "overwriteForbidden": true,
+      "cashAlreadyCounted": true,
+      "immutableOriginal": {
+        "path": "/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/blocker-closure/tests-fixture-wOqOrp/original.txt",
+        "sha256": "c103b63446f428ab47ca74821c9f714701162274cfd8f02e8d0ddf2f8ba2c1f4"
+      },
+      "baseline": {
+        "path": "/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/blocker-closure/tests-fixture-wOqOrp/baseline.json",
+        "sha256": "1554ab7c89732c97574f2f79fce310124525d38d473cb596c9863b8094593198"
+      }
+    },
+    "countersignPlan": {
+      "signature": null,
+      "responsibleName": "ISOLATED signer",
+      "responsibleRole": "ISOLATED role",
+      "authorityReference": "ISOLATED original",
+      "method": "ISOLATED appendix",
+      "appendixId": "ISOLATED-APPENDIX",
+      "auditCorrelationId": "ISOLATED-AUDIT",
+      "authorityBasis": "ORIGINAL_SIGNER",
+      "originalRecordId": "ISOLATED-ORIGINAL",
+      "appendixOnly": true,
+      "preConfirmed": true,
+      "confirmedAtUtc": "2026-11-21T08:49:53.841Z",
+      "confirmationEvidence": {
+        "path": "/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/blocker-closure/tests-fixture-wOqOrp/confirmation.json",
+        "sha256": "5702701f566e6594c7dbdc496e4c5472c3075c640e523caac6e52aac50dad4a1"
+      },
+      "windowStartUtc": "2026-11-21T08:49:54.841Z",
+      "windowEndUtc": "2026-11-21T09:19:54.841Z"
+    },
+    "executor": {
+      "name": "ISOLATED executor",
+      "identifier": "ISOLATED-EXECUTOR",
+      "assignmentEvidence": {
+        "path": "/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/blocker-closure/tests-fixture-wOqOrp/confirmation.json",
+        "sha256": "5702701f566e6594c7dbdc496e4c5472c3075c640e523caac6e52aac50dad4a1"
+      },
+      "actorUserId": "cmvulpnf9000206jvi09qdgs9",
+      "deviceId": "cmvyx1jes000208l14t5vf9ur"
+    },
+    "fieldPlan": {
+      "coordinatorName": "ISOLATED coordinator",
+      "receiverName": "ISOLATED receiver",
+      "contactChannel": "ISOLATED LOCAL ONLY",
+      "expectedOriginalFrontCopies": 1,
+      "unknownMeansStop": true,
+      "noAutomaticRetry": true,
+      "printAcceptanceAfterExecution": true,
+      "paperReadyDeclared": true,
+      "confirmationEvidence": {
+        "path": "/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/blocker-closure/tests-fixture-wOqOrp/confirmation.json",
+        "sha256": "5702701f566e6594c7dbdc496e4c5472c3075c640e523caac6e52aac50dad4a1"
+      },
+      "windowStartUtc": "2026-11-21T08:49:53.841Z",
+      "windowEndUtc": "2026-11-21T08:59:54.841Z"
+    },
+    "executionChannelProof": {
+      "path": "/private/tmp/ES-DIAMOND-WHOLE-ORDER-RECOVERY-01/blocker-closure/tests-fixture-wOqOrp/channel.json",
+      "sha256": "cad64c76b3625845e57920d3d50aaca024eccbfa2296142c4f07af2dd67bee6b"
+    }
+  },
+  "documents": {
+    "c103b63446f428ab47ca74821c9f714701162274cfd8f02e8d0ddf2f8ba2c1f4": {
+      "encoding": "base64",
+      "data": "SVNPTEFURUQgc2lnbmVkLXJlY29yZCBmaXh0dXJlOyBOTyBSRUFMIFNJR05BVFVSRQ=="
+    },
+    "1554ab7c89732c97574f2f79fce310124525d38d473cb596c9863b8094593198": {
+      "encoding": "base64",
+      "data": "eyJzdG9yZUNvZGUiOiJTVDg4M0RDMDBDIiwicXVlcnlGaW5nZXJwcmludCI6IjYzY2EyM2U2NGJkNzFkNjZiNzRiZDI4YjY0ZDIwYjc3ZWRhNWUwY2IxMDgyYTBiNjA2YTRlMzRhOGZmZWEzNDAiLCJ0aW1lem9uZSI6IkFzaWEvUGhub21fUGVuaCIsImZyb21VdGMiOiIyMDI2LTExLTE5VDE3OjAwOjAwWiIsInRvVXRjIjoiMjAyNi0xMS0yMFQxNzowMDowMFoiLCJvYnNlcnZlZEF0VXRjIjoiMjAyNi0xMS0yMVQwODo0OTo1My44NDFaIiwic2FsZUNlbnRzIjowLCJjYXNoU2FsZUNlbnRzIjowLCJvcmRlckNvdW50IjowfQ=="
+    },
+    "5702701f566e6594c7dbdc496e4c5472c3075c640e523caac6e52aac50dad4a1": {
+      "encoding": "base64",
+      "data": "eyJzY2hlbWFWZXJzaW9uIjoiZGlhbW9uZC1odW1hbi1jb25maXJtYXRpb25zLzEiLCJzdG9yZUNvZGUiOiJTVDg4M0RDMDBDIiwiY29uZmlybWF0aW9ucyI6eyJjb3VudGVyc2lnbl9wbGFuIjp7ImNvbmZpcm1lZCI6dHJ1ZSwiY29uZmlybWVkQnkiOiJJU09MQVRFRCBzaWduZXIiLCJtZXRob2QiOiJJU09MQVRFRCBmaXh0dXJlIiwicmVjb3JkZWRCeSI6IklTT0xBVEVEIHJlY29yZGVyIiwiYXRVdGMiOiIyMDI2LTExLTIxVDA4OjQ5OjUzLjg0MVoiLCJvcmlnaW5hbFJlY29yZElkIjoiSVNPTEFURUQtT1JJR0lOQUwiLCJhcHBlbmRpeElkIjoiSVNPTEFURUQtQVBQRU5ESVgiLCJhdWRpdENvcnJlbGF0aW9uSWQiOiJJU09MQVRFRC1BVURJVCIsImFwcGVuZGl4T25seSI6dHJ1ZX0sImV4ZWN1dG9yX2Fzc2lnbm1lbnQiOnsiY29uZmlybWVkIjp0cnVlLCJjb25maXJtZWRCeSI6IklTT0xBVEVEIHNpZ25lciIsIm1ldGhvZCI6IklTT0xBVEVEIGZpeHR1cmUiLCJyZWNvcmRlZEJ5IjoiSVNPTEFURUQgcmVjb3JkZXIiLCJhdFV0YyI6IjIwMjYtMTEtMjFUMDg6NDk6NTMuODQxWiIsImV4ZWN1dG9yTmFtZSI6IklTT0xBVEVEIGV4ZWN1dG9yIiwiZXhlY3V0b3JJZGVudGlmaWVyIjoiSVNPTEFURUQtRVhFQ1VUT1IiLCJhY3RvclVzZXJJZCI6ImNtdnVscG5mOTAwMDIwNmp2aTA5cWRnczkiLCJhdWRpdENvcnJlbGF0aW9uSWQiOiJJU09MQVRFRC1BVURJVCJ9LCJmaWVsZF9wcmVwYXJlZG5lc3MiOnsiY29uZmlybWVkIjp0cnVlLCJjb25maXJtZWRCeSI6IklTT0xBVEVEIGNvb3JkaW5hdG9yIiwibWV0aG9kIjoiSVNPTEFURUQgZml4dHVyZSIsInJlY29yZGVkQnkiOiJJU09MQVRFRCByZWNvcmRlciIsImF0VXRjIjoiMjAyNi0xMS0yMVQwODo0OTo1My44NDFaIiwicmVjZWl2ZXJOYW1lIjoiSVNPTEFURUQgcmVjZWl2ZXIiLCJwYXBlclJlYWR5RGVjbGFyZWQiOnRydWUsIndpbmRvd1N0YXJ0VXRjIjoiMjAyNi0xMS0yMVQwODo0OTo1My44NDFaIiwid2luZG93RW5kVXRjIjoiMjAyNi0xMS0yMVQwODo1OTo1NC44NDFaIiwiYXVkaXRDb3JyZWxhdGlvbklkIjoiSVNPTEFURUQtQVVESVQifX19"
+    },
+    "cad64c76b3625845e57920d3d50aaca024eccbfa2296142c4f07af2dd67bee6b": {
+      "encoding": "base64",
+      "data": "eyJkaXNwb3NpdGlvbiI6IkFDQ0VQVEVEX0VYSVNUSU5HX0RFUExPWUVEX0FQUExJQ0FUSU9OX1BBVEgiLCJtb2RlIjoiRVhJU1RJTkdfREVQTE9ZRURfQVBQTElDQVRJT05fUlVOVElNRSIsInJlYWRPbmx5UHJlY2hlY2tQYXNzZWQiOnRydWUsImV4aXN0aW5nUmxzQnlwYXNzRGlzY2xvc2VkIjp0cnVlLCJhcHBsaWNhdGlvblNjb3BlVmVyaWZpZWQiOnRydWUsImRlcGxveWVkQ29uZmlnQW50aVJlcGxhY2VtZW50VmVyaWZpZWQiOnRydWUsImF1dGhTZWNyZXRTYW1lRGVwbG95bWVudEJvdW5kIjp0cnVlLCJhdXRoTWludGluZ0Rpc2FibGVkIjp0cnVlLCJvcmlnaW5hbEJ1c2luZXNzVHJhbnNhY3Rpb25Pbmx5Ijp0cnVlLCJzaW5nbGVDb25uZWN0aW9uIjp0cnVlLCJleGlzdGluZ0F1dGhvcml6YXRpb24iOnsib3BlcmF0b3JVc2VySWQiOiJjbXZ1bHBuZjkwMDAyMDZqdmkwOXFkZ3M5IiwidGVuYW50SWQiOiJjbXZ1bHBuMmUwMDAwMDZqdnNxcnQzeTJuIiwic3RvcmVJZCI6ImNtdnVscG44cjAwMDEwNmp2cG81OGt5ZTQiLCJzb3VyY2UiOiJERVZJQ0UifSwicnVudGltZUJpbmRpbmciOnsicHJvamVjdElkIjoicHJqX0xkNzZwMktOVUxZZXU3bWNmNDB2VEcwRXByWTEiLCJkYXRhYmFzZUVudklkIjoiUUhKY2t0NHhWeGtFcTFVbyIsImF1dGhFbnZJZCI6IjZrblhaeFRXckRxbHdNdGgiLCJleHBlY3RlZERhdGFiYXNlUm9sZSI6InBvc3RncmVzIiwiZXhwZWN0ZWRTdXBlcnVzZXIiOmZhbHNlLCJleHBlY3RlZEJ5cGFzc1JscyI6dHJ1ZSwicGVybWlzc2lvbkNoYW5nZSI6ZmFsc2UsImRlcGxveW1lbnRJZCI6ImRwbF80WGdDaFdSMnNmOExmN2NIZnNkazk4ZlM1bkJNIiwicHJvZHVjdGlvblNoYSI6ImIwYWEzOGExZDFiZjRkMWFhMGYzNzVmMWM0MmRhNmU0NDM2ZGM0ODEiLCJkYXRhYmFzZUVudlVwZGF0ZWRBdCI6MTc3NTM3MDQyMzA5NCwiYXV0aEVudlVwZGF0ZWRBdCI6MTc3NTIzMTg5MDgyOCwiZGVwbG95bWVudENyZWF0ZWRBdCI6MTc5NDgzNjgxNDQwNX0sInByb2plY3RSZWYiOiJncmtrZXZ1ZWJhYXJhbXF2dW9jZCIsInByb2R1Y3Rpb25TaGEiOiJiMGFhMzhhMWQxYmY0ZDFhYTBmMzc1ZjFjNDJkYTZlNDQzNmRjNDgxIiwiZGVwbG95bWVudElkIjoiZHBsXzRYZ0NoV1Iyc2Y4TGY3Y0hmc2RrOThmUzVuQk0iLCJyZWFkT25seSI6dHJ1ZSwicGVybWlzc2lvbk11dGF0aW9uIjpmYWxzZSwicm93U2NvcGVWZXJpZmllZCI6dHJ1ZSwiZGF0YWJhc2VSb2xlIjoicG9zdGdyZXMiLCJyb2xzdXBlciI6ZmFsc2UsInJvbGJ5cGFzc3JscyI6dHJ1ZSwiYWxsUmVxdWlyZWRQZXJtaXNzaW9uc1ZlcmlmaWVkIjp0cnVlLCJybHNWZXJpZmllZCI6dHJ1ZSwib2JzZXJ2ZWRBdFV0YyI6IjIwMjYtMTEtMjFUMDg6NDk6NTMuODQxWiIsInRyYW5zYWN0aW9uUm91dGVJbnZva2VkIjpmYWxzZX0="
+    }
+  }
+}

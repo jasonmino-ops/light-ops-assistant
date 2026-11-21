@@ -1,0 +1,19 @@
+E-Shop Release Lineage Gate
+Production SHA:
+b0aa38a1d1bf4d1aa0f375f1c42da6e4436dc481
+origin/main:
+e9dd39dc376c06ec013467c9ad2418fe81c33b36
+Lineage Mode:
+CONTENT_SUBSET
+Production ancestor of origin/main:
+NO
+Working tree:
+CLEAN
+Safe Development Base:
+NO
+RESULT:
+BLOCKED
+REASON:
+SOURCE_MAPPING_UNKNOWN
+REASON: SOURCE_MAPPING_UNKNOWN
+DETAIL: 50d47a1e9555e1919f7b0017a860132e8ba66930 has no unique -x source mapping

@@ -1,0 +1,25 @@
+✔ server package regenerates byte-identically and has no local-workspace runtime dependency (234.893833ms)
+✔ source/cart backups intact and original 17 results reused (0.42025ms)
+✔ exact original hold only; caller cannot supply price/date/approval/actor or force recovery (0.887ms)
+✔ complete signed server permit and embedded immutable admission evidence pass (1.171292ms)
+✔ reject missing signed original (0.294083ms)
+✔ reject missing countersign responsible (0.249417ms)
+✔ reject missing field paper readiness (0.24225ms)
+✔ reject tampered document bytes (0.200125ms)
+✔ reject wrong release (0.22125ms)
+✔ reject wrong package (0.258166ms)
+✔ reject wrong runtime DB (0.202333ms)
+✔ reject no Founder decision (0.194792ms)
+✔ reject stale field (0.265583ms)
+✔ reject prefilled physical print (0.175792ms)
+✔ reject expired Gate (0.149667ms)
+✔ reject missing/forged signature and TTL expiry (0.250083ms)
+✔ packaged auth issuance disabled; module scopes never share db or accounting clock (0.322125ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 345.958041
