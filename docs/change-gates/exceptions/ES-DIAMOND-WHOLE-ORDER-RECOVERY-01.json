@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "taskId": "ES-DIAMOND-WHOLE-ORDER-RECOVERY-01",
+  "featureBranch": "codex/es-diamond-recovery-controlled-release",
+  "baseOriginMainSha": "b0aa38a1d1bf4d1aa0f375f1c42da6e4436dc481",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "status": "ACTIVE",
+  "approvedBy": "Founder",
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Explicit Founder permission captured2026-11-21T13:12:55Z approves only the exact three paths and reviewed28862 content, including the already proposed five-line main-source variant. Primary authorization is for the named unfinished controlled-release audit head; close it at its actual governance-head merge. Close the additional source-admission authorization immediately after its source merge. No Preview/Production deploy, permit, real ledger/inventory write or printing is authorized.",
+  "createdAt": "2026-11-21T12:23:30.823Z",
+  "authorizationEvidence": {
+    "approvalChannel": "Explicit controlling Founder user message",
+    "actualApprover": "Founder",
+    "recordedBy": "Codex",
+    "capturedAtUtc": "2026-11-21T13:12:55.000Z",
+    "timestampBasis": "First tool capture after the current explicit permission; message sent_at/id unavailable and not invented",
+    "verbatimAuthorizationSha256": "16c573e5d2e2222779897c78340f6b09ecd6022ccdb9521a45ff446ea8834c2e",
+    "receiptPath": "docs/incidents/es-diamond-whole-order-recovery-01/FOUNDER-SCOPE-MAIN-AUTHORIZATION-20261121.md",
+    "receiptSha256": "42e501e639eee66e2b9a43f3bba1e79c428e4e2a2f349a6396e48857d819ec1a",
+    "priorPendingDraftSha256": "c345883183ca5b4dc6c3c8b55b0fa673081626d36904826356b52c1808a50b21",
+    "exactCandidateCommit": "28862dfdd2c3313978311f1fcc36fe97c1180566",
+    "proposedPathCount": 3,
+    "productionAuthorization": false,
+    "deploymentAuthorization": false,
+    "lifecycle": "Source admission closes at actual source merge; primary is the genuinely unmerged controlled-release governance/audit head, closes at its own actual merge."
+  },
+  "authorizedPaths": [
+    "app/cashier/page.tsx",
+    "app/api/cashier/recovery/diamond-13543/route.ts",
+    "app/cashier/components/DiamondRecoveryAction.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "51a186c26c33f266c88b05d39ce0e696cf91cd4a046a95b5a46e2142c3f31c81",
+    "app/api/cashier/recovery/diamond-13543/route.ts": "ac10e272c4d3dc0947896ac49fe404b73f58d209d90e79ed0113349b253ef6ad",
+    "app/cashier/components/DiamondRecoveryAction.tsx": "4e0fb8b999e059922f390c8abd003e339d374fb15767e1a5b8a38ee5fbcea716"
+  },
+  "additionalAuthorizations": [
+    {
+      "authorizationId": "MAIN-SOURCE-ADMISSION",
+      "featureBranch": "codex/es-diamond-recovery-main-admission",
+      "baseOriginMainSha": "f415fbf0273d1fd1f813f1e7d75cc6809230e0a8",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "status": "ACTIVE",
+      "authorizedPaths": [
+        "app/cashier/page.tsx",
+        "app/api/cashier/recovery/diamond-13543/route.ts",
+        "app/cashier/components/DiamondRecoveryAction.tsx"
+      ],
+      "authorizedPathSha256": {
+        "app/cashier/page.tsx": "d7dccb90d9d9804458920cc7c9eba60ec7c3121df105adf63b9d35e634d79a1e",
+        "app/api/cashier/recovery/diamond-13543/route.ts": "ac10e272c4d3dc0947896ac49fe404b73f58d209d90e79ed0113349b253ef6ad",
+        "app/cashier/components/DiamondRecoveryAction.tsx": "4e0fb8b999e059922f390c8abd003e339d374fb15767e1a5b8a38ee5fbcea716"
+      },
+      "approvedBy": "Founder",
+      "closeAfter": "FEATURE_MERGE",
+      "createdAt": "2026-11-21T12:23:30.823Z",
+      "reason": "Same explicit Founder permission and original receipt; exact three-path main-source variant only. Close this source-admission authorization at its actual feature/source merge. No production authority.",
+      "approvedAt": "2026-11-21T13:12:55.000Z"
+    }
+  ],
+  "approvedAt": "2026-11-21T13:12:55.000Z"
+}
