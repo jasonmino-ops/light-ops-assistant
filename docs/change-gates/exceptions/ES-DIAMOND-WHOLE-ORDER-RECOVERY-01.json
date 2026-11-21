@@ -43,7 +43,7 @@
       "featureBranch": "codex/es-diamond-recovery-main-admission",
       "baseOriginMainSha": "f415fbf0273d1fd1f813f1e7d75cc6809230e0a8",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "authorizedPaths": [
         "app/cashier/page.tsx",
         "app/api/cashier/recovery/diamond-13543/route.ts",
@@ -58,7 +58,19 @@
       "closeAfter": "FEATURE_MERGE",
       "createdAt": "2026-11-21T12:23:30.823Z",
       "reason": "Same explicit Founder permission and original receipt; exact three-path main-source variant only. Close this source-admission authorization at its actual feature/source merge. No production authority.",
-      "approvedAt": "2026-11-21T13:12:55.000Z"
+      "approvedAt": "2026-11-21T13:12:55.000Z",
+      "closedAt": "2026-11-21T13:29:16.631Z",
+      "featureMergeCommitSha": "47e257f2e1e94f3ada5a6e6a7b7c82a3245375fd",
+      "closedBy": "Codex",
+      "closureEvidence": {
+        "sourceCandidate": "28862dfdd2c3313978311f1fcc36fe97c1180566",
+        "scopeGuardResult": "PASS_BEFORE_SOURCE_MERGE",
+        "scopeGuardLogSha256": "45ee379758facc8de4511b5a45ac6afe6e2c9b88d8c13d57431f99adfd5badf3",
+        "mainBuildLogSha256": "2f4464c4ac29251af0be7dc6b7061752fa999d8d917bf079150608164a5fac59",
+        "independentReview": "PASS_MAIN_ADMISSION_NONDEPLOYING_ONLY",
+        "independentReviewSha256": "edb7a1743475565acdfc198a11095738c685554235c622aabdd4fdaec3c018e5",
+        "deploymentPerformed": false
+      }
     }
   ],
   "approvedAt": "2026-11-21T13:12:55.000Z"
