@@ -20,8 +20,8 @@
     ]
   },
   "releaseSha": "b36c47e137693e067a7d26d40706df8f89610f29",
-  "deploymentId": "PENDING",
-  "productionSha": "PENDING",
+  "deploymentId": "dpl_Enq3R1v2BezAHNh7G1mW6KYdj53g",
+  "productionSha": "b36c47e137693e067a7d26d40706df8f89610f29",
   "control": "45b65b45af9e0eb594a9b5565449e2a412a0d005",
   "manifestSha256": "4b0cd607dd4375c04d0e7337c4a49145848d9ace219f7e266af12448f70dc2a7",
   "productionDeployment": "dpl_4XgChWR2sf8Lf7cHfsdk98fS5nBM",
@@ -58,5 +58,13 @@
   },
   "collateralPreviewAttemptsApproved": 3,
   "fieldHumanConditions": "PENDING_WB_REAL_CONFIRMATION",
-  "realSaleOrPrintAuthorizedOnlyAfterHumanConditions": true
+  "realSaleOrPrintAuthorizedOnlyAfterHumanConditions": true,
+  "deploymentObservedAtUtc": "2026-11-21T15:28:42.801966+00:00",
+  "signedPendingRecordSha256": "8c8045ec13601185e8bc0fb98918abb8d007daf07c84982c7ab22059087a38fe",
+  "protectedAppStatusId": 59554266468,
+  "protectedWorkflowRunId": 44919149855,
+  "productionReleaseStatus": "RELEASED_HEALTH_VERIFIED",
+  "fieldVerified": false,
+  "incidentClosed": false,
+  "physicalPaperVerified": false
 }
