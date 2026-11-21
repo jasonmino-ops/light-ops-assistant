@@ -1,0 +1,46 @@
+{
+  "taskId": "ES-DIAMOND-NORMAL-CASH-QUERY-FIX-01",
+  "base": "b0aa38a1d1bf4d1aa0f375f1c42da6e4436dc481",
+  "mainBase": "1ae54880cc2b78f3d6ccdd09952241455e2ab927",
+  "tree": "636e1d0b37bd9bb8adcc5df9a94b5ced926acd3c",
+  "mainRouteSha256": "69b45cd31f449af99fbaea76634f7d48c5286fe6bc41f3524b07f5faaf066f90",
+  "paths": {
+    "app/api/cashier/sales/route.ts": {
+      "before": "bbb997e296fc956250e547c693df5c5d28f97010b5abc438311e082603a827f2",
+      "after": "85c455f564ebc5aa08c0d0b02ebe115d5794592fec07705e0e6e48ab56e81aaf"
+    },
+    "tests/cashier-large-cart-query.test.cjs": {
+      "before": null,
+      "after": "921e54f9e65ad15cda09a25b7a5e88a3345f5c2928c062997bf35d6166e5795e"
+    }
+  },
+  "scopePath": "docs/change-gates/exceptions/ES-DIAMOND-NORMAL-CASH-QUERY-FIX-01.json",
+  "recordPath": "docs/releases/ES-DIAMOND-NORMAL-CASH-QUERY-FIX-01.json",
+  "receiptPath": "docs/incidents/es-diamond-whole-order-recovery-01/FOUNDER-NORMAL-CASH-RELEASE-AUTHORIZATION-20261121.md",
+  "productionDeployment": "dpl_4XgChWR2sf8Lf7cHfsdk98fS5nBM",
+  "storeCode": "ST883DC00C",
+  "cashNewCollectionCents": 0,
+  "shiftStart": "2026-11-21T13:06:53.509Z",
+  "existingDedicatedRecoveryExcluded": true,
+  "evidence": {
+    "query-final-unit-binding.log": "ffe0da3d24357853c235dfad6ffa1e8d5680949b1dfea707cdd38de8f38c9b9d",
+    "query-pg-tests-attempt4.log": "080efdca2ee6fdc44b028394c538789cb711f4534d0d503896e446cfb5d31435",
+    "query-pg-two-cases-attempt5.log": "e5859edbc460128f4bc861460667521682ff725bc526df1594534e519a088531",
+    "main-build.log": "64c8b5218fc22feab090d317fba07404aa64a4c3a47e5338b78aa68f243bdf26",
+    "runtime-build.log": "f06e8d838038364c4aa9fba4534270ecc664a87856b181d8a2435df2fa223856",
+    "release-record-validator-tests.log": "019ae0582a6d0aa1ad9cbf233267d9aa13e6e8c1e6d6a4be17b7f85bc9b572d0",
+    "query-final-full-sealed.log": "ea50aab35a65ae18daf6c1fcf45237e33952ee64f60cf89d92dc660c65f80389"
+  },
+  "evidenceApplicability": {
+    "query-final-unit-binding.log": "3 final unit leaves PASS",
+    "query-pg-tests-attempt4.log": "5 PG leaves PASS; 2 original failed assertions retained and resolved by attempt5; raw whole run FAIL",
+    "query-pg-two-cases-attempt5.log": "2 corrected PG leaves PASS,5 skipped because already passed; no new productcode change",
+    "main-build.log": "PASS",
+    "runtime-build.log": "PASS",
+    "physicalPaper": "NOT_TESTED_PENDING_REAL_FIELD",
+    "oldDedicated17And52": "Historical unchanged dependency evidence only; not normal-query proof",
+    "release-record-validator-tests.log": "7 focused metadata cases PASS; genuine dpl-format acceptance vs baseline defect, pending/invalid/unauthorized states remain denied; proposal is NOT applied to trusted main",
+    "query-final-full-sealed.log": "Final exact sealed test file: all10leafgroups +1parent PASS,0FAIL,0SKIP on actualProduction-based source, unchanged originaltransaction defaults; fieldpaper pending"
+  },
+  "trustedReleaseValidatorSha256": "6e877689166d605d83c1b357783c06cad28353ff66ba632d39635fe675398e0b"
+}
