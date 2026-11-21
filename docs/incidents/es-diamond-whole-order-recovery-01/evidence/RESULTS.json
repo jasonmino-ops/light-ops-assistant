@@ -1,0 +1,44 @@
+{
+  "original17": "PASS reused; NOT rerun",
+  "newNodeTestCountsIncludingGroupParents": {
+    "entry-tests-v3.log": {
+      "pass": 30,
+      "fail": 0
+    },
+    "integration-tests-v3.log": {
+      "pass": 11,
+      "fail": 0
+    },
+    "ui-tests-v2.log": {
+      "pass": 10,
+      "fail": 0
+    },
+    "artifact-tests-v3.log": {
+      "pass": 4,
+      "fail": 0
+    }
+  },
+  "incrementalLeafScenarios": 52,
+  "build": "PASS",
+  "productionMutation": false,
+  "permitActivated": false,
+  "physicalPrint": false,
+  "gate": "BLOCKED",
+  "fieldBlockers": [
+    "Signed original preservation and accountable countersign plan OPEN",
+    "Named field window/paper/receiver readiness OPEN"
+  ],
+  "lineage": "BLOCKED SOURCE_MAPPING_UNKNOWN",
+  "scope": "BLOCKED missing trusted task exception",
+  "codeManifestSha256": "0df22889154901eadf4b4e2a8cf049fdfeee7cc14fa0c369ea0e5c07731f687e",
+  "rawBuildLogSha256": "89e88638b722e88197d42a686c17623ddf54f0a14695fc5a6fd9af5e58864e17",
+  "archivedBuildLogNormalization": "CR/progress trailing spaces and final blank lines removed; raw original retained in task evidence directory",
+  "supersedesInitialCandidate": true,
+  "finalCodeManifest": "candidate-code-sha256-v3.json",
+  "independentFinalReview": "PENDING_REAL_CLAUDE_READ_ONLY_REVIEW",
+  "uiEvidenceReuse": "UI v2 byte unchanged in final safety delta; passed9 leaf scenarios reused",
+  "independentV2Review": "PASS WITH BLOCKERS; no P0; authority/field blockers remain",
+  "independentFinalDeltaReview": "PENDING",
+  "sharedAuthSecretRisk": "Explicitly disclosed; must be acknowledged in final Founder decision; no independent cryptographic authority claimed",
+  "operationalCutoffUtc": "2026-11-21T15:43:36.233Z"
+}

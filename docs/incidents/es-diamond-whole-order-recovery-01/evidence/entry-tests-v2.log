@@ -1,0 +1,32 @@
+✔ server package regenerates byte-identically and has no local-workspace runtime dependency (258.412708ms)
+✔ source/cart backups intact and original 17 results reused (0.420291ms)
+✔ exact original hold only; caller cannot supply price/date/approval/actor or force recovery (0.871833ms)
+✔ complete signed server permit and embedded immutable admission evidence pass (1.881708ms)
+✔ reject missing signed original (0.4075ms)
+✔ reject missing countersign responsible (0.326542ms)
+✔ reject missing field paper readiness (0.349958ms)
+✔ reject tampered document bytes (0.319666ms)
+✔ reject wrong release (0.250542ms)
+✔ reject wrong package (0.291333ms)
+✔ reject wrong runtime DB (0.247167ms)
+✔ reject no Founder decision (0.257167ms)
+✔ reject stale field (0.373333ms)
+✔ reject prefilled physical print (0.273584ms)
+✔ reject expired Gate (0.204875ms)
+✔ reject missing/forged signature and TTL expiry (0.295084ms)
+✔ packaged auth issuance disabled; module scopes never share db or accounting clock (0.30525ms)
+✔ reject signed but non-passing founder document, not merely its pointer (0.254333ms)
+✔ reject signed but non-passing review document, not merely its pointer (0.232083ms)
+✔ reject signed but non-passing lineage document, not merely its pointer (0.2215ms)
+✔ reject signed but non-passing scope document, not merely its pointer (0.228958ms)
+✔ reject signed but non-passing sourceParity document, not merely its pointer (0.21675ms)
+✔ auth input enforces read-only capabilities; packaged exports and external modules cannot mint cookies/tokens (0.149625ms)
+✔ read-only source parity checks all 21 real current-tree dependencies against frozen source commit (129.591292ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 502.1965

@@ -1,0 +1,125 @@
+import { NextRequest } from 'next/server'
+import { verifySession } from './session'
+import { prisma } from './prisma'
+
+export type UserRole = 'OWNER' | 'STAFF'
+
+export type RequestContext = {
+  tenantId: string
+  userId: string
+  storeId: string
+  role: UserRole
+}
+
+/**
+ * x-* 开发身份头门禁。
+ *
+ * 这些头可以直接伪造出任意 tenant/store/OWNER 身份，只允许在明确的本地开发环境使用。
+ * 任一条件成立即关闭：
+ *   - NODE_ENV === 'production'
+ *   - VERCEL_ENV 为 production / preview（线上环境一律不认）
+ *   - 显式开关 ESHOP_DISABLE_DEV_HEADERS=1
+ */
+export function devHeadersAllowed() {
+  if (process.env.ESHOP_DISABLE_DEV_HEADERS === '1') return false
+  if (process.env.NODE_ENV === 'production') return false
+  const vercelEnv = process.env.VERCEL_ENV
+  if (vercelEnv === 'production' || vercelEnv === 'preview') return false
+  return true
+}
+
+let devHeaderRejectionLogged = false
+
+/**
+ * Extracts the request context in priority order:
+ *
+ * 1. auth-session cookie — set by /api/auth/telegram after HMAC-verified
+ *    Telegram WebApp auth. For cookie-based sessions the tenant status is
+ *    checked against the DB: ARCHIVED tenants are blocked immediately.
+ *
+ * 2. x-* dev headers — local development fallback (injected by lib/api.ts).
+ *    Never present in production Telegram WebApp traffic.
+ *    Tenant status is NOT checked for dev headers (local seed data may vary).
+ */
+export async function getContext(req: NextRequest): Promise<RequestContext | null> {
+  // ── 1. Signed session cookie ───────────────────────────────────────────────
+  const sessionToken = req.cookies.get('auth-session')?.value
+  if (sessionToken) {
+    const session = verifySession(sessionToken)
+    if (session) {
+      // OPS session 短路：不走商户 tenant/user 表校验（_ops 不是真 tenant，
+      // OpsAdmin.id 不是 User.id）。OPS 鉴权由 checkOpsAuth 单独 verify
+      // OpsAdmin.status / sessionVersion / lockedUntil；这里只为 /api/auth/status
+      // 等通用通道返回一个合法 ctx，避免 PWA 模式被踢到 /relogin。
+      if (session.tenantId === '_ops' && session.opsRole) {
+        // 平台代运营模式：ops 管理员携带有效 delegate-session 时，
+        // 以目标商户 owner 身份访问 owner API 路由。
+        // 安全保障：delegate-session 由 HMAC 签名，无 opsRole 字段（与 ops session 严格区分）；
+        // checkOpsAuth 仍从 auth-session 读取，不受此分支影响。
+        const delegateToken = req.cookies.get('delegate-session')?.value
+        if (delegateToken) {
+          const ds = verifySession(delegateToken)
+          if (ds && ds.storeId && ds.tenantId && !ds.opsRole) {
+            return {
+              tenantId: ds.tenantId,
+              storeId:  ds.storeId,
+              userId:   ds.userId,
+              role:     'OWNER' as const,
+            }
+          }
+        }
+        return {
+          tenantId: session.tenantId,
+          userId:   session.userId,
+          storeId:  session.storeId,
+          role:     session.role,
+        }
+      }
+      // Block archived/stopped tenants and unbound/disabled users in parallel.
+      // Ensures that unbind, resign, or tenant deactivation immediately invalidates
+      // existing session cookies without waiting for cookie expiry.
+      const [tenant, user] = await Promise.all([
+        prisma.tenant.findUnique({
+          where: { id: session.tenantId },
+          select: { status: true },
+        }),
+        prisma.user.findUnique({
+          where: { id: session.userId },
+          select: { status: true },
+        }),
+      ])
+      if (tenant?.status === 'ACTIVE' && user?.status === 'ACTIVE') {
+        return {
+          tenantId: session.tenantId,
+          userId: session.userId,
+          storeId: session.storeId,
+          role: session.role,
+        }
+      }
+      // Tenant or user is inactive (e.g. user was unbound/disabled).
+      // Fall through to x-* dev header fallback so local dev tools (OWNER_CTX)
+      // still work. In production these headers are absent so the request still
+      // returns null — no security regression.
+    }
+  }
+
+  // ── 2. Dev x-* header fallback（仅本地开发环境）─────────────────────────────
+  const tenantId = req.headers.get('x-tenant-id')
+  const userId = req.headers.get('x-user-id')
+  const storeId = req.headers.get('x-store-id')
+  const role = req.headers.get('x-role')
+
+  if (!devHeadersAllowed()) {
+    // 线上收到 x-* 身份头一律忽略并告警（可能是伪造尝试），只记事件不记内容
+    if ((tenantId || userId || storeId || role) && !devHeaderRejectionLogged) {
+      devHeaderRejectionLogged = true
+      console.warn('[security] 已拒绝生产环境中的 x-* 开发身份头')
+    }
+    return null
+  }
+
+  if (!tenantId || !userId || !storeId || !role) return null
+  if (role !== 'OWNER' && role !== 'STAFF') return null
+
+  return { tenantId, userId, storeId, role }
+}

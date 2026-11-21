@@ -1,0 +1,1 @@
+module.exports=function(source){return require('typescript').transpileModule(source,{compilerOptions:{target:require('typescript').ScriptTarget.ES2022,module:require('typescript').ModuleKind.ESNext,jsx:require('typescript').JsxEmit.ReactJSX,esModuleInterop:true,resolveJsonModule:true}}).outputText;};

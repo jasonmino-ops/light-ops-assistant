@@ -1,0 +1,39 @@
+▶ new packaged entry, real durable PK race, recovery proof, paper-only witness and uncertainty
+  ✔ actual local runtime is postgres/non-super/bypass; exact device/account scopes; GET is read-only (33.908417ms)
+  ✔ 20 concurrent requests across fresh controllers: exactly one acceptance and one financial invocation (140.656667ms)
+  ✔ lost response / reload / repeated POST only reads same order; gate removal cannot cause second financial call (6.599208ms)
+  ✔ no paper witness before known transport success; UNKNOWN print stops and cannot re-submit (40.090417ms)
+  ✔ terminal print without proved crossed result freezes even after a paper witness; no repeat transaction (5.071375ms)
+  ✔ post-commit reconciliation response loss freezes without repeating sale, payment or print (209.808667ms)
+[POST /api/cashier/sales] AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+113293 !== 13543
+
+    at db.$transaction.maxWait (/private/tmp/es-diamond-oneclick-implementation-20261121/lib/diamond-recovery/frozen/recovery-candidate.cjs:32:198)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Proxy._transactionWithCallback (/private/tmp/es-diamond-oneclick-implementation-20261121/node_modules/@prisma/client/runtime/client.js:75:4668)
+    at async POST (/private/tmp/es-diamond-oneclick-implementation-20261121/lib/diamond-recovery/packaged-core.cjs:310:22)
+    at async Object.execute (/private/tmp/es-diamond-oneclick-implementation-20261121/lib/diamond-recovery/controller.cjs:163:19)
+    at async TestContext.<anonymous> (/private/tmp/es-diamond-oneclick-implementation-20261121/tests/diamond-recovery/integration.test.cjs:71:16)
+    at async Test.run (node:internal/test_runner/test:1125:7)
+    at async TestContext.<anonymous> (/private/tmp/es-diamond-oneclick-implementation-20261121/tests/diamond-recovery/integration.test.cjs:69:3)
+    at async Test.run (node:internal/test_runner/test:1125:7)
+    at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 113293,
+  expected: 13543,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+  ✔ financial rollback consumes durable acceptance and freezes forever; no fallback/replay (173.615917ms)
+  ✔ acceptance insert response loss never invokes finance and creates UNKNOWN freeze (172.668125ms)
+✔ new packaged entry, real durable PK race, recovery proof, paper-only witness and uncertainty (1392.318ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1506.187834

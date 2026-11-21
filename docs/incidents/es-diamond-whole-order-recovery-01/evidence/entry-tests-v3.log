@@ -1,0 +1,38 @@
+✔ server package regenerates byte-identically and has no local-workspace runtime dependency (255.085542ms)
+✔ source/cart backups intact and original 17 results reused (0.394875ms)
+✔ exact original hold only; caller cannot supply price/date/approval/actor or force recovery (0.887ms)
+✔ complete signed server permit and embedded immutable admission evidence pass (1.942459ms)
+✔ reject missing signed original (0.413458ms)
+✔ reject missing countersign responsible (0.323834ms)
+✔ reject missing field paper readiness (0.343292ms)
+✔ reject tampered document bytes (0.309083ms)
+✔ reject wrong release (0.279333ms)
+✔ reject wrong package (0.26575ms)
+✔ reject wrong runtime DB (0.220542ms)
+✔ reject no Founder decision (0.247292ms)
+✔ reject stale field (0.384333ms)
+✔ reject prefilled physical print (0.293917ms)
+✔ reject expired Gate (0.186875ms)
+✔ reject missing/forged signature and TTL expiry (0.2625ms)
+✔ packaged auth issuance disabled; module scopes never share db or accounting clock (0.338666ms)
+✔ reject signed but non-passing founder document, not merely its pointer (0.227916ms)
+✔ reject signed but non-passing review document, not merely its pointer (0.196584ms)
+✔ reject signed but non-passing lineage document, not merely its pointer (0.229375ms)
+✔ reject signed but non-passing scope document, not merely its pointer (0.2015ms)
+✔ reject signed but non-passing sourceParity document, not merely its pointer (0.2325ms)
+✔ auth input enforces read-only capabilities; packaged exports and external modules cannot mint cookies/tokens (0.132209ms)
+✔ read-only source parity checks all 21 real current-tree dependencies against frozen source commit (130.97825ms)
+✔ Founder decision must acknowledge/bind sharedAuthSecretTrustRiskAcknowledged (0.459792ms)
+✔ Founder decision must acknowledge/bind existingBypassRlsRiskAcknowledged (0.238084ms)
+✔ Founder decision must acknowledge/bind executorIdentifier (0.283416ms)
+✔ Founder decision must acknowledge/bind receiverName (0.239625ms)
+✔ Founder decision must acknowledge/bind fieldWindowEndUtc (0.203375ms)
+✔ operational permission window stops thirty minutes before original immutable print TTL (0.272917ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 501.664792

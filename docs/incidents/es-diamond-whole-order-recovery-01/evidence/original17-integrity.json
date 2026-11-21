@@ -1,0 +1,9 @@
+{
+  "original17": "PASS reused; NOT rerun",
+  "sealedBundleSha256": "14a4f36f7847b73b37bbaf46b7fb6e5d8fce0d920f122766205b7d6d66234a4e",
+  "verifiedSealedFiles": 44,
+  "mismatches": [],
+  "newScope": "one-click entry, packaging, durable acceptance, concurrency, reconciliation, paper witness and UNKNOWN",
+  "verifiedExternalDependencyFiles": 93,
+  "externalMismatches": []
+}

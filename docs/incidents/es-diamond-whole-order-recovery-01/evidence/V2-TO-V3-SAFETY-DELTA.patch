@@ -1,0 +1,59 @@
+--- v2/lib/diamond-recovery/controller.cjs
++++ v3/lib/diamond-recovery/controller.cjs
+@@ -48,6 +48,8 @@
+  assert.equal(g.cartSha256,manifest.cartSha256);assert.equal(g.idempotencyKey,core.KEY);assert.equal(g.actorUserId,manifest.approvedActorId);
+  validRef(g.founderDecisionReference);validRef(g.candidateReviewReference);validRef(g.lineageAndScopeEvidenceReference);
+  const issued=Date.parse(g.issuedAtUtc), expires=Date.parse(g.expiresAtUtc);
++ const operationalCutoff=Date.parse(clock.PRINT_EXPIRES_AT)-30*60000;
++ assert(expires<=operationalCutoff&&Date.parse(g.dossier?.fieldPlan?.windowEndUtc)<=operationalCutoff,'STOP_OPERATIONAL_CUTOFF');
+  assert(issued<=now&&now<expires&&expires-issued<=4*3600000,'STOP_GATE_EXPIRED');
+  assert(now+clock.PRINT_BUDGET_MS<Date.parse(clock.PRINT_EXPIRES_AT),'STOP_ORIGINAL_PRINT_TTL');
+  assert(g.documents&&g.dossier&&g.freshField,'STOP_ADMISSION_EVIDENCE_MISSING');
+@@ -66,6 +68,8 @@
+ }
+ function createController(db,{env=process.env,now=()=>Date.now()}={}) {
+  async function authenticate(req) {
++  assert(typeof env.AUTH_SECRET==='string'&&env.AUTH_SECRET.length>=24&&env.AUTH_SECRET!=='dev-secret-change-in-production','STOP_AUTH_CONFIGURATION');
++  assert.equal(env.AUTH_SECRET,process.env.AUTH_SECRET,'STOP_AUTH_RUNTIME_MISMATCH');
+   assert.equal(req.headers.get('x-lightops-client'),'desktop-pos','STOP_DESKTOP_ONLY');
+   // Actual existing terminal credential is required even when ACCOUNT is selected.
+   const m=loader(readonlyDatabase(db)), auth=m.load('lib/desktop-pos-auth.ts');
+@@ -127,13 +131,14 @@
+   const fromUtc=new Date(start).toISOString(),toUtc=new Date(start+86400000).toISOString();
+   return {date,fromUtc,toUtc,totals:await readDayTotals(db,fromUtc,toUtc)};
+  }
++ function assertWitnessIdentity(fence,identity){assert(fence&&fence.payloadSnapshot.allowedTriggerUserIds.includes(identity.triggerUserId),'STOP_WITNESS_IDENTITY');assert.equal(identity.tokenHash,fence.payloadSnapshot.tokenHash,'STOP_ORIGINAL_WITNESS_CREDENTIAL');}
+  async function execute(req,input) {
+   validateInput(input);const identity=await authenticate(req);
+-  if(input.action==='reportPaperFailure'){const fence=await read(FENCE_ID);assert(fence&&fence.payloadSnapshot.allowedTriggerUserIds.includes(identity.triggerUserId),'STOP_REPORT_IDENTITY');await freeze('OPERATOR_REPORTED_INCOMPLETE_MISSING_OR_DUPLICATE_PAPER',identity.triggerUserId);return {state:'UNKNOWN',reason:'PAPER_FAILURE_RECORDED_NO_REPRINT'};}
++  if(input.action==='reportPaperFailure'){const fence=await read(FENCE_ID);assertWitnessIdentity(fence,identity);await freeze('OPERATOR_REPORTED_INCOMPLETE_MISSING_OR_DUPLICATE_PAPER',identity.triggerUserId);return {state:'UNKNOWN',reason:'PAPER_FAILURE_RECORDED_NO_REPRINT'};}
+   if(input.action==='confirmPaper') {
+    const status=await outcome(identity);assert(['PAPER_CONFIRMABLE','PAPER_CONFIRMED'].includes(status.state),'STOP_PAPER_NOT_CONFIRMABLE');
+    const fence=await read(FENCE_ID);assert(fence?.payloadSnapshot?.receiverName,'STOP_RECEIVER_MISSING');
+-   assert(fence.payloadSnapshot.allowedTriggerUserIds.includes(identity.triggerUserId),'STOP_WITNESS_IDENTITY');assert.equal(input.receiverName,fence.payloadSnapshot.receiverName,'STOP_WRONG_RECEIVER');
++   assertWitnessIdentity(fence,identity);assert.equal(input.receiverName,fence.payloadSnapshot.receiverName,'STOP_WRONG_RECEIVER');
+    if(status.state==='PAPER_CONFIRMED') return status;
+    try {await db.operationLog.create({data:dataFor(WITNESS_ID,core.TASK+':PAPER_WITNESS',{orderNo:status.orderNo,printJobId:status.printJobId,receiverName:fence.payloadSnapshot.receiverName,triggerUserId:identity.triggerUserId,confirmedAt:new Date(now()).toISOString(),operatorAttestedOneCompleteOriginalFrontCopy:true,receiverAcknowledged:true,physicalVerificationBySystem:false,countersignature:'PENDING_SEPARATE_HANDOVER_SUPPLEMENT'},identity.triggerUserId)});} catch(e) {if(e.code!=='P2002')throw e;}
+    return outcome(identity);
+--- v2/lib/diamond-recovery/guards.cjs
++++ v3/lib/diamond-recovery/guards.cjs
+@@ -14,6 +14,8 @@
+  const founder=document(g.documents,evidence.founder),review=document(g.documents,evidence.review),lineage=document(g.documents,evidence.lineage),scope=document(g.documents,evidence.scope),source=document(g.documents,evidence.sourceParity);
+  for(const d of [founder,review,lineage,scope,source]){assert.equal(d.task,'ES-DIAMOND-WHOLE-ORDER-RECOVERY-01');assert.equal(d.releaseSha,g.releaseSha);}
+  assert.equal(founder.schema,'diamond-founder-decision/1');assert.equal(founder.disposition,'APPROVED');assert.equal(founder.decisionReference,g.founderDecisionReference);assert.equal(founder.deploymentId,g.deploymentId);assert.equal(founder.packageSha256,packageSha);assert.equal(founder.idempotencyKey,g.idempotencyKey);
++ assert.equal(founder.sharedAuthSecretTrustRiskAcknowledged,true);assert.equal(founder.existingBypassRlsRiskAcknowledged,true);
++ assert.equal(founder.dossierSha256,g.dossierSha256);assert.equal(founder.executorIdentifier,g.executorIdentifier);assert.equal(founder.receiverName,g.receiverName);assert.equal(founder.fieldWindowStartUtc,g.dossier.fieldPlan.windowStartUtc);assert.equal(founder.fieldWindowEndUtc,g.dossier.fieldPlan.windowEndUtc);
+  assert.deepEqual(founder.actions,['ACTIVATE_THIS_EXACT_RECOVERY_GATE','ONE_WHOLE_CASH_BOOKKEEPING_RECOVERY','ONE_ORIGINAL_FRONT_PRINT','NO_NEW_CASH_OR_INVENTORY_DEDUCTION']);
+  assert.equal(review.schema,'diamond-independent-review/1');assert.equal(review.result,'PASS');assert.equal(review.packageSha256,packageSha);assert.deepEqual(review.unresolvedSafetyFindings,[]);
+  assert.equal(lineage.schema,'diamond-release-lineage/1');assert.equal(lineage.result,'PASS');assert.equal(lineage.mode,'STRICT');assert.equal(lineage.safeDevelopmentBase,true);assert.equal(lineage.sourceMappingComplete,true);assert(/^[a-f0-9]{40}$/.test(lineage.trustedMainSha));
+--- v2/tests/diamond-recovery/helpers.cjs
++++ v3/tests/diamond-recovery/helpers.cjs
+@@ -29,7 +29,7 @@
+  const freshField={dossierSha256,observedAtUtc:iso(-1000),observedBy:d.fieldPlan.coordinatorName,receiverName:d.fieldPlan.receiverName,cashierAndOfflinePaused:true,deploymentsAndMigrationsPaused:true,originalHoldNotResubmitted:true,usb002QueueEmpty:true,paperPresent:true,receiverPresent:true,executorIdentifier:d.executor.identifier,baselineSha256:d.handover.baseline.sha256};
+  const doc=x=>add({task:manifest.task,releaseSha:env.VERCEL_GIT_COMMIT_SHA,...x});
+  const governance={
+- founder:doc({schema:'diamond-founder-decision/1',disposition:'APPROVED',decisionReference:'ISOLATED-FOUNDER-FIXTURE',deploymentId:env.VERCEL_DEPLOYMENT_ID,packageSha256:PACKAGE_SHA,idempotencyKey:manifest.key,actions:['ACTIVATE_THIS_EXACT_RECOVERY_GATE','ONE_WHOLE_CASH_BOOKKEEPING_RECOVERY','ONE_ORIGINAL_FRONT_PRINT','NO_NEW_CASH_OR_INVENTORY_DEDUCTION']}),
++ founder:doc({schema:'diamond-founder-decision/1',sharedAuthSecretTrustRiskAcknowledged:true,existingBypassRlsRiskAcknowledged:true,dossierSha256,executorIdentifier:d.executor.identifier,receiverName:d.fieldPlan.receiverName,fieldWindowStartUtc:d.fieldPlan.windowStartUtc,fieldWindowEndUtc:d.fieldPlan.windowEndUtc,disposition:'APPROVED',decisionReference:'ISOLATED-FOUNDER-FIXTURE',deploymentId:env.VERCEL_DEPLOYMENT_ID,packageSha256:PACKAGE_SHA,idempotencyKey:manifest.key,actions:['ACTIVATE_THIS_EXACT_RECOVERY_GATE','ONE_WHOLE_CASH_BOOKKEEPING_RECOVERY','ONE_ORIGINAL_FRONT_PRINT','NO_NEW_CASH_OR_INVENTORY_DEDUCTION']}),
+  review:doc({schema:'diamond-independent-review/1',result:'PASS',packageSha256:PACKAGE_SHA,unresolvedSafetyFindings:[]}),
+  lineage:doc({schema:'diamond-release-lineage/1',result:'PASS',mode:'STRICT',safeDevelopmentBase:true,sourceMappingComplete:true,trustedMainSha:'3'.repeat(40)}),
+  scope:doc({schema:'diamond-scope/1',result:'PASS',authorizationStatus:'ACTIVE',trustedMainSha:'3'.repeat(40),authorizedPaths:['app/cashier/page.tsx','app/api/cashier/recovery/diamond-13543/route.ts']}),
