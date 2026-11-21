@@ -38,7 +38,15 @@
   "independentFinalReview": "PENDING_REAL_CLAUDE_READ_ONLY_REVIEW",
   "uiEvidenceReuse": "UI v2 byte unchanged in final safety delta; passed9 leaf scenarios reused",
   "independentV2Review": "PASS WITH BLOCKERS; no P0; authority/field blockers remain",
-  "independentFinalDeltaReview": "PENDING",
+  "independentFinalDeltaReview": "PASS WITH BLOCKERS; no new P0/P1; Production NOT READY",
   "sharedAuthSecretRisk": "Explicitly disclosed; must be acknowledged in final Founder decision; no independent cryptographic authority claimed",
-  "operationalCutoffUtc": "2026-11-21T15:43:36.233Z"
+  "operationalCutoffUtc": "2026-11-21T15:43:36.233Z",
+  "productCandidateCommit": "4452b0218927ca9ad4d738643b980b87f430b8be",
+  "sourceParityProof": "source-parity-candidate.json",
+  "sourceParityCommitMatchesProductCandidate": true,
+  "independentFinalReviewFile": "CLAUDE-FINAL-DELTA.md",
+  "codeCommitVerification": "committed-code-verification.json",
+  "completeDeltaFile": "V2-TO-V3-COMPLETE.patch",
+  "supplementalExactCredentialBranchProof": "witness-credential-proof.json",
+  "auditOnlyCommitDoesNotChangeProductCode": true
 }
