@@ -26,7 +26,7 @@ export default function DiamondRecoveryAction({ order, lang, idle }: { order: Ho
   const [status, setStatus] = useState<Status>({ state: 'BLOCKED' })
   const busy = useRef(false)
   const attempted = useRef(false)
-  const original = order.id === DIAMOND_RECOVERY.holdId
+  const original = order.id === DIAMOND_RECOVERY.holdId || order.id === DIAMOND_RECOVERY.currentHoldId
   function timeout(ms: number) { const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), ms); return { signal: controller.signal, clear: () => clearTimeout(timer) } }
   async function readStatus() {
     const readTimeout = timeout(10000)

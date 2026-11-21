@@ -3,8 +3,10 @@ export const DIAMOND_RECOVERY = {
   origin: 'https://elifekh.com',
   storeCode: 'ST883DC00C',
   holdId: 'b9a1663d-1ddf-405e-b2ac-6c4430186287',
+  currentHoldId: '076c9f3c-2d62-45f1-a7f4-f1dc6deec429',
   cartSha256: '3c4ea08373c73238c85a483aa16c87ff3d0a8fdcb46e3c2736b05c01434942f2',
   holdIds: [
+    '076c9f3c-2d62-45f1-a7f4-f1dc6deec429',
     'b9a1663d-1ddf-405e-b2ac-6c4430186287',
     'fcf89f83-9e1f-4319-a028-df72a0967c38',
     '900fe73a-fd96-4610-8e05-6c8cda3a2d17',
