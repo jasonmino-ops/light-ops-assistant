@@ -175,12 +175,30 @@ export async function POST(req: NextRequest) {
 
   let saleLines
   try {
-    saleLines = await Promise.all(items.map((item) => resolveProductSellingUnit(prisma, {
-      tenantId: store.tenantId,
-      businessType: store.businessType,
-      barcode: item.barcode,
-      quantity: item.quantity,
-    })))
+    // Queue cart reads here instead of starting a pg connection-wait timer per line.
+    // Keep input indices: sugar, record numbers and kitchen items use this order.
+    saleLines = new Array<Awaited<ReturnType<typeof resolveProductSellingUnit>>>(items.length)
+    let nextIndex = 0
+    let failed = false
+    const resolveNext = async () => {
+      while (!failed) {
+        const index = nextIndex++
+        if (index >= items.length) return
+        const item = items[index]
+        try {
+          saleLines[index] = await resolveProductSellingUnit(prisma, {
+            tenantId: store.tenantId,
+            businessType: store.businessType,
+            barcode: item.barcode,
+            quantity: item.quantity,
+          })
+        } catch (error) {
+          failed = true
+          throw error
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(2, items.length) }, resolveNext))
   } catch (error) {
     if (error instanceof ProductUnitError) {
       return NextResponse.json({ error: error.code, message: error.message }, { status: error.status })
