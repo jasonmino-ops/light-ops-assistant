@@ -313,7 +313,7 @@ function validateRecord(record) {
   }
   for (const field of ["deploymentId", "productionSha"]) {
     if (!(field in record)) throw new ProvenanceError("INVALID_RECORD", `missing ${field}`);
-    if (record[field] !== "PENDING") requireFullSha(record[field], field);
+    if (field === "productionSha" && record[field] !== "PENDING") requireFullSha(record[field], field);
   }
   if ((record.deploymentId === "PENDING") !== (record.productionSha === "PENDING")) {
     throw new ProvenanceError("INVALID_RECORD", "deploymentId and productionSha must both be PENDING or both be resolved");

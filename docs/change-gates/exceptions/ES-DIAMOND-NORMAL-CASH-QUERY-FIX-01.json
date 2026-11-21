@@ -24,7 +24,7 @@
       "featureBranch": "codex/es-diamond-normal-cash-query-fix",
       "baseOriginMainSha": "1ae54880cc2b78f3d6ccdd09952241455e2ab927",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "approvedAt": "2026-11-21T15:19:17.000Z",
       "createdAt": "2026-11-21T14:30:27.091Z",
@@ -35,14 +35,17 @@
       ],
       "authorizedPathSha256": {
         "app/api/cashier/sales/route.ts": "69b45cd31f449af99fbaea76634f7d48c5286fe6bc41f3524b07f5faaf066f90"
-      }
+      },
+      "closedAt": "2026-11-21T15:22:31.862Z",
+      "closedBy": "Codex under Founder authorization",
+      "featureMergeCommitSha": "a5aa4220c67d8d13a4ded7c4f9e5bc3fe1257ae9"
     },
     {
       "authorizationId": "PRODUCTION-SOURCE-PROJECTION",
       "featureBranch": "codex/es-diamond-normal-cash-runtime-candidate",
       "baseOriginMainSha": "b0aa38a1d1bf4d1aa0f375f1c42da6e4436dc481",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "approvedAt": "2026-11-21T15:19:17.000Z",
       "createdAt": "2026-11-21T14:30:27.091Z",
@@ -53,7 +56,10 @@
       ],
       "authorizedPathSha256": {
         "app/api/cashier/sales/route.ts": "85c455f564ebc5aa08c0d0b02ebe115d5794592fec07705e0e6e48ab56e81aaf"
-      }
+      },
+      "closedAt": "2026-11-21T15:22:31.862Z",
+      "closedBy": "Codex under Founder authorization",
+      "featureMergeCommitSha": "fc5546a74cc58dc6fe27aebeb05bd27f44bafd6e"
     }
   ],
   "authorizationId": "PRIMARY",
