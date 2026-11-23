@@ -1,0 +1,79 @@
+{
+  "task": "ES-V3-NEW-OWNER-CLEAN-START-01",
+  "engineeringTask": "ES-V3-LEGACY-PENDING-DISPOSITION-01",
+  "sourceCommit": "100826d5b502e55d8726aaa1922b1885ad16afee",
+  "tree": "440fbc2c299e7ba9f8df9ef40417bebd43fa824f",
+  "review": {
+    "reviewer": "independent Codex source reviewer /root/clean_start_source_review",
+    "decision": "PASS",
+    "commit": "100826d5b502e55d8726aaa1922b1885ad16afee",
+    "tree": "440fbc2c299e7ba9f8df9ef40417bebd43fa824f",
+    "parentReview": "eff44c00d511c3bc0d460088a5bbde84e90f797b",
+    "independentRuns": {
+      "Asia_Phnom_Penh": "37/37",
+      "UTC": "37/37",
+      "existingControlPlaneContract": "11/11",
+      "diffCheck": "PASS"
+    },
+    "closedFindings": [
+      "Historical inspection through authenticated read-only GET with A/B distinction after loss, drift or revocation",
+      "Complete authenticated before/after audit and rejection of tampering",
+      "Timezone-independent PostgreSQL timestamp fixtures",
+      "Committed-readback-required notification limited to successful V3 cutover at expected state version 4746"
+    ],
+    "productionAuthority": "NONE",
+    "fieldsExecuted": "NONE"
+  },
+  "scopeGuard": "PASS (9 exact files)",
+  "typecheck": "exit 0",
+  "nextBuild": "exit 0; local, isolated dummy datasource",
+  "rootCore": "BLOCKED before execution, one pre-existing unassigned test",
+  "existingV3": "131 PASS / 1 pre-existing checkout/freeze failure, reproduced on clean origin/main",
+  "localDatabaseCases": {
+    "UTC": "37/37",
+    "Asia/Phnom_Penh": "37/37"
+  },
+  "rc5EndpointMockTests": "56/56; desktop/src and the four tested files byte-identical to RC5 product b3a9520d31ba761301f45ce743afc320c7c7b666",
+  "sourceManifestSha256": "7a6f7125b35066d8d874cc8ad2bea6f1c6852bb0afb2fe956523849ca86a4cfa",
+  "designSha256": "d746925f7b4c69f4cfddf1bafdbdb309def98945673601ef8e1b23ac91eba419",
+  "admissionSha256": "5b53783cd4b979ad1370c54a57fad8540f854fe64dec64eb47cddc94afb5611c",
+  "sealedSnapshotSha256": "6c759971f4318b281007adf79835368978149cc5a36b15b9cc80164200e21d4f",
+  "baseline": {
+    "originMain": "1fe4481dcc64adf48af2c4d5cfff8addf79ed3a1",
+    "production": "b36c47e137693e067a7d26d40706df8f89610f29",
+    "deployment": "dpl_Enq3R1v2BezAHNh7G1mW6KYdj53g",
+    "strict": "ancestry divergent",
+    "contentSubset": "PASS development baseline only"
+  },
+  "unchanged": {
+    "materializeHeldV3PrintIntentsSha256": "41f55bec0f647968accd9cc96d831e0e039ce042fc0f2bfd204918637ce34ba0",
+    "reportV3ExecutionSha256": "61c1f04c4469b04ff984d699d689e72b3cf12cde2633b4e520d3e144ecf85dea",
+    "wholeFiles": "desktop runtime, Prisma schema/migrations, lib/v3-print-control-plane.ts, ordinary Ops service and freeze assets byte-equal to baseline"
+  },
+  "evidenceDirectory": "/Users/jason/.codex/worktrees/99a3/light-ops-assistant/.task-state/ES-V3-LEGACY-PENDING-DISPOSITION-01/implementation",
+  "evidenceSha256": {
+    "clean-start.tap": "8d79c6097a4bef255fd03be7cf95ce8b8c16b59e93f61a049b01a1712437a707",
+    "clean-start-cambodia.tap": "d5374d89106799c4175874afc92eb2154f1765ec3196748eab2b3e6d1ab21fb6",
+    "final-contract.tap": "db6bc7a0246381134aa9ab0a261520c4fdd3b6315b433b298263ac7c0041704b",
+    "final-v3.tap": "7dc6ca8fb017b70ddf386a60f359bf8eba13b95ec7b2844e0c8329524031ed79",
+    "rc5-roles.log": "a06910b582fad171c1b2bd19fe426e676cd7d24586bfdbb10d714c9d0716efeb",
+    "candidate-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "verified-build.log": "cb17bf0c903aecc0abbdc210beb81ad9f901846012d4efd97028df5af359ca3b",
+    "scope.log": "8b97a490f7cabc6408f09246e38d2ca6614221d974e10ffeccb44b60d1bf99c7",
+    "core-reviewed-head.log": "8676043cfb8588a0b32ae2f293cd2eeff806b3ad0e4e24c34ca51e5344ce3a2c",
+    "core-main.log": "be4ff72f649248f4f4a8c74f872b5b95fec6756aefc5038cdb782b8ca6c53af3",
+    "main-reprint.tap": "0fe8e24c32dcbd98e9bd61c271eb75e8e3a956ba95acbc6980b4dee3611b2fee",
+    "independent-review.json": "0483901fbe905b6304cde8e83a49c67a948e10c165277693024f30c9bfbc0d72",
+    "preflight.md": "088c65f6218fc89278ea83f630e04d1810be6a1de17354f21e6dcec20f4e7c1c"
+  },
+  "productionAction": {
+    "deploy": false,
+    "migration": false,
+    "caseGrant": false,
+    "applySeven": false,
+    "handoff": false,
+    "print": false
+  },
+  "field": "NOT RUN",
+  "closed": false
+}
