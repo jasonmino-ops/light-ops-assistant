@@ -68,14 +68,14 @@ const evidenceKeys = [
  * No route creates a grant. Revocation takes the same row lock and marks it FAILED.
  * AUTH_SECRET follows the existing server-side signed OperationLog admission pattern.
  */
-export function verifyGrant(row: OperationLog | null) {
+function decodeGrant(row: OperationLog | null, purpose: 'ACTIVE' | 'AUDIT_ONLY') {
   const seal = object(row?.payloadSnapshot)
   const secret = process.env.AUTH_SECRET
   check(
     row &&
       row.id === prefix + 'grant' &&
       isTarget({ tenantId: row.tenantId, storeId: row.storeId ?? '' }) &&
-      row.status === 'SUCCESS' &&
+      (row.status === 'SUCCESS' || (purpose === 'AUDIT_ONLY' && row.status === 'FAILED')) &&
       row.actionType === 'FOUNDER_ADMISSION' &&
       row.targetType === subject.targetType &&
       row.targetId === subject.targetId &&
@@ -117,9 +117,9 @@ export function verifyGrant(row: OperationLog | null) {
       /^[0-9a-f]{40}$/.test(g.sourceSha) &&
       typeof g.releaseSha === 'string' &&
       /^[0-9a-f]{40}$/.test(g.releaseSha) &&
-      g.releaseSha === process.env.VERCEL_GIT_COMMIT_SHA &&
+      (purpose === 'AUDIT_ONLY' || g.releaseSha === process.env.VERCEL_GIT_COMMIT_SHA) &&
       id(g.deploymentId) &&
-      g.deploymentId === process.env.VERCEL_DEPLOYMENT_ID &&
+      (purpose === 'AUDIT_ONLY' || g.deploymentId === process.env.VERCEL_DEPLOYMENT_ID) &&
       id(g.reviewer) &&
       id(g.executor) &&
       g.reviewer !== g.executor &&
@@ -150,6 +150,8 @@ export function verifyGrant(row: OperationLog | null) {
     evidenceDigest: sha(JSON.stringify(evidenceKeys.map((k) => [k, evidence[k]]))),
   }
 }
+export const verifyGrant = (row: OperationLog | null) => decodeGrant(row, 'ACTIVE')
+export const readArchivedGrant = (row: OperationLog | null) => decodeGrant(row, 'AUDIT_ONLY')
 export type Grant = ReturnType<typeof verifyGrant>
 /** Separately registered AFTER disposition; an A-only authorization cannot activate an Owner. */
 export async function activationGrant(tx: Prisma.TransactionClient, g: Grant, afterHash: string, now: Date) {

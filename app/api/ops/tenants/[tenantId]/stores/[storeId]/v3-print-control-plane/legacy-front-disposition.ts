@@ -1,6 +1,12 @@
 import { Prisma, type EshopTrayPrintJob, type PrismaClient } from '@prisma/client'
 import { canonicalV3PrintEffectKey, v3PrintIntentExpiresAt } from '@/lib/v3-print-identity'
-import { activationReceiptId, signActivation, trustedCutoff } from '@/lib/v3-legacy-seven/clean-start'
+import {
+  activationReceiptId,
+  completeDisposition,
+  signActivation,
+  signDisposition,
+  trustedCutoff,
+} from '@/lib/v3-legacy-seven/clean-start'
 import nextAttempt from '@/lib/v3-legacy-seven/sealed-next-attempt.json'
 import { parseV3PrintIntent } from '@/lib/v3-print-job-adapter'
 import { runOpsPrintModeAction, type OpsPrintControlDb } from './service'
@@ -17,6 +23,7 @@ import {
   object,
   plan,
   prefix,
+  readArchivedGrant,
   reason,
   scope,
   sha,
@@ -368,6 +375,7 @@ async function verifyApplied(tx: Tx, g: Grant, now: Date, exclusive = true) {
     g.beforeHash === fingerprint(before) &&
       review?.beforeHash === g.beforeHash &&
       summary.beforeHash === review.beforeHash &&
+      summary.mac === signDisposition(summary) &&
       summary.afterHash === afterDigest(after),
     'CASE_RECEIPT_CONFLICT'
   )
@@ -418,13 +426,52 @@ async function apply(tx: Tx, g: Grant, review: Record<string, unknown>, facts: F
     })
   }
   const after = await readSeven(tx, true, at)
-  await audit(tx, summaryId, 'APPLY', {
+  const applied = {
     ...common(g),
     beforeHash: fingerprint(facts),
     afterHash: afterDigest(after),
     jobIds,
-  })
+  }
+  await audit(tx, summaryId, 'APPLY', { ...applied, mac: signDisposition(applied) })
   await verifyApplied(tx, g, at)
+}
+
+/** Inspect durable facts after a lost response without requiring the old lease or a live grant. */
+export async function readLegacyReceipt(db: DB, store: typeof scope, actor: Actor) {
+  check(isTarget(store) && actor.role === 'OPS_ADMIN', 'CASE_RECEIPT_FORBIDDEN')
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SET TRANSACTION READ ONLY`
+    const g = readArchivedGrant(await tx.operationLog.findUnique({ where: { id: receiptId('grant') } }))
+    check(actor.id === g.reviewer || actor.id === g.executor, 'CASE_RECEIPT_FORBIDDEN')
+    const active = await tx.opsAdmin.count({
+      where: {
+        id: actor.id,
+        role: 'OPS_ADMIN',
+        status: 'ACTIVE',
+        OR: [{ lockedUntil: null }, { lockedUntil: { lte: await dbTime(tx) } }],
+      },
+    })
+    check(active === 1, 'CASE_RECEIPT_FORBIDDEN')
+    const rows = await tx.operationLog.findMany({
+      where: { ...subject, actionType: action, requestId: plan.operationRequestId },
+    })
+    const summary = await getReceipt(tx, summaryId, 'APPLY', g)
+    const activated = await tx.operationLog.findUnique({ where: { id: activatedId } })
+    if (!summary) {
+      check(!activated && rows.every((r) => r.id === receiptId('review')), 'CASE_RECEIPT_CONFLICT')
+      return { disposition: 'NO_APPLY_RECEIPT', activation: 'NO_ACTIVATION_RECEIPT', liveAuthorization: false }
+    }
+    check(summary.beforeHash === g.beforeHash && completeDisposition(rows, summary), 'CASE_RECEIPT_CONFLICT')
+    const cutoff = activated && (await trustedCutoff(tx.operationLog))
+    check(!activated || cutoff, 'CASE_RECEIPT_CONFLICT')
+    return {
+      disposition: 'APPLIED',
+      activation: cutoff ? 'COMMITTED' : 'NO_ACTIVATION_RECEIPT',
+      afterHash: summary.afterHash,
+      cutoffUtc: cutoff?.toISOString() ?? null,
+      liveAuthorization: false,
+    }
+  }, txOptions)
 }
 
 export async function runLegacyDisposition(db: DB, store: typeof scope, actor: Actor, cmd: CaseCommand) {
@@ -535,6 +582,7 @@ export async function runLegacyFinalization(
       modeAuditRequestId: result.requestId,
       controlPlaneId: c.id,
       cutoffUtc: (await dbTime(tx)).toISOString(),
+      beforeHash: g.beforeHash,
       afterHash,
       activationGrantDigest: approval.digest,
     }
@@ -547,23 +595,27 @@ export async function runLegacyFinalization(
     return result
   }, txOptions)
   if (result.ok && version === plan.control.stateVersion + 2) {
-    await db.$transaction(async (tx) => {
-      const now = await dbTime(tx)
-      const plane = await tx.v3PrintControlPlane.findUnique({ where: { storeId: scope.storeId } })
-      const g = await authority(tx, actor)
-      const applied = await getReceipt(tx, summaryId, 'APPLY', g)
-      check(applied && typeof applied.afterHash === 'string', 'CASE_POST_COMMIT_READBACK_REQUIRED')
-      await activationGrant(tx, g, applied.afterHash, now)
-      check(
-        (await trustedCutoff(tx.operationLog)) &&
-          plane?.mode === 'V3_ACTIVE' &&
-          plane.ownerDeviceId === plan.newOwner &&
-          plane.ownerEpoch === plan.control.ownerEpoch + 1 &&
-          plane.leaseExpiresAt &&
-          plane.leaseExpiresAt > now,
-        'CASE_POST_COMMIT_READBACK_REQUIRED'
-      )
-    }, txOptions)
+    try {
+      await db.$transaction(async (tx) => {
+        const now = await dbTime(tx)
+        const plane = await tx.v3PrintControlPlane.findUnique({ where: { storeId: scope.storeId } })
+        const g = await authority(tx, actor)
+        const applied = await getReceipt(tx, summaryId, 'APPLY', g)
+        check(applied && typeof applied.afterHash === 'string', 'CASE_POST_COMMIT_READBACK_REQUIRED')
+        await activationGrant(tx, g, applied.afterHash, now)
+        check(
+          (await trustedCutoff(tx.operationLog)) &&
+            plane?.mode === 'V3_ACTIVE' &&
+            plane.ownerDeviceId === plan.newOwner &&
+            plane.ownerEpoch === plan.control.ownerEpoch + 1 &&
+            plane.leaseExpiresAt &&
+            plane.leaseExpiresAt > now,
+          'CASE_POST_COMMIT_READBACK_REQUIRED'
+        )
+      }, txOptions)
+    } catch {
+      throw new CaseStop('CASE_ACTIVATION_COMMITTED_READBACK_REQUIRED')
+    }
   }
   return result
 }
