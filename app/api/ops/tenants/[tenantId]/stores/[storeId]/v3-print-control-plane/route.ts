@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getFkBackedOpsAdminIdentity } from '@/lib/ops-auth'
 import { prisma } from '@/lib/prisma'
-import { action as legacyAction, isTarget, parseCommand } from './legacy-front-grant'
+import { action as legacyAction, isTarget, parseCommand, plan as legacyPlan } from './legacy-front-grant'
 import { caseRejection, readLegacyReceipt, runLegacyDisposition, runLegacyFinalization } from './legacy-front-disposition'
 import {
   parseOpsPrintModeCommand,
@@ -241,6 +241,7 @@ export async function POST(
       action: command.value.action,
     })
     activationCommitted = legacyRequest && result.ok && finalAction === 'FINALIZE_V3_ACTIVE'
+      && command.value.expectedStateVersion === legacyPlan.control.stateVersion + 2
     const state = await readOpsPrintModeState(db, {
       tenantId: auth.store.tenantId,
       storeId: auth.store.id,

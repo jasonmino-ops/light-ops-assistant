@@ -44,6 +44,7 @@ test('production manifest is byte-bound and the route retains its protected norm
   assert.match(route, /await authorizeStore\(req, params\)/)
   assert.match(route, /isTarget\(scope\).*FINALIZE_V3_ACTIVE.*FINALIZE_V2_ACTIVE/)
   assert.match(route, /await runLegacyFinalization/)
+  assert.match(route, /activationCommitted = legacyRequest && result\.ok && finalAction === 'FINALIZE_V3_ACTIVE'\s*&& command\.value\.expectedStateVersion === legacyPlan\.control\.stateVersion \+ 2/)
   assert.throws(() => parseCommand({ action, phase: 'APPLY', jobIds }), /CASE_COMMAND_INVALID/)
 })
 
