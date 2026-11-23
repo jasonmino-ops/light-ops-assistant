@@ -179,7 +179,7 @@ test(
     for (const id of [plan.originalOwner, plan.newOwner])
       await pool.query(
         'INSERT INTO "DesktopDevice" (id,"tenantId","storeId",status,"installationIdHash","tokenExpiresAt") VALUES ($1,$2,$3,\'ACTIVE\',$4,$5)',
-        [id, scope.tenantId, scope.storeId, digest(id), future]
+        [id, scope.tenantId, scope.storeId, digest(id), future.toISOString()]
       )
     const plane = await db.v3PrintControlPlane.create({
       data: {
@@ -265,7 +265,7 @@ test(
         scope.tenantId,
         scope.storeId,
         data.orderNo,
-        created,
+        created.toISOString(),
       ])
     }
     g.beforeHash = digest(
@@ -311,7 +311,7 @@ test(
         first,
       ])
       await assert.rejects(run('REVIEW'), /TTL_UNPROVEN/)
-      await pool.query('UPDATE "SaleRecord" SET "createdAt"=$2 WHERE id=$1', [first, created])
+      await pool.query('UPDATE "SaleRecord" SET "createdAt"=$2 WHERE id=$1', [first, created.toISOString()])
       await db.eshopTrayPrintJob.update({
         where: { id: first },
         data: { payload: { ...intent('SYNTHETIC-0'), rendererVersion: 'changed' }, updatedAt: created },
@@ -362,7 +362,7 @@ test(
       }
     })
     await t.test('locked reviewer and direct historical-job audit stop apply', async () => {
-      await pool.query('UPDATE "OpsAdmin" SET "lockedUntil"=$2 WHERE id=$1', [reviewer.id, future])
+      await pool.query('UPDATE "OpsAdmin" SET "lockedUntil"=$2 WHERE id=$1', [reviewer.id, future.toISOString()])
       await assert.rejects(run('APPLY'), /ACTOR_FORBIDDEN/)
       await pool.query('UPDATE "OpsAdmin" SET "lockedUntil"=NULL WHERE id=$1', [reviewer.id])
       await db.operationLog.create({
