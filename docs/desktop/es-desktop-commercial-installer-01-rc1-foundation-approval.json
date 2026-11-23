@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-DESKTOP-COMMERCIAL-INSTALLER-01",
+  "version": "0.3.0-rc.1",
+  "status": "ACTIVE",
+  "payloadSha256": "725a4842be52a080cb1d329196d101fa32bd0787e5ffc2d76fb64d570676d6f9",
+  "frozenSnapshotSha256": "14b434860ab36968ef6935b0d07e48c1dbab897b3cddabf8ab08cd5a1448a462",
+  "formalApproval": {
+    "approvedBy": "Founder",
+    "signedAt": "2026-11-23",
+    "sourceReference": "Founder personal reply to request_user_input_async call_cfa5e0c4ce6c42cab8a03dcd3e1154a6 item0: \u662f\uff0c\u6b63\u5f0f\u7b7e\u8ba4\u4e0a\u8ff0\u7cbe\u786e\u540e\u7ee7. Question explicitly bound source26dbd2c27264d961f91308dd31c2ec8bead15bda, payload725a4842be52a080cb1d329196d101fa32bd0787e5ffc2d76fb64d570676d6f9 and frozen14b434860ab36968ef6935b0d07e48c1dbab897b3cddabf8ab08cd5a1448a462; RC1 INTERNAL TEST ONLY, no commercial release. SignedAt records date-only because source message has no exact time.",
+    "candidateCommit": "26dbd2c27264d961f91308dd31c2ec8bead15bda"
+  }
+}

@@ -37,7 +37,7 @@ const HASH_LINE_PATTERN = /^([a-fA-F0-9]{64})  (.+)$/
 const SECRET_PATTERN =
   /(GH_TOKEN|GITHUB_TOKEN|SECRET|PASSWORD|Authorization|Bearer|deviceToken|activation credential|certificate password|WIN_CSC|CSC_KEY)/i
 
-const FROZEN_BOUNDARY_GROUPS = [
+export const FROZEN_BOUNDARY_GROUPS = [
   {
     label: '06A Cloud Activation Contract',
     paths: ['docs/milestone-b/EP-MB3-06A-CLOUD-DESKTOP-ACTIVATION-API-CONTRACT.md'],
@@ -374,7 +374,59 @@ function validateBuilderConfig(facts) {
   }
 }
 
+export function inspectFrozenBoundary(options = {}) {
+  const baseline = options.baseline ?? BASELINE_FREEZE_TAG
+  const allowAuthorizedSuccessors = options.baseline == null
+  const usb = allowAuthorizedSuccessors ? readUsbFrontSuccessor(repoRoot) : null
+  const unified = allowAuthorizedSuccessors && !usb ? readUnifiedPrintSuccessor(repoRoot) : null
+  const directShift = allowAuthorizedSuccessors ? readDirectShiftSuccessor(repoRoot) : null
+  const frozenBoundary = []
+  for (const group of FROZEN_BOUNDARY_GROUPS) {
+    const changed = git(['diff', '--name-only', baseline, '--', ...group.paths])
+      .split('\n')
+      .filter(Boolean)
+    const directSnapshot = directShift?.foundationSnapshot(group.label, group.paths)
+    const softwareClosureSnapshot = (unified?.allowsFoundationHistory() || directSnapshot)
+      ? SOFTWARE_CLOSURE_FOUNDATION_SUCCESSORS.get(group.label)
+      : undefined
+    // The current main already contains the exact shift-report Cashier
+    // successor. Use that subtree only under the separately approved resumption.
+    const resumedCashierSnapshot = group.label === 'cashier/customer/mobile business'
+      ? unified?.resumedCashierSnapshot()
+      : undefined
+    const successorSnapshot = allowAuthorizedSuccessors
+      ? (group.label === 'cashier/customer/mobile business'
+        ? (directSnapshot === '304c03695bf904b5e179da8e19de2275eec9ea13'
+          ? '332137496dd3578a0a8eb3fcc83e5e835f52aae1' : directSnapshot) ?? resumedCashierSnapshot
+        : undefined) ?? softwareClosureSnapshot ?? FROZEN_BOUNDARY_SUCCESSORS.get(group.label)
+      : undefined
+    const matchesAuthorizedSuccessor =
+      changed.length > 0 &&
+      successorSnapshot != null &&
+      gitIsAncestor(successorSnapshot, 'HEAD') &&
+      git(['diff', '--name-only', successorSnapshot, '--', ...group.paths]) === ''
+    const exactUsb = usb?.evaluateReleaseGroup(group.label, successorSnapshot ?? baseline, group.paths)
+    const exactStartup = unified?.admitsStartup(group.label, successorSnapshot, group.paths) ||
+      (group.label === 'main startup gate' && Boolean(directSnapshot))
+    frozenBoundary.push({
+      label: group.label,
+      status: changed.length === 0 || matchesAuthorizedSuccessor || exactUsb?.admitted || exactStartup ? 'PASS' : 'FAIL',
+      ...(exactStartup ? { unifiedPrintSuccessor: 'EXACT_STARTUP_GATE' } : {}),
+      ...(exactUsb ? { usbFrontHistoricalPaths: exactUsb.paths } : {}),
+      changed,
+      ...(matchesAuthorizedSuccessor ? { authorizedSuccessorSnapshot: successorSnapshot } : {}),
+    })
+  }
+  return frozenBoundary
+}
+
 async function runPolicy(options) {
+  // This exact internal successor does not alter Phase 1 or write/verify.
+  const requestedVersion = (await readJson(join(desktopDir, 'package.json'))).version
+  if (requestedVersion === '0.3.0-rc.1') {
+    const { runRc1FoundationPolicy } = await import('./rc1-foundation-policy.mjs')
+    return runRc1FoundationPolicy(repoRoot, options)
+  }
   const riskRegister = await readJson(join(repoRoot, RISK_REGISTER_PATH))
   validateRegister(riskRegister)
   const facts = await loadReleaseFacts()
@@ -433,48 +485,7 @@ async function runPolicy(options) {
     }
   }
 
-  const baseline = options.baseline ?? BASELINE_FREEZE_TAG
-  const allowAuthorizedSuccessors = options.baseline == null
-  const usb = allowAuthorizedSuccessors ? readUsbFrontSuccessor(repoRoot) : null
-  const unified = allowAuthorizedSuccessors && !usb ? readUnifiedPrintSuccessor(repoRoot) : null
-  const directShift = allowAuthorizedSuccessors ? readDirectShiftSuccessor(repoRoot) : null
-  const frozenBoundary = []
-  for (const group of FROZEN_BOUNDARY_GROUPS) {
-    const changed = git(['diff', '--name-only', baseline, '--', ...group.paths])
-      .split('\n')
-      .filter(Boolean)
-    const directSnapshot = directShift?.foundationSnapshot(group.label, group.paths)
-    const softwareClosureSnapshot = (unified?.allowsFoundationHistory() || directSnapshot)
-      ? SOFTWARE_CLOSURE_FOUNDATION_SUCCESSORS.get(group.label)
-      : undefined
-    // The current main already contains the exact shift-report Cashier
-    // successor. Use that subtree only under the separately approved resumption.
-    const resumedCashierSnapshot = group.label === 'cashier/customer/mobile business'
-      ? unified?.resumedCashierSnapshot()
-      : undefined
-    const successorSnapshot = allowAuthorizedSuccessors
-      ? (group.label === 'cashier/customer/mobile business'
-        ? (directSnapshot === '304c03695bf904b5e179da8e19de2275eec9ea13'
-          ? '332137496dd3578a0a8eb3fcc83e5e835f52aae1' : directSnapshot) ?? resumedCashierSnapshot
-        : undefined) ?? softwareClosureSnapshot ?? FROZEN_BOUNDARY_SUCCESSORS.get(group.label)
-      : undefined
-    const matchesAuthorizedSuccessor =
-      changed.length > 0 &&
-      successorSnapshot != null &&
-      gitIsAncestor(successorSnapshot, 'HEAD') &&
-      git(['diff', '--name-only', successorSnapshot, '--', ...group.paths]) === ''
-    const exactUsb = usb?.evaluateReleaseGroup(group.label, successorSnapshot ?? baseline, group.paths)
-    const exactStartup = unified?.admitsStartup(group.label, successorSnapshot, group.paths) ||
-      (group.label === 'main startup gate' && Boolean(directSnapshot))
-    frozenBoundary.push({
-      label: group.label,
-      status: changed.length === 0 || matchesAuthorizedSuccessor || exactUsb?.admitted || exactStartup ? 'PASS' : 'FAIL',
-      ...(exactStartup ? { unifiedPrintSuccessor: 'EXACT_STARTUP_GATE' } : {}),
-      ...(exactUsb ? { usbFrontHistoricalPaths: exactUsb.paths } : {}),
-      changed,
-      ...(matchesAuthorizedSuccessor ? { authorizedSuccessorSnapshot: successorSnapshot } : {}),
-    })
-  }
+  const frozenBoundary = inspectFrozenBoundary(options)
   const failed = frozenBoundary.filter((group) => group.status !== 'PASS')
   if (failed.length > 0) {
     const details = frozenBoundary.flatMap(group => (group.usbFrontHistoricalPaths ?? [])
@@ -925,7 +936,9 @@ async function main() {
   console.log(JSON.stringify(result, null, 2))
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error))
-  process.exit(1)
-})
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(1)
+  })
+}

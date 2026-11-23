@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { ADDON_INSTALLER_FILENAME, ADDON_MANIFEST_FILENAME, DESKTOP_VERSION, GOVERNANCE_HEAD_COMMIT, PRODUCT_CANDIDATE_COMMIT, createEmbeddedManifest, verifyAddonInput } from './single-installer-contract.mjs'
 import { verifySingleInstaller } from './verify-single-installer.mjs'
+import { candidateEnvironment } from '../../e-shop-tray/scripts/build-network-addon.mjs'
 
 const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(desktopDir, '..')
@@ -15,8 +16,9 @@ function git(args) {
   if (result.error || result.status !== 0) fail('SINGLE_INSTALLER_GIT_CHECK_FAILED')
   return result.stdout.trim()
 }
-function run(command, args, cwd = desktopDir) {
-  const result = spawnSync(command, args, { cwd, stdio: 'inherit', env: { ...process.env, ELECTRON_BUILDER_DISABLE_UPDATE_CHECK: 'true' } })
+function run(command, args, cwd = desktopDir,
+  env = { ...process.env, ELECTRON_BUILDER_DISABLE_UPDATE_CHECK: 'true' }) {
+  const result = spawnSync(command, args, { cwd, stdio: 'inherit', env })
   if (result.error || result.status !== 0) fail(`SINGLE_INSTALLER_COMMAND_FAILED:${command}`)
 }
 function assertSourceLineage() {
@@ -52,10 +54,17 @@ export async function stageSingleInstallerInputs({ installerPath, manifestPath }
 }
 
 export async function buildSingleInstaller(options) {
+  let internalEnvironment
+  if (DESKTOP_VERSION === '0.3.0-rc.1') {
+    // Reject signing/loader/builder overrides before executing any build child.
+    internalEnvironment = candidateEnvironment()
+    run(process.execPath, ['scripts/release-foundation.mjs', 'policy',
+      '--addon-installer', options.installerPath, '--addon-manifest', options.manifestPath], desktopDir, process.env)
+  }
   const staged = await stageSingleInstallerInputs(options)
   try {
-    run('npm', ['run', 'compile'])
-    run('npx', ['electron-builder', '--win', '--x64', '--publish', 'never'])
+    run('npm', ['run', 'compile'], desktopDir, internalEnvironment)
+    run('npx', ['electron-builder', '--win', '--x64', '--publish', 'never'], desktopDir, internalEnvironment)
     const installer = path.join(desktopDir, 'release', `E-Shop-Desktop-Setup-${DESKTOP_VERSION}.exe`)
     const verified = await verifySingleInstaller(installer, staged.embedded)
     if (options.output) {
