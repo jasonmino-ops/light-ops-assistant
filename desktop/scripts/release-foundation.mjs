@@ -431,6 +431,10 @@ async function runPolicy(options) {
     const { runRc2FoundationPolicy } = await import('./rc2-foundation-policy.mjs')
     return runRc2FoundationPolicy(repoRoot, options)
   }
+  if (requestedVersion === '0.3.0-rc.3') {
+    const { runRc3FoundationPolicy } = await import('./rc3-foundation-policy.mjs')
+    return runRc3FoundationPolicy(repoRoot, options)
+  }
   const riskRegister = await readJson(join(repoRoot, RISK_REGISTER_PATH))
   validateRegister(riskRegister)
   const facts = await loadReleaseFacts()

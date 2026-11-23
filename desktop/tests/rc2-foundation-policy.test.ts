@@ -66,7 +66,8 @@ beforeAll(() => {
   for (const p of [...code, recordPath, approvalPath, inputsPath]) {
     mkdirSync(resolve(repo, p, '..'), { recursive: true }); cpSync(join(actual, p), join(repo, p))
   }
-  writeFileSync(join(repo, '.git/info/exclude'), '/desktop/node_modules\n')
+  writeFileSync(join(repo, '.git/info/exclude'), '/desktop/node_modules\n/desktop/scripts/rc3-foundation-policy.mjs\n')
+  cpSync(join(actual, 'desktop/scripts/rc3-foundation-policy.mjs'), join(repo, 'desktop/scripts/rc3-foundation-policy.mjs'))
   symlinkSync(join(actual, 'desktop/node_modules'), join(repo, 'desktop/node_modules'), 'dir')
   // The synthetic approval must bind these fixture bytes, including the
   // current dispatcher/build preflight. This never changes a real receipt.
@@ -246,7 +247,7 @@ describe('exact RC2 internal Foundation successor (synthetic trusted activation)
   })
   for (const version of ['0.3.0-rc.3', '0.3.1-rc.1', '0.3.0-RC.2', '0.4.0-rc.1']) it(`keeps other RC ${version} rejected`, () => {
     const p = read('desktop/package.json'); p.version = version; write('desktop/package.json', p)
-    reject(run(), /unsupported prerelease channel/)
+    reject(run(), version === '0.3.0-rc.3' ? /RC3_TRUSTED_RECORD_NOT_REGISTERED/ : /unsupported prerelease channel/)
   })
   for (const command of ['write', 'verify']) it(`never authorizes formal ${command}`, () => {
     reject(run(command), /unsupported prerelease channel/)

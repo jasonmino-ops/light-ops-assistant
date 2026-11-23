@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-DESKTOP-COMMERCIAL-INSTALLER-01",
+  "version": "0.3.0-rc.3",
+  "status": "ACTIVE",
+  "payloadSha256": "54d69f43f026365dc269e36686e4a70a45b8316a401fb6e4bf4e225679fe476d",
+  "frozenSnapshotSha256": "14b434860ab36968ef6935b0d07e48c1dbab897b3cddabf8ab08cd5a1448a462",
+  "formalApproval": {
+    "approvedBy": "Founder",
+    "signedAt": "2026-11-23",
+    "sourceReference": "Founder personal reply in current task conversation to request_user_input_async call_a85224e5102c4aaaa763f18cd16ca755 item0: 本人正式签认并批准精确规则登记. The exact question bound Product11b268d436da12015c97390dc38ab97230db3607, source dbe1eef7ead383607c3415d678ac00880a984e1a, payload54d69f43f026365dc269e36686e4a70a45b8316a401fb6e4bf4e225679fe476d, frozen snapshot14b434860ab36968ef6935b0d07e48c1dbab897b3cddabf8ab08cd5a1448a462 and eight exact rule/record paths. Scope only0.3.0-rc.3 Windows x64 current-user unelevated INTERNAL TEST ONLY; no Product branch merge or commercial release. signedAt is date-only because the source reply supplies no exact timestamp.",
+    "candidateCommit": "dbe1eef7ead383607c3415d678ac00880a984e1a"
+  },
+  "evidence": "Actual Founder personal exact adoption received; no inherited RC1/RC2 signature. Receipt subject to independent review and lawful trusted-main registration; ACTIVE local schema does not itself create trusted admission."
+}
