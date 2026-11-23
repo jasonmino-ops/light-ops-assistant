@@ -1,0 +1,98 @@
+{
+  "task": "ES-V3-LEGACY-PENDING-DISPOSITION-01",
+  "scope": {
+    "code": "ST04C05602",
+    "storeId": "cmqjgcn05000204jo83w65tja",
+    "tenantId": "cmqjgcmtm000104jo54e93w1c",
+    "printKitchenTicket": false
+  },
+  "production": "b36c47e137693e067a7d26d40706df8f89610f29",
+  "control": {
+    "mode": "V3_ACTIVE",
+    "ownerEpoch": 1,
+    "leaseSha256": "ff6dcd077bfe93f4c4a2a241e687809b39903260d10e3592b7380ac6d5617b6a",
+    "stateVersion": 4744,
+    "ownerDeviceId": "cmv7pcvbz000206lat4q50o87",
+    "leaseExpiresAt": "2026-10-20T16:05:41.901",
+    "handoffRequestedAt": null,
+    "handoffQuarantineUntil": null
+  },
+  "unrevokedBatches": [
+    "cmvgvhyo5000206le0h2ae3g4"
+  ],
+  "designAction": "QUARANTINE_EXPIRED_UNKNOWN_FRONT_ONCE",
+  "operationRequestId": "2673e734-1728-462a-8be5-16a4bfe7ff29",
+  "handoffConfirmationId": "ST04C05602-V727-LEGACY7-20261124-01",
+  "notBefore": "2026-11-24T05:39:31.396Z",
+  "originalOwner": "cmv7pcvbz000206lat4q50o87",
+  "newOwner": "cmwsu4zip001s08l4a3464hkt",
+  "jobs": [
+    {
+      "id": "cmv9u1fsf000u06jkc2lkghtj",
+      "keySha256": "b52c56efd0d62128ac25426b64fb6725069dbd17e02db0874838442eca15f6a7",
+      "requestHash": "2ccfd5bdcb4460c5095d97471d9d57acda9f16faf3deb9015c421bf6d3b2cc6c",
+      "createdAt": "2026-10-15T17:48:33.711",
+      "updatedAt": "2026-10-15T17:48:35.82",
+      "expiresAt": "2026-10-16T17:48:28.836"
+    },
+    {
+      "id": "cmv9u906e000606l3ymf89zx2",
+      "keySha256": "39be24da0a3dfa8aeff73b5a3abea9e18b0f00f4e1cedd5191cac6f5a9d62e33",
+      "requestHash": "a59545610b852e0d62c93174e315ad91393529f214d11261f3e8e167f343cc25",
+      "createdAt": "2026-10-15T17:54:26.726",
+      "updatedAt": "2026-10-15T17:54:28.498",
+      "expiresAt": "2026-10-16T17:54:18.67"
+    },
+    {
+      "id": "cmv9uhgyk000806l8ai460t0e",
+      "keySha256": "185f631fa2fe920214e8e05fcd882321590a3ab56eca45fc7c1dbca0323125db",
+      "requestHash": "6ee65f7c972a3719953fefad2786c2d82f8eb0e5c7a372d68485cf67583e0736",
+      "createdAt": "2026-10-15T18:01:01.724",
+      "updatedAt": "2026-10-15T18:01:03.736",
+      "expiresAt": "2026-10-16T18:00:56.037"
+    },
+    {
+      "id": "cmvb2tzu6000u06l0ipxlj18v",
+      "keySha256": "38b6ed1bd695518fa851cf16b1f218e570d6998c36205bffb766bcd7e38cbcf2",
+      "requestHash": "535e7331114a640ae977333cf0c6f92fc6758c784638a126c946073f52243480",
+      "createdAt": "2026-10-16T14:42:29.166",
+      "updatedAt": "2026-10-16T14:42:31.203",
+      "expiresAt": "2026-10-17T14:42:25.191"
+    },
+    {
+      "id": "cmvb2vz9r001706l0enukk5ka",
+      "keySha256": "d05493cc940b84e1367fb7c27da02486de28d4177fc0bea2fdfe781460ca428c",
+      "requestHash": "972d930044f17d6f758ae2726692b7c8200a3c1b2999714d4cb26244b87be29a",
+      "createdAt": "2026-10-16T14:44:01.743",
+      "updatedAt": "2026-10-16T14:44:03.544",
+      "expiresAt": "2026-10-17T14:43:57.856"
+    },
+    {
+      "id": "cmvbx2kkg002g06l3kfxiofo2",
+      "keySha256": "e8fc571311ca38dc72a185ca231087fe65cff8291adcd33ee7e58d818af1e5b2",
+      "requestHash": "914592d53dc126213284929d966a12106b68ef30e91c4b0445e9e6831e8f74ff",
+      "createdAt": "2026-10-17T04:48:57.76",
+      "updatedAt": "2026-10-17T04:48:59.852",
+      "expiresAt": "2026-10-18T04:48:53.594"
+    },
+    {
+      "id": "cmwsu69ep000f08jzuf976ydq",
+      "keySha256": "6fbacaba4f3847d4e2f381b15eaa18b8e07d8147e2c52ddd8fcd3b0dfa001803",
+      "requestHash": "fb6803960208376a9ecad36bb688833b33836e7fe5b706db2b73b483df0f977d",
+      "createdAt": "2026-11-23T05:39:38.402",
+      "updatedAt": "2026-11-23T05:39:40.016",
+      "expiresAt": "2026-11-24T05:39:31.396"
+    }
+  ],
+  "route": "PROPOSAL_ONLY",
+  "exactEffects": {
+    "status": "EXPIRED",
+    "resultCode": "V3_OPS_QUARANTINED_PHYSICAL_UNKNOWN",
+    "completedAt": "UNCHANGED_NULL",
+    "resultStatus": null,
+    "effectBoundary": null,
+    "physicalCompletionKnown": false,
+    "auditDispositionAt": "database time",
+    "updatedAt": "database time"
+  }
+}

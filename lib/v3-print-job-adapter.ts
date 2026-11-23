@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { cleanStartSelector, sealedEffect } from './v3-legacy-seven/clean-start'
 import { Prisma, type EshopTrayPrintJob } from '@prisma/client'
 import type { V3ControlPlaneDb } from './v3-print-control-plane'
 import { parseNetworkRequest, type NetworkRequest } from '../e-shop-tray/src/networkContract'
@@ -179,6 +180,17 @@ export async function enqueueV3PrintIntent(
   const normalized = parse(intent)
   if (!normalized) throw new Error('V3_INTENT_INVALID')
   const requestHash = sha(JSON.stringify(normalized))
+  const sealed = sealedEffect(ownedScope, normalized)
+  if (sealed) {
+    const original = await db.eshopTrayPrintJob.findUnique({ where: { tenantId_storeId_idempotencyKey: {
+      ...ownedScope, idempotencyKey: normalized.printJobId,
+    } } })
+    if (!original || original.id !== sealed.id || requestHash !== sealed.requestHash ||
+      original.requestHash !== requestHash || options.idempotencyConflict === 'THROW') {
+      throw new Error('V3_LEGACY_EFFECT_QUARANTINED')
+    }
+    return { created: false, job: original }
+  }
   try {
     const job = await db.eshopTrayPrintJob.create({ data: { ...ownedScope, idempotencyKey: normalized.printJobId, requestHash,
       schemaVersion: 3, payload: normalized as unknown as Prisma.InputJsonValue, maxAttempts: 1, expiresAt,
@@ -376,6 +388,8 @@ export async function deliverV3PrintIntent(db: Db, identity: {
     const claimNow = now ?? new Date()
     const batch = await validBatch(tx, identity, claimNow)
     if (!batch) return { ok: false as const, code: 'V3_BATCH_STALE' }
+    const cutover = await cleanStartSelector(tx.operationLog, identity, batch.ownerEpoch)
+    if (!cutover) return { ok: false as const, code: 'V3_CLEAN_START_UNVERIFIED' }
     // A claim is fenced by its own printJobId, token and execution batch. Do not
     // scan unrelated claims here: an unsettled FRONT_UNPAID (or another order's
     // FRONT/KITCHEN job) must not become a store-wide delivery barrier for an
@@ -383,18 +397,19 @@ export async function deliverV3PrintIntent(db: Db, identity: {
     // by the selector below; its lease/intent TTL and operator recovery path bound
     // its lifetime without treating expiry as proof that printing did not cross.
     const job = await tx.eshopTrayPrintJob.findFirst({ where: { tenantId: identity.tenantId, storeId: identity.storeId,
-      schemaVersion: 3, status: 'PENDING', claimTokenHash: null, nextAttemptAt: { lte: claimNow },
+      ...cutover, schemaVersion: 3, status: 'PENDING', claimTokenHash: null, nextAttemptAt: { lte: claimNow },
       expiresAt: { gt: claimNow }, payload: { path: ['role'], equals: identity.role } }, orderBy: { createdAt: 'asc' } })
     if (!job) return { ok: true as const, job: null }
     const intent = parse(job.payload)
     if (!intent || intent.role !== identity.role) return { ok: false as const, code: 'V3_ROLE_JOB_MISMATCH' }
+    if ('createdAt' in cutover && sealedEffect(identity,intent)) return { ok: false as const, code: 'V3_LEGACY_EFFECT_QUARANTINED' }
     const tokenHash = v3DeliveryClaimToken(job.idempotencyKey, identity.deviceId, batch.ownerEpoch)
     // Schema 1/2 use claimedByComputerBindingId with CLAIMED/EXECUTING. V3 authority is a
     // DesktopDevice plus a fenced execution batch, so keep the shared row PENDING while
     // the V3-only claim provenance/token durably reserves delivery. This satisfies the
     // existing V2 active-claim constraint without inventing a ComputerBinding identity.
     const updated = await tx.eshopTrayPrintJob.updateMany({ where: {
-      id: job.id, schemaVersion: 3, status: 'PENDING', completedAt: null, claimTokenHash: null,
+      ...cutover, id: job.id, schemaVersion: 3, status: 'PENDING', completedAt: null, claimTokenHash: null,
       payload: { path: ['role'], equals: identity.role },
     }, data: {
       claimTokenHash: tokenHash, resultMessage: claimProvenance({ deviceId: identity.deviceId, ownerEpoch: batch.ownerEpoch, batchId: batch.id }),
