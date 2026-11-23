@@ -3,7 +3,7 @@
   "taskId": "ES-DESKTOP-COMMERCIAL-INSTALLER-01",
   "purpose": "pre-build-input-manifest",
   "version": "0.3.0-rc.2",
-  "productCommit": "e14d1348cc11a540f2a82f9f52392e67d30fce79",
+  "productCommit": "3323419217cccd614a40b01976dbf6b27f29c6fe",
   "installerGenerated": false,
   "build": {
     "mode": "INTERNAL TEST ONLY",

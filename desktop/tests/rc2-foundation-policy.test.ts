@@ -8,8 +8,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 // Local Git/byte fixtures only. Synthetic approval never touches real refs.
 const actual = resolve(__dirname, '../..')
 const branch = 'codex/es-desktop-commercial-installer-01-rc2'
-const base = 'f06fd26cb2075accb92d5e1e664dfd89e840b74e'
-const mainBase = '2f75d95abbb14cb2657bd3ecb9ecbc1359cfbf8e'
+const base = 'b82053b0749c432666c884568b818751ed95268f'
+const mainBase = '677ac38f95f23aab1f9ec9d9ed2577210ccbabc0'
 const prefix = 'docs/desktop/es-desktop-commercial-installer-01-rc2-foundation'
 const recordPath = `${prefix}.json`, approvalPath = `${prefix}-approval.json`, inputsPath = `${prefix}-build-inputs.json`
 const code = ['desktop/scripts/build-single-installer.mjs', 'desktop/scripts/release-foundation.mjs',
@@ -105,8 +105,16 @@ describe('exact RC2 internal Foundation successor (synthetic trusted activation)
     expect(existsSync(join(repo, 'desktop/release'))).toBe(false)
   })
   it('never treats working-only draft/approval as trusted registration', () => {
-    git('update-ref', 'refs/remotes/origin/main', mainBase)
+    git('update-ref', 'refs/remotes/origin/main', '2f75d95abbb14cb2657bd3ecb9ecbc1359cfbf8e')
     reject(run(), /RC2_TRUSTED_RECORD_NOT_REGISTERED/)
+  })
+  it('rejects a working repair draft against the predecessor trusted RC2 receipt', () => {
+    git('update-ref', 'refs/remotes/origin/main', mainBase)
+    reject(run(), /RC2_TRUSTED_RECORD_MISMATCH/)
+  })
+  it('does not inherit the first-build RC2 candidate for corrected Product bytes', () => {
+    const a = read(approvalPath); a.formalApproval.candidateCommit = '686a51be51bbcaee10abdba256f415d5fd4008e5'
+    write(approvalPath, a); signFixture(); reject(run(), /RC2_LINEAGE_MISMATCH/)
   })
   for (const status of ['PENDING_FOUNDER_SIGNATURE', 'CLOSED', 'UNKNOWN']) it(`rejects ${status} approval`, () => {
     const a = read(approvalPath); a.status = status; write(approvalPath, a); commit(); trustCurrent()

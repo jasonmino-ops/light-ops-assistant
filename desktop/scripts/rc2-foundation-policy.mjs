@@ -9,9 +9,9 @@ import { candidateEnvironment, CANDIDATE_BUILD } from '../../e-shop-tray/scripts
 
 export const TASK = 'ES-DESKTOP-COMMERCIAL-INSTALLER-01'
 export const VERSION = '0.3.0-rc.2'
-export const PRODUCT = 'e14d1348cc11a540f2a82f9f52392e67d30fce79'
-export const SOURCE_BASE = 'f06fd26cb2075accb92d5e1e664dfd89e840b74e'
-export const MAIN_BASE = '2f75d95abbb14cb2657bd3ecb9ecbc1359cfbf8e'
+export const PRODUCT = '3323419217cccd614a40b01976dbf6b27f29c6fe'
+export const SOURCE_BASE = 'b82053b0749c432666c884568b818751ed95268f'
+export const MAIN_BASE = '677ac38f95f23aab1f9ec9d9ed2577210ccbabc0'
 export const PROVIDER = '7785be145d5259991038d17839d322e2694e338c'
 export const ADDON_BUILD = 'f06fd26cb2075accb92d5e1e664dfd89e840b74e'
 export const BRANCH = 'codex/es-desktop-commercial-installer-01-rc2'
@@ -23,6 +23,7 @@ export const CODE_PATHS = ['desktop/scripts/build-single-installer.mjs',
   'desktop/scripts/rc2-foundation-policy.mjs', 'desktop/scripts/release-foundation.mjs',
   'desktop/tests/rc2-foundation-policy.test.ts', 'desktop/tests/rc1-foundation-policy.test.ts'].sort()
 export const PRODUCT_PATHS = [
+  "desktop/tests/addon-installer-shortcut-contract.test.ts",
   "desktop/build/installer.nsh",
   "desktop/electron-builder.yml",
   "desktop/package-lock.json",

@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "taskId": "ES-DESKTOP-COMMERCIAL-INSTALLER-01",
   "version": "0.3.0-rc.2",
-  "productCommit": "e14d1348cc11a540f2a82f9f52392e67d30fce79",
-  "sourceBase": "f06fd26cb2075accb92d5e1e664dfd89e840b74e",
-  "mainBase": "2f75d95abbb14cb2657bd3ecb9ecbc1359cfbf8e",
+  "productCommit": "3323419217cccd614a40b01976dbf6b27f29c6fe",
+  "sourceBase": "b82053b0749c432666c884568b818751ed95268f",
+  "mainBase": "677ac38f95f23aab1f9ec9d9ed2577210ccbabc0",
   "branch": "codex/es-desktop-commercial-installer-01-rc2",
   "build": {
     "mode": "INTERNAL TEST ONLY",
@@ -17,24 +17,25 @@
   },
   "candidateSourceSha256": {
     "desktop/scripts/build-single-installer.mjs": "0b13cead39b3284decbb4422fd8455fbe73f5606f9c645088a0590f3f67c5e0e",
-    "desktop/scripts/rc2-foundation-policy.mjs": "579c82a2ceead60b26f71b6b12c0e1439a770e04de9b030d27fe5127315a000e",
+    "desktop/scripts/rc2-foundation-policy.mjs": "e34391bc14855d596d8ff19d60edc55a5fd63c523d485fa46f41c624c65a8526",
     "desktop/scripts/release-foundation.mjs": "29421d2001fd73996d67049f5a868cdae04c8225e89644c95e7f87a0b2cf9d11",
     "desktop/tests/rc1-foundation-policy.test.ts": "25a1af7f7d043382519b73ca6a5f76d54f34bade24f130a31302786b29e207d8",
-    "desktop/tests/rc2-foundation-policy.test.ts": "2a9cb8c6791e9a2d9c4b7c5f511e46793c59631c7b2e91f5070f47c3f2eb9010"
+    "desktop/tests/rc2-foundation-policy.test.ts": "bc881c957303e66ca440349cc369a1ac0081f0c42a0bea85d828607831e87bc9"
   },
   "productSourceSha256": {
-    "desktop/build/installer.nsh": "907fc6489156820091601f22face24545214005ba78db9e0331564e2c27ac82c",
+    "desktop/build/installer.nsh": "a69b5b431f50085fa6cf05953b134144c768fb7dce03bade92f76b97a8d876c3",
     "desktop/electron-builder.yml": "567502b966b3eceec5c59ab9ad30479d9ffa3b38adc433e5eb82ea5486e0afd7",
     "desktop/package-lock.json": "ae490c70c32e9134383ea71a4517fa31775ef0030c63e63be8507478a72a1d0b",
     "desktop/package.json": "fc7ada30768278627ca493c1de76c7baf737ef84ec693225cde02223044b5661",
     "desktop/scripts/build-single-installer.mjs": "0b13cead39b3284decbb4422fd8455fbe73f5606f9c645088a0590f3f67c5e0e",
     "desktop/scripts/desktop-nsis-profile.mjs": "ebae08fb482b96ac7b0a49372c2d610c0b0bdbab4f2d86b40175569dddca9a62",
-    "desktop/scripts/single-installer-contract.mjs": "cf99d8f5c86863661d5c13c001c5270d8d4efcb5a1917a72912864204237be49",
+    "desktop/scripts/single-installer-contract.mjs": "a5a901d6d33a2ed844d16e5d21bd8328f56c3f3e9f52d550ec74e0632effc953",
     "desktop/scripts/verify-single-installer.mjs": "9c9d088b3ba83191121a7b9a3d2f6d39eb1ffd79d88a7241d305ede6b8b84315",
+    "desktop/tests/addon-installer-shortcut-contract.test.ts": "98ef4be929603ecee18801367a3b5220fecc02609ffe1ac765cb231f45da7b6a",
     "desktop/tests/desktop-nsis-profile.test.ts": "4a0c4cc663c73c6d0918b791b8288bea1e99386f961a83a79f2dc4dac2124aff",
     "desktop/tests/rc1-foundation-policy.test.ts": "25a1af7f7d043382519b73ca6a5f76d54f34bade24f130a31302786b29e207d8",
-    "desktop/tests/single-installer-packaging.test.ts": "720552eaddfc3d6a271b4fd3bcce6a673046cb31e642e49ba6b715ed5faa057a",
-    "desktop/tests/windows-installer-user-recovery.test.ts": "c9b24e7509c8ee3ad321340e380688df3c60ae1f5716f6c83b52fc91a1f518e4",
+    "desktop/tests/single-installer-packaging.test.ts": "b002d2d453b5e96ae89fd1dc93dcfde328454638937872703b32afc09a1d58a4",
+    "desktop/tests/windows-installer-user-recovery.test.ts": "ae33c40c858f50c26f99e6ff3a0e1997fe670b21bc50d3151f106a23152a8c95",
     "e-shop-tray/network-addon/installer.nsh": "3d0c6e75251102ef98ada77554c3d10cfbd75b93165f9ec6e2a8f7de3dc4b0b0",
     "e-shop-tray/network-addon/main.ts": "990aa0862d5e72e97150933fcf33f611e1f5ff35fa03015fb5e5c17cf8659ff2",
     "e-shop-tray/network-addon/shortcutLifecycle.ts": "74071c0f5119feb61d4d3957666f5deb5022c5b4360d62bf8a26fef758e4b4a3",
@@ -44,7 +45,7 @@
     "e-shop-tray/tests/network-addon-shortcuts.test.ts": "9b052ca4489a78b8db7a03d4c9a21ecffeddac9f812c985fad425466d304e462",
     "e-shop-tray/tests/network-addon.test.ts": "55659eeb2a0df7ec72029a1b78e5633b9ad5b523888adb2476cf7d01c1b99551"
   },
-  "buildInputManifestSha256": "d298e5093b5206205a340e030d058a0b6aa531a1597577386df743474d775cc4",
+  "buildInputManifestSha256": "3a1c4882a78f5f942ff678ade42aaf9c91468edbc706b27a4cfe891688b2e1b1",
   "frozenSnapshot": [
     {
       "label": "06A Cloud Activation Contract",
@@ -357,7 +358,7 @@
   "adoptionScope": {
     "kind": "EXACT_L3_FROZEN_SUCCESSOR_CANDIDATE",
     "task": "ES-DESKTOP-COMMERCIAL-INSTALLER-01",
-    "predecessor": "RC1 exact internal Foundation and P1A installer boundary",
+    "predecessor": "RC2 first-build ccbe2ebd failed path contract; exact P1A installer successor correction",
     "purpose": "Only Windows x64 current-user unelevated Desktop0.3.0-rc.2 INTERNAL TEST ONLY with exact rc11 Add-on, fixed Provider and composition profile",
     "formalRelease": false,
     "commercialReady": false,
@@ -366,5 +367,7 @@
     "nsisAndBuilderIncludedIn": "productSourceSha256",
     "oldRc1SignatureInherited": false
   },
+  "buildRevision": "rebuild.1",
+  "previousFailedInstallerSha256": "ccbe2ebd122078ec4d900f7d7c97099133ee4e94842974b319303e17cec4205a",
   "authority": "Prepared under Founder RC2 scoped autonomous engineering; exact personal formal adoption is not yet received. No ACTIVE receipt or trusted Foundation admission is claimed."
 }
