@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-DESKTOP-FNB-HYBRID-PRINT-01",
+  "version": "0.3.0-rc.5",
+  "status": "ACTIVE",
+  "payloadSha256": "7d510be8791a1b0ac81af583d46cb2ce972c39cd748190a4f8b6afc869ce2a85",
+  "frozenSnapshotSha256": "14b434860ab36968ef6935b0d07e48c1dbab897b3cddabf8ab08cd5a1448a462",
+  "formalApproval": {
+    "approvedBy": "Founder",
+    "signedAt": "2026-11-23",
+    "sourceReference": "Founder personal reply in this task conversation to request_user_input_async call_8f22864dfc3d46d88472cd726e327851 item0: 本人正式签认并批准精确规则登记. Exact question binds Product b3a9520d31ba761301f45ce743afc320c7c7b666, successor source9bd9b4719c16467efd1f458f4291d15b9a49cddc, payload7d510be8791a1b0ac81af583d46cb2ce972c39cd748190a4f8b6afc869ce2a85 and snapshot14b434860ab36968ef6935b0d07e48c1dbab897b3cddabf8ab08cd5a1448a462. Approves only nine exact rule/record paths controlled registration and subsequent original complete Desktop RC5 internal build. Windowsx64/current-user/unelevated/INTERNAL TEST ONLY. Existing12FAIL/COREBLOCKED not waived. No Product branch merge, installation, printing, Owner/kitchen/history mutation, Production deployment or commercial release. signedAt date-only because human reply provides no exact timestamp.",
+    "candidateCommit": "9bd9b4719c16467efd1f458f4291d15b9a49cddc"
+  },
+  "evidence": "Actual Founder personal exact signature received for this RC5 candidate. No inherited RC4 approval. Receipt still requires independent validation, lawful byte-identical trusted main registration and original build guards. Not commercial/FIELD approval."
+}

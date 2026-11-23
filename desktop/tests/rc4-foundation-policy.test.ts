@@ -244,7 +244,12 @@ describe('exact RC4 internal Foundation successor (synthetic trusted activation)
   for (const flag of ['--distribution-class', '--baseline', '--force', '--rehearsal', '--release']) it(`rejects bypass argument ${flag}`, () => {
     reject(run('policy', [flag, 'unapproved']), /RC4_INPUT_ARGUMENTS_REQUIRED/)
   })
-  for (const version of ['0.3.0-rc.5', '0.3.1-rc.1', '0.3.0-RC.2', '0.4.0-rc.1']) it(`keeps other RC ${version} rejected`, () => {
+  it('rejects the exact RC5 successor without its own trusted receipt', () => {
+    const p = read('desktop/package.json'); p.version = '0.3.0-rc.5'; write('desktop/package.json', p)
+    cpSync(join(actual, 'desktop/scripts/rc5-foundation-policy.mjs'), join(repo, 'desktop/scripts/rc5-foundation-policy.mjs'))
+    reject(run(), /RC5_TRUSTED_RECORD_NOT_REGISTERED/)
+  })
+  for (const version of ['0.3.0-rc.6', '0.3.1-rc.1', '0.3.0-RC.2', '0.4.0-rc.1']) it(`keeps other RC ${version} rejected`, () => {
     const p = read('desktop/package.json'); p.version = version; write('desktop/package.json', p)
     reject(run(), /unsupported prerelease channel/)
   })

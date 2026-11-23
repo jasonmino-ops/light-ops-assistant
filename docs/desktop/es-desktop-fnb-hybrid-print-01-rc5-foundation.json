@@ -1,0 +1,389 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-DESKTOP-FNB-HYBRID-PRINT-01",
+  "version": "0.3.0-rc.5",
+  "productCommit": "b3a9520d31ba761301f45ce743afc320c7c7b666",
+  "sourceBase": "366d67bd04bcfd71e9914a930d707c212f991915",
+  "mainBase": "a425ddff032aeb3c18d4cda4ea6e7d423e16b923",
+  "branch": "codex/es-desktop-fnb-hybrid-print-01",
+  "build": {
+    "mode": "INTERNAL TEST ONLY",
+    "platform": "win32",
+    "arch": "x64",
+    "installationScope": "current-user",
+    "elevated": false,
+    "published": false,
+    "releaseReady": false
+  },
+  "candidateSourceSha256": {
+    "desktop/scripts/build-single-installer.mjs": "fa4dce90c9a48ed836516d89991af90d7e638ff363e5aff321e6f0a12f58477b",
+    "desktop/scripts/rc5-foundation-policy.mjs": "458ff30eaf8ccff25cef6748cad9f5f920c1b5359534d1b7d57ef5a784cad0e8",
+    "desktop/scripts/release-foundation.mjs": "0625f5b2f1b991eafda5a1eb6d847a4363a806857e90da931bbf9ddb0b185ba2",
+    "desktop/tests/rc3-foundation-policy.test.ts": "255af3591f0b84c123b192a3717fa61a03d1b4f89ef7dd17305444f727cf5d30",
+    "desktop/tests/rc4-foundation-policy.test.ts": "8d4f7c1c05c7f23abd85db576f27acef7fe7d8e11ac385c0ad1012c837516738",
+    "desktop/tests/rc5-foundation-policy.test.ts": "14d57caa413a9996456b5f37a1b78659af041d898e0ec93fa2428bb079b9047e"
+  },
+  "productSourceSha256": {
+    "desktop/build/current-user-mode.nsh": "1942e4871bf2984ea1ed773fdf6329edda341b4415f4dc8bb0436ecdd2ab84f9",
+    "desktop/build/installer.nsh": "37493392069326a76fb1276f20a75d9112ba8e4767ee752f21d9edcde94d663f",
+    "desktop/electron-builder.yml": "f8bab8a2cc64ec0ea134693949dbe173be0a4e083c0d7d460b183af810682a17",
+    "desktop/package-lock.json": "953ce1b43095f23884e27776aac627c6d94fcfcdbf32d921934028894d72f93d",
+    "desktop/package.json": "e55848b25a9fb25f9c7710d0decaf287aae569512937a5f0330a6102077ffd42",
+    "desktop/scripts/build-single-installer.mjs": "fa4dce90c9a48ed836516d89991af90d7e638ff363e5aff321e6f0a12f58477b",
+    "desktop/scripts/desktop-nsis-profile.mjs": "ebae08fb482b96ac7b0a49372c2d610c0b0bdbab4f2d86b40175569dddca9a62",
+    "desktop/scripts/single-installer-contract.mjs": "989bbfe6654f1a51715315402edbf6f08e6b10f5df6222d9f585beb5c3320caa",
+    "desktop/scripts/verify-single-installer.mjs": "9c9d088b3ba83191121a7b9a3d2f6d39eb1ffd79d88a7241d305ede6b8b84315",
+    "desktop/src/main/managedPrintChildHandoff.ts": "9e620bdb9e82eee65baa3a3b57561fefe124be26e8addcf85f3558b21b00426d",
+    "desktop/src/main/posSessionBridge.ts": "2544774a86029f7df51ca62fcaae9596d32f6c666121e23693f40c4ef282b3d6",
+    "desktop/src/main/printing/controlPlaneClient.ts": "9cd6d8f6be835369baa5708dc0ea0faba831ad67805bf18608455a7331935d27",
+    "desktop/src/main/printing/controlPlaneRuntime.ts": "7333518b0fa6f61c1b20272b6a80a4ef42ba2690977e39859f4044f624a23eac",
+    "desktop/src/main/printing/executionLedger.ts": "ee57fba08617f27a97c486581a195dfca2e7c7e66a4c36f779cbcaac977ca889",
+    "desktop/src/main/printing/executionOutbox.ts": "d2ca33e3e7cd7052f8aa86994c4582fec2c5ab970596eaafbea96a72b92ce064",
+    "desktop/src/main/printing/localFirstPrintCoordinator.ts": "cb398bbcf90c309ebff724b7b43252634e0ac1322bce51bc3a839393a92e79c9",
+    "desktop/src/main/printing/sharedPrintingCore.ts": "a81987d60c5989b5ea3d86180876bbcc62bff41380520847561a98e4bde24e39",
+    "desktop/src/main/printing/v3PrintingRuntime.ts": "85081c694cfa5cab0f1ad65905e20025e7a6efef637408c4226e482dc6f48cf1",
+    "desktop/src/main/printing/windowsUsbIdentityScript.ts": "d0c2a63dbf79d2824a51b6364abfd2b61e88613a626cdf7d027a3af947322780",
+    "desktop/src/main/printing/windowsUsbPrintBoundary.ts": "b665eec3df732eb060e6c2249e62cfff0a3776c00445f17d71e99f0973e1a13f",
+    "desktop/src/main/printing/windowsUsbQueueDiscovery.ts": "2c110763b00dccb50dc338d204e47ae9032386211036e2866a80a3c7baf0500f",
+    "desktop/src/main/printing/windowsUsbSpoolerScript.ts": "d2eecd58ed86c4c48fa32e26eb206460d4467e77fab936997788c3c160c0357f",
+    "desktop/src/main/provider/namedPipeClient.ts": "1c832268c329aacd18a021a1ca59efcc69a65f823b2356bef7d308bc03e3790d",
+    "desktop/src/main/provider/providerSupervisor.ts": "42d29a9e21fa6e386483fd11af7d3a894fa5c95db6469ed356b114735a2afe12",
+    "desktop/src/main/windowsPrintChildProtection.ts": "7a3e59a37df6d1bf56fa7309b5b84d2ba204f638232e07ad972b4af60fc4394e",
+    "desktop/tests/addon-installer-shortcut-contract.test.ts": "a81737b2be11029ab32887f91f3e67fd452ec7bfa7711f9273baeeedd3acff0b",
+    "desktop/tests/desktop-nsis-profile.test.ts": "4a0c4cc663c73c6d0918b791b8288bea1e99386f961a83a79f2dc4dac2124aff",
+    "desktop/tests/fixtures/windows-usb-identity.ps1": "f7b49742dfb96d8788a877d749bd9a936264f99e25d5d5e1d96532231487900f",
+    "desktop/tests/fixtures/windows-usb-probe-ports.ps1": "416d806332db0d600d12eb2491558b0a2833e435581bbc8432550b3d813da999",
+    "desktop/tests/managed-print-child-handoff.test.ts": "ecf0bc5186ca57badd0acf1c10bf7d2f970fceec0c70742da88d5c49c4d5cd71",
+    "desktop/tests/pos-session-bridge-static.test.ts": "ac796482b397e42a4ab556058e1ba84048cc424afde3a987c1da8f5b12573667",
+    "desktop/tests/print-child-cross-application.test.ts": "0b240385b2bb882d68b9c5d9c0cb0db0daaf43324dd63e1757cba735f94d79f5",
+    "desktop/tests/rc1-foundation-policy.test.ts": "25a1af7f7d043382519b73ca6a5f76d54f34bade24f130a31302786b29e207d8",
+    "desktop/tests/single-installer-packaging.test.ts": "4b65fa0383fde93e997f8a3f34ff2ba94c98b1e543d53fb88806a983e9311ebc",
+    "desktop/tests/windows-installer-user-recovery.test.ts": "ae33c40c858f50c26f99e6ff3a0e1997fe670b21bc50d3151f106a23152a8c95",
+    "desktop/tests/windows-print-child-protection.test.ts": "21b49c5a3d7b8e3f7ff4b8d20b3453c56d04fdab18dba2930efeb6112e7cccd3",
+    "desktop/tests/windows-usb-identity.test.ts": "de2e320a57ca5b560424dae886af9cc6a6d97a117d9dcbaefe16fff2213c1377",
+    "docs/desktop/windows-usb-front.md": "be613bc89b1fe928c03819a17edb0ac40772804808ed41e13d78e7cd6e11bf00",
+    "e-shop-tray/network-addon/installer.nsh": "3d0c6e75251102ef98ada77554c3d10cfbd75b93165f9ec6e2a8f7de3dc4b0b0",
+    "e-shop-tray/network-addon/main.ts": "593a04218bbcec0268703fc5fe4775a55f2965f0c000f43db95b0edf38143886",
+    "e-shop-tray/network-addon/shortcutLifecycle.ts": "cd63d373abb1ef42c651f9502523c1179f6c5430aeac3de8b1ef8ae102f0d9b0",
+    "e-shop-tray/network-addon/shortcutWindows.ts": "aebe7d6eca11e5048f67507b3fc4be80d5cd17aae0d92735adcef18e0b835777",
+    "e-shop-tray/network-addon/ui.ts": "41d45afb81d5e53ca74fe854cad76e5985a2ff1ef0258084e88d271823d40d16",
+    "e-shop-tray/scripts/build-network-addon.mjs": "35dff099cefd8c042a745904416908bb1da578fbbff4cc42bec8fb9138a8f704",
+    "e-shop-tray/src/managedPrintChildIdentity.ts": "160a06d0c42126053993cde50400b78d6178a3b30055af8c23245d4ea2044da8",
+    "e-shop-tray/src/windowsPrintChildProtection.ts": "7a3e59a37df6d1bf56fa7309b5b84d2ba204f638232e07ad972b4af60fc4394e",
+    "e-shop-tray/tests/managed-print-child-identity.test.ts": "481a55784d3b2f207c52b5f8c2e0f3c0cfbc6f6899cdca19322436107207b467",
+    "e-shop-tray/tests/network-addon-settings-only.test.ts": "a22ab0a4da54e338bd2e82ecb211113d47901fd6c001e87279ca763b327b7daf",
+    "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "e22793f9d0ec20579a366dd108b33feb5dbf217816ed39ca6f24eb389ee749b2",
+    "e-shop-tray/tests/network-addon-shortcuts.test.ts": "6d91f1a0460c37c43758f0aea7410f8e483f3da3ffedda9f6133ab1b7e1eb909",
+    "e-shop-tray/tests/network-addon.test.ts": "55659eeb2a0df7ec72029a1b78e5633b9ad5b523888adb2476cf7d01c1b99551"
+  },
+  "buildInputManifestSha256": "786a0decabda165298ff810629b24d9da4041781fbd81b5b26bf2a074be0d37e",
+  "frozenSnapshot": [
+    {
+      "label": "06A Cloud Activation Contract",
+      "paths": [
+        "docs/milestone-b/EP-MB3-06A-CLOUD-DESKTOP-ACTIVATION-API-CONTRACT.md"
+      ],
+      "fileSha256": {
+        "docs/milestone-b/EP-MB3-06A-CLOUD-DESKTOP-ACTIVATION-API-CONTRACT.md": "595ba6fc94092ee1ec0258cfd1acc1d4081571cec1878c5283a2419e897152ad"
+      }
+    },
+    {
+      "label": "ActivationRuntime",
+      "paths": [
+        "desktop/src/main/activation/activationRuntime.ts"
+      ],
+      "fileSha256": {
+        "desktop/src/main/activation/activationRuntime.ts": "5e1ad55a7fb29a5c96c8fef0455cbdcdcdb8a07ff2d1db512aa1e6cf1e85a44b"
+      }
+    },
+    {
+      "label": "CredentialStore",
+      "paths": [
+        "desktop/src/main/activation/credentialStore.ts"
+      ],
+      "fileSha256": {
+        "desktop/src/main/activation/credentialStore.ts": "ec17988d4aab3112eaf76bd5fe6d21162e2c77f673b422e5f662cea24d84de0a"
+      }
+    },
+    {
+      "label": "main startup gate",
+      "paths": [
+        "desktop/src/main/main.ts"
+      ],
+      "fileSha256": {
+        "desktop/src/main/main.ts": "d107112f589beb9a08c426e5aeff48bb659670f604e93960ce24d50022d92664"
+      }
+    },
+    {
+      "label": "WindowManager",
+      "paths": [
+        "desktop/src/main/windowManager.ts"
+      ],
+      "fileSha256": {
+        "desktop/src/main/windowManager.ts": "cc4896d55ed3692b05f62be3ffa7a0fb281e57e9245a7d6ea3c6f6146484f41d"
+      }
+    },
+    {
+      "label": "Runtime Core",
+      "paths": [
+        "desktop/src/main/hrt"
+      ],
+      "fileSha256": {
+        "desktop/src/main/hrt/auditEmitter.ts": "3642505b0b466ade940773dfb63fc748fe72f6a01e0b58df2b04da2ebf783ce6",
+        "desktop/src/main/hrt/commandLifecycle.ts": "54f9741f6cc7e774a90670c2e40cd8b54996559308612d12b85414312816036f",
+        "desktop/src/main/hrt/commandRouter.ts": "3edc089d6afcfc53aeb9c8c76672ad8cd966829f019caa8cfac1dfc9d056f8d9",
+        "desktop/src/main/hrt/commandRuntime.ts": "09fe629dfb20c7db3734deeebefdc18c13cb86940181a0bdb30beb3260224921",
+        "desktop/src/main/hrt/commandRuntimeTypes.ts": "2fc704c0650338770c74ec04f7fabf8bb524de4f8ff1ecaa92848228d8a8a6a4",
+        "desktop/src/main/hrt/deviceAssignment.ts": "73fde96be71be02697a1a8ec6c9d4f37d70a4f96da7fbb8c1cdead58d86d2f1b",
+        "desktop/src/main/hrt/deviceCommandGate.ts": "9cb281edd192951af68868950260d9158d00783b55ea2624c07ef8219b5a2e8a",
+        "desktop/src/main/hrt/deviceHealth.ts": "e8d612e9ea0ec809730b2dc937d2995762dd126a8c7066c5b21fffdf7f6ac9ad",
+        "desktop/src/main/hrt/deviceIdentity.ts": "4a93cfd03897a4ade17bc19f51049f2c9c492908dc31777514c3f2d8be9f8f32",
+        "desktop/src/main/hrt/deviceOwnership.ts": "d8825802b6a0dcd4157cf4222700dcaa8dd315cd9fc9356afdd2dec99850f0c2",
+        "desktop/src/main/hrt/deviceRegistry.ts": "6d44618eba0c72ad1b2587da5c5950627ef4f8e5d06bca1cdeef356f75ce4101",
+        "desktop/src/main/hrt/deviceRuntime.ts": "4126076a46e37a9e7faa37ca8a327828bf64b118c0831cc484dffff3edf73a03",
+        "desktop/src/main/hrt/deviceSlot.ts": "b69182ebd2234a309c29bd4e86155f365636b14c72d05cd39a1a5fdce8f98867",
+        "desktop/src/main/hrt/fakeCommandExecutor.ts": "729c8b552d85a26ca9682938e370bcbc2efa7a99fb25cf7851397d0bafb34c6a",
+        "desktop/src/main/hrt/healthEngine.ts": "9ad0c19649508281fe9a63d633cdfb70c7b083c1acc44fdca63f1fc4328f7005",
+        "desktop/src/main/hrt/hrtLogicCore.ts": "bfecc677f2617a01cc96583dd6f6209af1acc5dde85115d060d2450cecf7d459",
+        "desktop/src/main/hrt/index.ts": "8a7b9664ed5dbf0261536086327719453af840f98d96ecc62d2e3e653bcd88eb",
+        "desktop/src/main/hrt/providerClient.ts": "8985865568ee7163cb1afd92711677ff238deae344b57c00699b64f6936bae5e",
+        "desktop/src/main/hrt/providerHealth.ts": "773feec707f96b3526efc1f96e3d47d2efb57c3175dd42934080e7453bebca86",
+        "desktop/src/main/hrt/providerLifecycle.ts": "ddd5b4c71e950f00cce525628bab215869ba002d331b8b9bcecefdf895418e47",
+        "desktop/src/main/hrt/providerOwnership.ts": "238332e361a9419e27a9a37e5602336b2b350e40be79721f8ccd328b5cf4ca97",
+        "desktop/src/main/hrt/providerRegistry.ts": "b80d09b78a4659cdcffbbe7037849890bc92838b5c20de22e4cc30c1c1512768",
+        "desktop/src/main/hrt/providerSession.ts": "c58208b98a7dd5c3bdf1e6abf2154e02453e3ad43771c43b26ab8cbac590d912",
+        "desktop/src/main/hrt/providerSupervision.ts": "b63eeb61892844e5422aaaf06a9b1274b189a3b22d9c6c538fb6c5ac6e521143",
+        "desktop/src/main/hrt/runtimeDiagnostics.ts": "831b6341517749f3ab598aa3862a8b4cc78578e9df76c790ae005bc134e7dc28"
+      }
+    },
+    {
+      "label": "Provider Contract",
+      "paths": [
+        "packages/hrt-contract"
+      ],
+      "fileSha256": {
+        "packages/hrt-contract/dist/fixtures/frames.d.ts": "496e6a89408bac6b9446159b37eb2998b1a4a42a4b4ac375bbd47126ebe22714",
+        "packages/hrt-contract/dist/fixtures/frames.d.ts.map": "cbda988e662074ee4c071a45839bddfd2682029c374ab55c1fc67557d29dd989",
+        "packages/hrt-contract/dist/fixtures/frames.js": "74f3f45bf2e5e916de91e7856ccd9d5306103c9687affdec10014cc40bd5390d",
+        "packages/hrt-contract/dist/fixtures/frames.js.map": "a3cc9e35248b40e657516da2f84a7567f4555fc71aaf6b027e4e909e3d7acb67",
+        "packages/hrt-contract/dist/index.d.ts": "3fdce66983959c487fe2603ce97f6a495c9ba7c46cfe4c1f1e344965b99b4a84",
+        "packages/hrt-contract/dist/index.d.ts.map": "059c0668969e0c4b37505ccda078413ebdfa8950dd38c6e8dbad1de4dcd1e9c7",
+        "packages/hrt-contract/dist/index.js": "b6ce05423820d43ea632919e6085bd0d5601fc10bad6042dc3a11d4d164e38de",
+        "packages/hrt-contract/dist/index.js.map": "7df126b2c5f1b8dad4d473bcdc105887db69f57339eae537c62b953e55b0fcbf",
+        "packages/hrt-contract/dist/types.d.ts": "ac2396e8bd0b084f49d05fae84cf933659985629fb601ad72fcb058dd1aa4c80",
+        "packages/hrt-contract/dist/types.d.ts.map": "7b0644edb33d75e8b60a046ed679ec60bdf4238562f9307ceac0c9bd2fda5260",
+        "packages/hrt-contract/dist/types.js": "b8fcbed94368ff543a1f6a6a29b8525226957bc4bfdb603b4bc3e0f9d182062c",
+        "packages/hrt-contract/dist/types.js.map": "c8c7dbcfe4bc54079965ae0f3bd6fa4d5e254e4c027bf66a06a7f14b5edc3c15",
+        "packages/hrt-contract/dist/validators/frameValidator.d.ts": "c77634c31be0433c4d521343015c64e4b1f1bd18a9111f19768b48527f45d781",
+        "packages/hrt-contract/dist/validators/frameValidator.d.ts.map": "09e29037012431eec11959a17abb4d086c94d30a9da2a29daa244342ec873fc9",
+        "packages/hrt-contract/dist/validators/frameValidator.js": "44e324d9d5b445c2233d68dcd0a2f59501074e1f97bced25be35652a1f151044",
+        "packages/hrt-contract/dist/validators/frameValidator.js.map": "3b19e568ad91e7d8b2506edd6fd1438b8e9845ee7710a9c50a9cf909c788bd5d",
+        "packages/hrt-contract/package-lock.json": "aac28fb9357721097f8ad73afed0365173c49ee13ab9d8c29f33f1f7449141b3",
+        "packages/hrt-contract/package.json": "92b82aef5d7c0e86b2564f164572adaa0c3727f1c399131865e9b5b831367647",
+        "packages/hrt-contract/src/fixtures/frames.ts": "551387e3904f614c93072e6ce2e78103575fd219afc6b587c3368c4380ca81cf",
+        "packages/hrt-contract/src/index.ts": "7a168250872305dd1b0c45fa20066c8c103f1970f34b25f253ba7d5abd00b331",
+        "packages/hrt-contract/src/schemas/command-request.schema.json": "4b8e23b65b003daa5c6febc650eb8a11f9b0000452a38d2ee831123aac7b9607",
+        "packages/hrt-contract/src/schemas/command-result.schema.json": "499fe4f92ab3370ebf0af9b44e01b3536880032ffa17f1ff6e7250e2f97590a0",
+        "packages/hrt-contract/src/schemas/compatibility.schema.json": "7a0d43d3443718d64d1f4297306f30b32566f6aeca78d61c115c4834362836e1",
+        "packages/hrt-contract/src/schemas/customer-display-snapshot.schema.json": "3efee1563b19d3331401da033f5e487d795825425aae8acb676b65ecf300fe9c",
+        "packages/hrt-contract/src/schemas/diagnostics.schema.json": "14cc409fc9eafd639bf3548bf734fea7626b7df5f3fc9631f4eced1017aa94c1",
+        "packages/hrt-contract/src/schemas/frame.schema.json": "497369d984c80fe9bb86740f471dae9479e95ec7c74aee409999137e3ff47d56",
+        "packages/hrt-contract/src/schemas/handshake.schema.json": "43119af68e89e934a97dc629bff84b2bb26d4602b13e436f8073298c0894feec",
+        "packages/hrt-contract/src/schemas/health-snapshot.schema.json": "47b4002278a550f032c038a7014ab1ab546a77adce3beacbb87ff5b142ba615b",
+        "packages/hrt-contract/src/schemas/provider-registration.schema.json": "dc4eb723abb0f4c78046b6a9fbe76fe3d1c9a85c9cd3614c28a205ddc0c4a4e6",
+        "packages/hrt-contract/src/schemas/scanner-event.schema.json": "9dcdd6680c7d3463db2224d99fa2343d63827490297c7c6cb47d7f71bf865ee6",
+        "packages/hrt-contract/src/types.ts": "77f01501a37d45412574d7bf9bf80171b5a09f88f0a595c1bbe7c0972937aff7",
+        "packages/hrt-contract/src/validators/frameValidator.ts": "bff7085a239f7407e754338620c1ff1e9646ae2f8de7e3ebe2f3f4de1e39813c",
+        "packages/hrt-contract/tsconfig.json": "3f2eea0ffda14c725f0fa668f442b69fa632d9ddfea16ce3a9a87e61e4e3508f"
+      }
+    },
+    {
+      "label": "Prisma",
+      "paths": [
+        "prisma"
+      ],
+      "fileSha256": {
+        "prisma/_templates/01-grant-public-anon.sql": "9d44d1024427a74023256e31f727933bd51839cb90656420c4d14501db5521a8",
+        "prisma/_templates/02-grant-tenant-authenticated.sql": "f15416270efd9c0f93ae29f03dbb46917c6163698a9dc68ed74278f1893d2b92",
+        "prisma/_templates/03-grant-customer-mixed.sql": "f890cf99eae90be15728c418e9932044ca800edbde4d8f4ac00bdbc23b2b772c",
+        "prisma/_templates/04-grant-system-service-role.sql": "b66fb9ea7a42ead65189fe66a84e2e33284ebed656dd12678c3cd3e0d5d19f38",
+        "prisma/_templates/10-rls-tenant-isolation.sql": "1f6c4d5dad231c920f97ae9667801a456afd9980ca76e3d8622a90bdbc68e71c",
+        "prisma/_templates/11-rls-public-read.sql": "d335da4af25847d7cfa5cab53d4ee2087cdb2750bd75a314c89a6aba478f0723",
+        "prisma/_templates/12-rls-customer-self.sql": "c469f02d3fb110dba4042a70ce6d5eacf54a4c23c5c6f54ab097235767f744a0",
+        "prisma/_templates/README.md": "8152820dcaf60eb2f51b6bdc915aa4b572d0872fe3e041b85bc053e0de168156",
+        "prisma/migrations/20260331071511_init/migration.sql": "5071861ce26f4a27c668bb1ad6b4e5d9a053fcd081370c1a2506bc274cc6dd67",
+        "prisma/migrations/20260405000000_add_ops_admin/migration.sql": "e72bff952127c2bef3cca415fb4ed1a146dbb72fa7deb1b8ce15118f71d09fcb",
+        "prisma/migrations/20260406000000_add_daily_summaries/migration.sql": "43844deab1a831ecb219f401772f2e94311d3b83c9250e2f3432ceef9d63ebfe",
+        "prisma/migrations/20260407000000_add_store_application/migration.sql": "129e7e358bdf6bedaca335f33286f6c3b59f52e9742a03255615a274fc6ff891",
+        "prisma/migrations/20260407000000_add_telegram_messages/migration.sql": "36640c0872f6c1f127e872435240d7cdcf8177c476f6743c4caf7b0caa8a8034",
+        "prisma/migrations/20260407150000_add_telegram_message_sender_name/migration.sql": "1eea316bac86238554296eccf68ca947afade9ea5fa817e1f4a59b0a54c0fdb0",
+        "prisma/migrations/20260407170000_add_product_import_session/migration.sql": "23cb4c9c31eec0d24b0fc09947aa818313e62186f6a15cbe4e1abf96c091f99a",
+        "prisma/migrations/20260408000000_add_support_session/migration.sql": "5b35985ef3631c593017c57079fbb8010112e5495f6a66d264d1493ccc2bde0e",
+        "prisma/migrations/20260409000000_add_payment_intent/migration.sql": "9283cd0df3b404d378bc3ce3274d6c12f844a5d2544abd6c2ff7518441468f8a",
+        "prisma/migrations/20260410000000_add_merchant_payment_config/migration.sql": "f98b097902f359242ed77749a93466897458a58dec9f8757acfbe657fc723edc",
+        "prisma/migrations/20260413000000_add_pending_payment_status/migration.sql": "0332a44307389a5025521f64fc4c15301a201444eb57c9c7dd69b3a5219afd43",
+        "prisma/migrations/20260413020000_store_checkout_mode/migration.sql": "a5de26e5e1aeea51dacba93b9e12f9a25573be72e0e55f8140ab655f864d13a2",
+        "prisma/migrations/20260413030000_add_khqr_image_config/migration.sql": "f6147df3e7e4d911d1f85e674d7066e3eb30e4787ca50292c028dd23a5717a65",
+        "prisma/migrations/20260419000000_add_product_category/migration.sql": "bb10e92ce7df87dae3a45cfaee32b37e95f7875c3d680273ba74cabedc996c71",
+        "prisma/migrations/20260527000000_store_e_life_featured/migration.sql": "ef0661c93adeb3de8135b759578c1101ea7ed89da29e48c3401ff3164301b16d",
+        "prisma/migrations/20260529000000_campaign_link/migration.sql": "733c220c280dc5af740cb24a0183d7906d8e03f03538ce23235c6d2aca67ee98",
+        "prisma/migrations/20260530010000_bootstrap_missing_customer_order/migration.sql": "1999c32cf79e7552c6bb472114aefb93cb8896753e0462f364c156e644290327",
+        "prisma/migrations/20260531000000_customer_order_campaign/migration.sql": "094e4320f9e3979e1a1807e1a2b967b6196aff7f2f8775fa85b88860769947fb",
+        "prisma/migrations/20260531000001_creator_commission/migration.sql": "093f238d9272721681243ccb682c65eecc6fcdc317ec5427f19f2f1fc5ab8b43",
+        "prisma/migrations/20260531000002_creator_dashboard_token/migration.sql": "983116c56a05b875591ba87163e9bc201ab474120653337ac25d2558e065f492",
+        "prisma/migrations/20260531000003_creator_preferred_lang/migration.sql": "5083e484c29b322c942cace19721976063ea118c16532f17051f37b8144e90f5",
+        "prisma/migrations/20260531000004_add_product_i18n_fields/migration.sql": "54797560ea151c4a7519e2263b9db1efca39882e4cd584223fb36dfdc4d4bda2",
+        "prisma/migrations/20260531000005_add_customer_order_table_no/migration.sql": "24a2c4e4230cf58a736a37cdc97becfa509f95be08c8c26aa23f90c524c0401b",
+        "prisma/migrations/20260608000000_add_marketing_product_page/migration.sql": "ff93696d120675a9792bc8a465199463fdbed4acb9bd1175c882be523f50e93d",
+        "prisma/migrations/20260608000001_marketing_product_page_v2a/migration.sql": "d3d177c1ca69da519673304fa587980db0ed1ea700bfa81748dbf130691e39cb",
+        "prisma/migrations/20260608000002_marketing_product_page_v3_i18n/migration.sql": "0965bf39905b847357f00d4305e4b6608ed411dcb6548fa9a7372d2191349544",
+        "prisma/migrations/20260608000003_marketing_product_page_templates/migration.sql": "fb3e5f3fe02975b183b0b72eedc6964247d1a951acf23b85e3e3b7ba153106be",
+        "prisma/migrations/20260610000000_add_marketing_page_video/migration.sql": "149a7ee04b07b2d3ae752c3f094de8a33563aa44f5a1b25565357e33c68d86d3",
+        "prisma/migrations/20260610000001_add_campaign_link_status/migration.sql": "9ace604590218f254b1e9c18af875782984d2d0882268538c83535bec4be33e2",
+        "prisma/migrations/20260611000000_add_product_image_gallery/migration.sql": "40f2d87e77c61839f9558597911f451985396ff1984632ea15a51283cef4ec17",
+        "prisma/migrations/20260611010000_add_ai_support_config_audit/migration.sql": "c7bad2a6a4989e2ee70b60e62212905be66c167b13bd2fd8fbc93dd1389c62be",
+        "prisma/migrations/20260614090000_add_store_ai_feature_config/migration.sql": "88e806d508e319fc087f9e8b91df6dc87dff76273af1257f8bf4a13625e1109d",
+        "prisma/migrations/20260614100000_add_pos_session/migration.sql": "cd0d4286dd54fa66c1712251034a0b0cdc0ca26ca8d47cd6e0a0d05d8dd11f1e",
+        "prisma/migrations/20260616010000_add_payment_transaction/migration.sql": "c52c912d87f9b7ed2550de74f8a9c838cb4b91130f0a2a9f3de6a9bde37ece23",
+        "prisma/migrations/20260617010000_add_cashier_offline_sync_map/migration.sql": "2be01f004bc05031094bc85ce95604ac06a358e487e307b661ada340b70af594",
+        "prisma/migrations/20260617020000_add_member_v1_foundation/migration.sql": "3102070df125b4524e78a8e27cbdc87393b16cd1b97f014cd89e25d6d141b7cd",
+        "prisma/migrations/20260618010000_add_member_telegram_bind_token/migration.sql": "bb9b26918272def79304ff5ba8583ef8d8d190792617ee3bf6096b763f473707",
+        "prisma/migrations/20260711090000_add_customer_journey_event/migration.sql": "e4588554a5524acd849e75a34d87603430f36269d9a9de7172c346d51338670f",
+        "prisma/migrations/20260711110000_add_store_currency_code/migration.sql": "8178d35662a8e1919d34c9c5ddb62e97e7d084ffbbe35b3597abc566e5a8c03c",
+        "prisma/migrations/20260712100000_add_store_customer_contact_fields/migration.sql": "c9815be7fe947df055095624bd6f7185f5a53b86529a68ee720fec4493af26f4",
+        "prisma/migrations/20260712160000_add_store_location_fields/migration.sql": "ed07b16f09cee3be237ba42a867a72410b3be3aded065e50ce29e3462ce03e9c",
+        "prisma/migrations/20260713090000_add_tenant_subscription_lifecycle/migration.sql": "084e3fb69c4e7b74f329b83a08c419edf10b9be3354ed073e0714929cdd2d84e",
+        "prisma/migrations/20260717090000_add_desktop_activation_identity/migration.sql": "d5435613ee78e1a8e1bac55ef3a19963473e051d7e6cfe60f72e6fb8859330b5",
+        "prisma/migrations/20260717110000_add_desktop_device_token_version/migration.sql": "09d9095fcc3f503a6455cced85947dbfd714d941dee64e8931b7eacc4ea9de77",
+        "prisma/migrations/20260719090000_bootstrap_missing_manual_schema/migration.sql": "f4701660da790bfa5dd6910b5354b76bb7d5d507533bc454aaa5b536b2bd7c36",
+        "prisma/migrations/20260723093000_add_browser_pos_device_lifecycle/migration.sql": "60fe114177beaa14ce30796ef9fe5e16c0b8b15657143826548143c872c37d4f",
+        "prisma/migrations/20260723100000_ep_br_link_auth_01_browser_pos_metadata/migration.sql": "b25b90ecfa6921bb8b8b093f9c4a2f4b446db552a6556dd604a17b9570d953ad",
+        "prisma/migrations/20260723110000_ep_br_link_auth_01_binding_delivery/migration.sql": "acd93f803a5f89caa9ca95b99919854d9b06ade7c45fa3a3879b8d0f9b645deb",
+        "prisma/migrations/20260724100000_ep_txn_idemp_01_cashier_sale_idempotency/migration.sql": "2f3959c204a3f9d98293f8255099a0149d3aa0b44600006edb8542887a6fc64a",
+        "prisma/migrations/20260726060000_add_store_print_kitchen_ticket/migration.sql": "323dd720c4b3b460d62ed095a01e8db86771796847ad55eb9560c7fd396b2982",
+        "prisma/migrations/20260728120000_add_computer_client_binding/migration.sql": "18a3cf99343e085f53cd908094a3eac0cb357baa038dd232247721a357cad96b",
+        "prisma/migrations/20260728120000_add_computer_client_binding/rollback.sql": "5c6095f7d3df7a96d9e4c7ce680ef6075277a1415ca7406e9c0f87fe43fdde80",
+        "prisma/migrations/20260730120000_add_computer_console_closeout/migration.sql": "bdb2a02260925365d41e7069be911c2bf3a18221e3cd62a1d7197c000ba93622",
+        "prisma/migrations/20260730120000_add_computer_console_closeout/rollback.sql": "d69cd2fda58f76e42e5333981c1fc2d405ab12105f4ac0bc5fd74cdecb5d8e9c",
+        "prisma/migrations/20260811160000_es_tray_02_cloud_relay_field/migration.sql": "1abcccfe1618f071cecac611d7a09a1ebc7c269053f5e9409a2a42fd40bb36c7",
+        "prisma/migrations/20260816090000_add_product_discount_price/migration.sql": "cc791f02ec0f6f17f899310cec9b2e40db3ae7a91bfccc3f354b94e61b91d1e6",
+        "prisma/migrations/20260819083000_add_sales_lead_attribution_v01/migration.sql": "61cf7ade07e1d5ab781180e36e98e8be2a352e5ddb10600b6a042b303635aee5",
+        "prisma/migrations/20260819160000_add_sales_lead_support_config/migration.sql": "ee991d31ce44bf4b461f2f07d8961f3679986b092c357d76ea2137e78211d94f",
+        "prisma/migrations/20260819210000_add_sales_support_channel/migration.sql": "30059b1652c5192e0a764788fee69b864aeb0d8f76f098b396c48881d634b1d8",
+        "prisma/migrations/20260822143000_add_unlinked_sales_inquiry_owner/migration.sql": "0e88a9f518b513d87ca4cb2ec888e8a47d214f382d2e2abd7b133318c9cf6de9",
+        "prisma/migrations/20260822170000_add_telegram_message_sender_username/migration.sql": "b843335beb7b0a89b3ad045738edce94fb7f3b98457da610a88b64c463808cbc",
+        "prisma/migrations/20260825090000_add_product_is_recommended/migration.sql": "be6396deb196b496bfa44f658d16c6148cae24c32a6fc0f86b17f3a7e8cfd4e8",
+        "prisma/migrations/20260905070000_es_tray_production_relay_v01/migration.sql": "e631002979ba6400e2caf8dbbbd98066e4fa94f4754c96e79d50265c509b7e34",
+        "prisma/migrations/20260908155736_add_electronic_menu_media/migration.sql": "3ac9b3f7aa00e14a84633df80151dc7012e5ccef1618f7e2cd0bb95376fc1ba5",
+        "prisma/migrations/20260909150000_add_product_sales_reports/migration.sql": "42874cdb9133d18c9c3383581549d25d10b32a25222f961b585caadfb4503d85",
+        "prisma/migrations/20260914020000_add_product_bulk_import_jobs/migration.sql": "605dab42360ec16f28bc6937fae410e39e08dc8f9c8e150ae532136070b46911",
+        "prisma/migrations/20260914143000_add_kitchen_item_routing/migration.sql": "d9035aa3311857637437d689b35266d14786731141aa0199fe8a4d2a0030dc46",
+        "prisma/migrations/20260919090000_add_computer_binding_network_mode_snapshot/migration.sql": "9ee9a1adf7d8abf802131b0241a002510fb662ea6aa2ce555bdede8e108bf1f6",
+        "prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql": "c30b41d30225706b8259d9f84890dab0b30b0089ebf0701b172449b81eaa383f",
+        "prisma/migrations/20261005120000_add_customer_order_fulfillment_intent/migration.sql": "81dd062b608b364124bff33858b8a0a1aad0546de701bf1cd14e660684f48349",
+        "prisma/migrations/20261006160000_add_customer_order_render_dispatch/migration.sql": "6ab3b3d59d4ad2df564c691b86303135391147e19b02ed6cb39e07b3369250cc",
+        "prisma/migrations/20261007090000_add_customer_order_submission_idempotency/migration.sql": "0b1e9b4628d08a962bb853e8a0af843656db8387db8e6907ec3837d9ba59a12e",
+        "prisma/migrations/20261009090000_add_customer_order_fulfillment_purpose/migration.sql": "fdfe9c3bb71bb5dd9945c89d080b1ad23c9220a0d94ebf26c00078d1ccece9b9",
+        "prisma/migrations/20261010_es_dine_in_01/migration.sql": "f0622b4f11ed06a10e59d71c109a0e86d4c52a1be7d78e7e58aca3cb3b4c272b",
+        "prisma/migrations/20261014000000_add_desktop_print_child_identity/migration.sql": "6408870bb82159df6483037937cbc4c74e0242cd1502ba57837a84e055a0ef69",
+        "prisma/migrations/20261101090000_add_retail_multi_unit/migration.sql": "077df39c3557e048288de36a94eb247bc057e0335122955d00cc542c135f53f5",
+        "prisma/migrations/20261112120000_add_native_inventory/migration.sql": "0c1f66d8482c3f76ef907f22e3d4e584afe947eef643e8162a480128f5bb1899",
+        "prisma/migrations/20261112131000_bind_inventory_order_and_payment_currency/migration.sql": "f5255ddc60f0c7905f120d19ff8385e9039372adcbc9410a2b05c6d50664afa1",
+        "prisma/migrations/20261112132000_authorize_native_inventory_runtime/migration.sql": "750d78688b338a0aa1d0df50d2b5afa3ce77c3f6095e1002ce8226070ae2a5dc",
+        "prisma/migrations/20261112133000_isolate_native_inventory_capability/migration.sql": "94ddb2a8ef3ebff029437361e31033ca9a5e31aeaf64ecffd6523ac11d4ca8f8",
+        "prisma/migrations/20261115120000_separate_native_inventory_sales/migration.sql": "ce2105e55ec065c0932c1566304208c82c65a99b54e8fa4730a7adfaf08dba6a",
+        "prisma/migrations/migration_lock.toml": "99836963713b4f5b269ad49af0ed3d7b0b2e336115c2f92dc9ac683d139d0900",
+        "prisma/schema.prisma": "485e160deb84909a3cebb8f94a6bb68c6d7e6bd61f79aa5cd57426a5a15e4634",
+        "prisma/scripts/audit-permissions.sql": "16a687cfb37cc2df6e6e7beffa1e67520c6c56da2ad893e42a5b2377389b9f73",
+        "prisma/scripts/backfill-existing-tables.sql": "347e4ab13d91e2853e739758077c0813203481cac41009b8c0b64f895720793d",
+        "prisma/seed.ts": "424e4502437f9881d55aa31a514570db48f6a40fcff68161c719489377142063"
+      }
+    },
+    {
+      "label": "Payment",
+      "paths": [
+        "app/api/payments",
+        "app/api/sales",
+        "app/api/orders"
+      ],
+      "fileSha256": {
+        "app/api/orders/[orderNo]/cancel/route.ts": "61f10160c34b5b480b277e9eb99ec4b26a6704612eca32de5093d83dc91131d2",
+        "app/api/orders/[orderNo]/checkout/route.ts": "01e5d9fdc6ddfd7f5328ca7065eadfcc11c77760dd6846cd85087d60d4898f30",
+        "app/api/orders/[orderNo]/delivery-photo/route.ts": "a924d9c8e49ab7f46e302dae8fd535a820be12f9f4ad622e1475587af3f17d76",
+        "app/api/orders/[orderNo]/route.ts": "eaa4a9d1d366f1916c3bae14550cf32fd19158587346cf23ba94cb34b74da040",
+        "app/api/payments/[paymentId]/cancel/route.ts": "9d2eaf96f9b85d862846d573d38485784eb84d337dcacd4fe6bb42b1c3f6e251",
+        "app/api/payments/[paymentId]/confirm/route.ts": "c86d8c5bd0f999893dbc4f9ad6a16bf44d4516d05c7994ea8ba17e20287387a8",
+        "app/api/payments/shinhan/callback/route.ts": "37206b7090cbcff7790df022b3b267854868e03c8c41b949879a7e0bdd09e2b0",
+        "app/api/payments/shinhan/inquiry/route.ts": "9915a613886dc3cdf7f05386fbbefad5bb215b5fb6bcab7e61d5e6c11f8d58c4",
+        "app/api/sales/conversations/route.ts": "90718f3ba92b8d07dc1ea7cb047f9dc9117c37f5a250ee28052a041e8704d38d",
+        "app/api/sales/inquiries/route.ts": "3dbe65b02132b0f76153d562be7b99038b8d46060609a6562fe217498ccba4bd",
+        "app/api/sales/leads/[id]/claim/route.ts": "e3446497ecd0a7f63e400c87a04b29b88eabe06fa0ea201b2c8e8f449b9b42b5",
+        "app/api/sales/leads/[id]/route.ts": "ecf83b14e29391c63d7f9f41a465b35031d57df47743f7900e41f961badc974d",
+        "app/api/sales/leads/route.ts": "760cc9c3deec6d96c9654576e71cd3b824e7b43e01d316437e6eec54a24b6d87",
+        "app/api/sales/lookup/route.ts": "25814dd178c3c0887ed3e93be48dacffd0292331426cf851c528895060e7e367",
+        "app/api/sales/messages/route.ts": "28e4f55e4655bd37a2077444d4f5e53e42a9ae9c948265555025aef62dadce25",
+        "app/api/sales/photo-recognize-multi/route.ts": "e7f877042535c1a5f6b7433e898173676e8f9aac7ace5087b46b70d8ed8ab356",
+        "app/api/sales/photo-recognize/route.ts": "c84bad7cc14b2f9c1e006397f1fe281b0ee7987462bec07bc18e97e2fd6dfb9e",
+        "app/api/sales/route.ts": "b640ac3f5be7cb0e6a99c3e62ec046b8fb5d86950d0a9f1e7e9e448185f84413"
+      }
+    },
+    {
+      "label": "Printer",
+      "paths": [
+        "lib/cloudPrinter.ts",
+        "app/api/print",
+        "app/api/printer"
+      ],
+      "fileSha256": {
+        "app/api/print/bind/route.ts": "38708f9151f2e53ee5be0e712be55e37751540618f5a612995ab517352158f74",
+        "app/api/print/reprint/[orderNo]/route.ts": "aa8b60cc0f0479dc5af910e2ea119ea129a18e983af2ec7770be1e43701a7a58",
+        "app/api/print/status/route.ts": "88c4030fc8c8ed7346fb76451d3070f78eb4ab01a7b81f37f0a75c3c4fec1ac3",
+        "app/api/print/test/route.ts": "a666ec91a3212fff04572cc91573a467a65fc0e68a3b20cd43eee30fdd952f22",
+        "lib/cloudPrinter.ts": "46b02dce96f8c9e6db0997c037e01588c33488ff7ab86771e9f7f88fcfe024a2"
+      }
+    },
+    {
+      "label": "Scanner",
+      "paths": [
+        "app/sale",
+        "app/components/Scanner",
+        "desktop/src/main/hardware"
+      ],
+      "fileSha256": {
+        "app/sale/page.tsx": "f47af18b44e4042a3ab919fbbe6e14dabd4e4dc00c774aebabc24e225745d120",
+        "desktop/src/main/hardware/hardwareManager.ts": "0c7c8d1e1c5f48d3b99901eb4bd6e848704c0ea4e63f8060ce72510562b66989"
+      }
+    },
+    {
+      "label": "cashier/customer/mobile business",
+      "paths": [
+        "app/cashier",
+        "app/menu",
+        "app/m",
+        "app/home",
+        "app/invite",
+        "app/table-qrcodes",
+        "app/records"
+      ],
+      "fileSha256": {
+        "app/cashier/authorize/page.tsx": "10fd4472b0c1f7eb891c571acac36e9c969d17fa77b3fa67ce5e0c93893e7667",
+        "app/cashier/components/DiamondRecoveryAction.tsx": "4e0fb8b999e059922f390c8abd003e339d374fb15767e1a5b8a38ee5fbcea716",
+        "app/cashier/launch/page.tsx": "82ac7bb8a69bab0de9446807da66526f34bfd167bf6e4c2ca3484cd43a9884e9",
+        "app/cashier/layout.tsx": "13ccccced0a654bdd62d45646eade08de833352a6ab7ffa8f1b34a57fe50c412",
+        "app/cashier/page.tsx": "d7dccb90d9d9804458920cc7c9eba60ec7c3121df105adf63b9d35e634d79a1e",
+        "app/home/ComputerConsoleModal.tsx": "b7d7388a7a2c52990e51110eb1b9f9371b0ffeab5934f413a59da2a344dcfacd",
+        "app/home/SubscriptionReminderCard.tsx": "181726c3ad32f788e8b3a53461a0a00ce8ce50fef194940dbb8d00683d2836d3",
+        "app/home/computer-client/page.tsx": "790d7363b8a7eb9252dfe4023397a20b13697b6163ed12d364d9ea3a0bc60b16",
+        "app/home/computer-console-url.ts": "a1db8e9f216a7fba834e99800f71cca79b4b56953bd799b81c5c8dbb14c95c77",
+        "app/home/page.tsx": "379c257ec2371c7054a5e346a3300c492d7f95039d76718d3de3f1a46b21c4a3",
+        "app/invite/page.tsx": "55a1b6bb0dd7c1633dfc23d90dc5a6b65cc16e19bab13a850edf4b10654898d7",
+        "app/m/[storeCode]/PrivateLandingShell.tsx": "ac23de4233d3223f9d65ab888c5ddc1d2d2d12a3058d07db6ac82cdf0b64a0ff",
+        "app/m/[storeCode]/page.tsx": "282f14958b076ba2df3fd2dc6d6b5b1e6128801e114b600fd7630af5cbb4132f",
+        "app/menu/orders/page.tsx": "ce6bd72668774e8e031f88f34ed2c42776740be2b14441af333cede7461bb7a3",
+        "app/menu/page.tsx": "d7f81a0d2946662ad334c9227f8d6342d2e47de41da817c496ff2523551d5c60",
+        "app/records/page.tsx": "ea5d384ef42d51668e4641a2f6be5e0dfd17f0a8c6f407f420bc9390b9ed664a",
+        "app/table-qrcodes/page.tsx": "e4a4c886c4be197b25e40885a2f8c0ba25d1ffbded7a7e3a1902e4571db5f8c6"
+      }
+    }
+  ]
+}
