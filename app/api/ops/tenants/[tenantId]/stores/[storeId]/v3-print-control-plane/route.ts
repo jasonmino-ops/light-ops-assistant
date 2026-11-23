@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getFkBackedOpsAdminIdentity } from '@/lib/ops-auth'
 import { prisma } from '@/lib/prisma'
+import { action as legacyAction, isTarget, parseCommand, plan as legacyPlan } from './legacy-front-grant'
+import { caseRejection, readLegacyReceipt, runLegacyDisposition, runLegacyFinalization } from './legacy-front-disposition'
 import {
   parseOpsPrintModeCommand,
   parseOpsV3QueueRecoveryCommand,
@@ -165,6 +167,14 @@ export async function GET(
     const auth = await authorizeStore(req, params)
     if (!auth.ok) return auth.response
     const scope = { tenantId: auth.store.tenantId, storeId: auth.store.id }
+    if (req.nextUrl.searchParams.get('legacySevenReceipt') === '1') {
+      try {
+        return noStoreJson({ ok: true, receipt: await readLegacyReceipt(prisma, scope, auth.operator) })
+      } catch (error) {
+        const code = caseRejection(error)
+        return code ? noStoreJson({ ok: false, error: code }, { status: code.endsWith('FORBIDDEN') ? 403 : 409 }) : serverFailure(error)
+      }
+    }
     const state = await readOpsPrintModeState(db, scope)
     let diamondRecovery = null
     let diamondRecoveryError = null
@@ -195,10 +205,18 @@ export async function POST(
       status: requestSafety.code === 'INVALID_CONTENT_TYPE' ? 415 : 403,
     })
   }
+  let legacyRequest = false
+  let activationCommitted = false
   try {
     const auth = await authorizeStore(req, params)
     if (!auth.ok) return auth.response
     const body: unknown = await req.json().catch(() => null)
+    const scope = { tenantId: auth.store.tenantId, storeId: auth.store.id }
+    if (body && typeof body === 'object' && 'action' in body && body.action === legacyAction) {
+      legacyRequest = true
+      const result = await runLegacyDisposition(prisma, scope, auth.operator, parseCommand(body))
+      return noStoreJson(result)
+    }
     const recovery = parseOpsV3QueueRecoveryCommand(body)
     if (recovery) {
       if (!recovery.ok) return noStoreJson(recovery, { status: 400 })
@@ -210,7 +228,11 @@ export async function POST(
     }
     const command = parseOpsPrintModeCommand(body)
     if (!command.ok) return noStoreJson({ ok: false, error: command.code }, { status: 400 })
-    const result = await runOpsPrintModeAction(db, {
+    const finalAction = command.value.action
+    legacyRequest = isTarget(scope) && (finalAction === 'FINALIZE_V3_ACTIVE' || finalAction === 'FINALIZE_V2_ACTIVE')
+    const result = legacyRequest && (finalAction === 'FINALIZE_V3_ACTIVE' || finalAction === 'FINALIZE_V2_ACTIVE')
+      ? await runLegacyFinalization(prisma, scope, auth.operator, command.value.expectedStateVersion, finalAction)
+      : await runOpsPrintModeAction(db, {
       tenantId: auth.store.tenantId,
       storeId: auth.store.id,
       operatorAdminId: auth.operator.id,
@@ -218,6 +240,8 @@ export async function POST(
       expectedStateVersion: command.value.expectedStateVersion,
       action: command.value.action,
     })
+    activationCommitted = legacyRequest && result.ok && finalAction === 'FINALIZE_V3_ACTIVE'
+      && command.value.expectedStateVersion === legacyPlan.control.stateVersion + 2
     const state = await readOpsPrintModeState(db, {
       tenantId: auth.store.tenantId,
       storeId: auth.store.id,
@@ -226,6 +250,8 @@ export async function POST(
       ? noStoreJson({ ok: true, requestId: result.requestId, state })
       : noStoreJson({ ok: false, error: result.code, state }, { status: 409 })
   } catch (error) {
+    const code = activationCommitted ? 'CASE_ACTIVATION_COMMITTED_READBACK_REQUIRED' : legacyRequest && caseRejection(error)
+    if (code) return noStoreJson({ ok: false, error: code }, { status: code.endsWith('FORBIDDEN') ? 403 : code === 'CASE_COMMAND_INVALID' ? 400 : 409 })
     return serverFailure(error)
   }
 }
