@@ -1,0 +1,127 @@
+{
+  "authority": "Workflow V2 §6; Workflow V1 §§6.1–6.2; ES-ENG-001; existing selective-release governance",
+  "companionTask": "ES-V3-NEW-OWNER-CLEAN-START-01",
+  "designSha256": "d746925f7b4c69f4cfddf1bafdbdb309def98945673601ef8e1b23ac91eba419",
+  "development": {
+    "baselineMode": "CONTENT_SUBSET PASS; STRICT ancestry NO",
+    "companion": "0934e9436e292af2738dde8678895e8348a859e5",
+    "documentationOnlyException": false,
+    "main": "1fe4481dcc64adf48af2c4d5cfff8addf79ed3a1",
+    "mainProjectionAnchor": "1dcc8398b517f16be7f7a32332e02e2103bb3c22"
+  },
+  "excludedAuthorizations": [
+    "signed baseline-error waiver",
+    "trusted main admission/push",
+    "selective release authorization",
+    "production deploy",
+    "migration",
+    "business action A",
+    "owner handoff",
+    "activation B",
+    "kitchen mode",
+    "physical printing"
+  ],
+  "founderSignature": null,
+  "originalEvidence": "1ae9fc372ee547361fe0fa3d8461ab207bce8826",
+  "originalProduct": "100826d5b502e55d8726aaa1922b1885ad16afee",
+  "originalProductPathsSha256": "7a6f7125b35066d8d874cc8ad2bea6f1c6852bb0afb2fe956523849ca86a4cfa",
+  "originalProductTree": "440fbc2c299e7ba9f8df9ef40417bebd43fa824f",
+  "priorFreeze": {
+    "path": "docs/freezes/ES-DIAMOND-V3-FINALIZE-HELD-UPDATE-OPTIMIZATION-01.md",
+    "ref": "1fe4481dcc64adf48af2c4d5cfff8addf79ed3a1",
+    "sha256": "651a95eecb395c4a522ec469fc9d3e954e3bd33fa5290e350aed17bae0d1d5b7"
+  },
+  "productionAtRead": {
+    "deployment": "dpl_Enq3R1v2BezAHNh7G1mW6KYdj53g",
+    "project": "prj_Ld76p2KNULYeu7mcf40vTG0EprY1",
+    "readUtc": "2026-11-23T18:57:22.765477+00:00",
+    "ref": "release",
+    "sha": "b36c47e137693e067a7d26d40706df8f89610f29",
+    "state": "READY"
+  },
+  "productionExecutionAuthorization": null,
+  "rawEvidenceDirectory": ".task-state/ES-V3-LEGACY-PENDING-DISPOSITION-01/implementation/frozen-successor-20261124",
+  "rawEvidenceSha256": {
+    "actual-selector.txt": "5e8890408874ac077f68f3d3f613a03231b0006543cbc4bf08d653149222eb72",
+    "candidate-app-read.json": "2f26418dff1d199f9e367ea2436f216f2ea91eb8d1460c146936ab6b9aac8856",
+    "cash54-fixture.py": "5af844b46ff7eab32511800d5de6bde615952a75aada0ee8ec3e11997df7d8e8",
+    "claude-retry.txt": "2c3b9889aea0ff2b2538891369adaa45036cb001563cb57c5fec30eec613dff9",
+    "claude-short-verdict.txt": "cbdc8234d1168ba36736691f97a7ff3476c4c1c4bc3dcf98a8dda53017951161",
+    "claude-verified-review.txt": "78417c959504568f88308babfb4e9eba6f166bcbdd811f61d317060df1f3bd7c",
+    "codex-packet-check.json": "e8b5545256c251e77a657777122b945a855417aef947cd232de5bd80611cb354",
+    "codex-projection-review.json": "148bd00833baca1536822fc64660a2e41cc40c4c8defc67c7d2a7469e54d7593",
+    "core-dev-cambodia.log": "17120da88588edf2bd332c3611ca5bd961e84154d7cd899bbcf525ad4c69d1fe",
+    "core-release-cambodia.log": "ccbc4770550e88c780a5ebf4aae538ed59e0b990c0513fa5a2bb15280bd6b456",
+    "current-branch-rules.json": "e46edec10609e40326c587357fa4081e7de06787763fc63f48ec5084f30f2920",
+    "current-production.json": "23749f2cd651fc832d3e0583c9a901adcaed197f42825001749efa4853d407a9",
+    "development-lineage.txt": "3f34d9009a2b266176c142f5b3daaa74f8d1d806d7ad661ea876f0458d430b93",
+    "final-release-build.log": "3d87046265b759ddb34fec0c010e835fcc9b2226d3489b65b55a5710d49b479c",
+    "final-release-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "large-cart-fixture.json": "c9d884ac0f7f07abcca320d6824e59cbc6265808fad27e047241b6b2af8fdf1f",
+    "large-cart-full-base.tap": "07e62202c2de56710e1a2ef9022ab9795f873e283eba2a5b4ce655122e514d6d",
+    "large-cart-full-release.tap": "6e6434be1cbdd74403717be3106befdc72d8c5b6774a8a0f427106a132de6185",
+    "main-timezone-results.json": "21b8e245895bdefdb2571b47efcbf97d51a95506c3041211844d05bd2adfecbd",
+    "release-seven-0.tap": "85594b882207d70bfe94b00dae756d173f0e7a55bd44b2c7aee645f75dfb1352",
+    "release-seven-1.tap": "69325b6b04baaf6d9f42cdea8251fde017598c1228896aa5e1ebea07d173120c",
+    "release-timezone-results.json": "2fbbcee12df40bfd0458e0fd0f82312ae7f325b3bbab60d4781df5354a709440",
+    "release-v3.tap": "652c347cd1f3cd801a2d749ff97d278540cd377ed8a7886de51c70ba20e73e67",
+    "verified-candidate.txt": "d4fb5def61af80d869b2b13a82bc8c5356b3d7506013cfba15cd86fd4f5ab7f1"
+  },
+  "releaseDraft": {
+    "appId": 5590705,
+    "base": "b36c47e137693e067a7d26d40706df8f89610f29",
+    "candidate": "f33993497c107ad9090b0b64896fac5f2b0934ff",
+    "candidateRequiredCheck": "eshop/selective-release-validator",
+    "controlAtRead": "45b65b45af9e0eb594a9b5565449e2a412a0d005",
+    "migrationCount": 0,
+    "pairs": [
+      {
+        "fingerprint": "617ebba991757ee789885214d59c700e914f29b7679613a044c4b398ce45ce5e",
+        "release": "35575551bdfca02214f7a9f4a21026c5bcd1da39",
+        "source": "7831461aa623d586febef9979adafec755d6c2c0"
+      },
+      {
+        "fingerprint": "5f73f73c4036b87b5cb172050d24df18e0a738e671c40a56e1fefcd894a0e25f",
+        "release": "f33993497c107ad9090b0b64896fac5f2b0934ff",
+        "source": "f5a1ad5dfc33a3f9c9271e1a34e9e7f24d2e84d7"
+      }
+    ],
+    "ruleset": 26426184,
+    "status": "AUTHORIZATION_MISSING; exact source commits not yet trusted-main ancestors; no candidate GitHub App check",
+    "tree": "57f1cf3d4139011bcb9c6c929b10de212813c094"
+  },
+  "reportsSha256": {
+    "exact-binding-examples.json": "14254dd32a8c016572cc8375feb2a39c573b2d0482ad250439ded7b0b893103a",
+    "known-failures.json": "fd2f27136557f03c97b0c0c2091361b4225ae5ae1fb2e4737d59f6bc3da4f20b",
+    "projection-mappings.json": "01ccbf351d62836454fd5b0c3389ecbd0a271a7bf80c95688eed2965b0f0a389",
+    "review.json": "3452b110433feaf7afa6c816d1cf745b8880749e73185bcfc8056a5e38a5b006",
+    "selective-release.request.json": "8d0b16129452a4f6b2993154df2ea85da00e01ad0920b1959ad08bbab95c0321",
+    "seven-ops-request.json": "0f41b68ed3d53e404e71c12b5eb2ea3b59e11e8211c062d751be9afcf1781591",
+    "verified-boundaries.json": "bb520ef36bd9a100dbfea01d4670e1c1e338536b65ab948686bab3b03965204a"
+  },
+  "schemaVersion": 1,
+  "sealedAdmissionSha256": "5b53783cd4b979ad1370c54a57fad8540f854fe64dec64eb47cddc94afb5611c",
+  "sealedSnapshotSha256": "6c759971f4318b281007adf79835368978149cc5a36b15b9cc80164200e21d4f",
+  "state": "UNSIGNED_EXACT_CANDIDATE_ONLY_NOT_ACTIVE",
+  "subject": {
+    "adapter": "lib/v3-print-job-adapter.ts",
+    "affectedHistoricalAssertion": "tests/cashier-large-cart-query.test.cjs:81-84 on explicitly selected release source",
+    "allowedJobIds": [
+      "cmv9u1fsf000u06jkc2lkghtj",
+      "cmv9u906e000606l3ymf89zx2",
+      "cmv9uhgyk000806l8ai460t0e",
+      "cmvb2tzu6000u06l0ipxlj18v",
+      "cmvb2vz9r001706l0enukk5ka",
+      "cmvbx2kkg002g06l3kfxiofo2",
+      "cmwsu69ep000f08jzuf976ydq"
+    ],
+    "caseRequestId": "2673e734-1728-462a-8be5-16a4bfe7ff29",
+    "old": "992900c79a0d422e6d7c5359ebc15b628ceee31cbc84e19d5fbbb65076b2fb63",
+    "originalTestSha256": "921e54f9e65ad15cda09a25b7a5e88a3345f5c2928c062997bf35d6166e5795e",
+    "proposed": "b24c4bbf902c145ffef5f48ee52b25a39a87c567f8315f1d42d1ffec3878e22d",
+    "scope": "Recognize only this exact frozen successor of the adapter; retain immutable old test and raw failures. Independent signed disposition or repair is required for all unresolved release checks.",
+    "store": "ST04C05602"
+  },
+  "task": "ES-V3-LEGACY-PENDING-DISPOSITION-01",
+  "testScope": "Focused PostgreSQL, typecheck, build, all CORE collection, relevant V3 and 54-line CASH tests. The entire integration inventory was not certified. All reported historical failures and candidate-triggered frozen assertion retained."
+}

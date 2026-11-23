@@ -1,0 +1,99 @@
+{
+  "priorFreeze": {
+    "ref": "1fe4481dcc64adf48af2c4d5cfff8addf79ed3a1",
+    "path": "docs/freezes/ES-DIAMOND-V3-FINALIZE-HELD-UPDATE-OPTIMIZATION-01.md",
+    "sha256": "651a95eecb395c4a522ec469fc9d3e954e3bd33fa5290e350aed17bae0d1d5b7"
+  },
+  "adapter": {
+    "test_id": "tests/cashier-large-cart-query.test.cjs",
+    "assertion": "With CASHIER_QUERY_TEST_SOURCE_ROOT, lines 81–84 bind six dependency files to b0aa38a1. Five still match. The print-job adapter is the sole mismatch.",
+    "attribution": "candidate_triggered",
+    "expected": "992900c79a0d422e6d7c5359ebc15b628ceee31cbc84e19d5fbbb65076b2fb63",
+    "actual": "b24c4bbf902c145ffef5f48ee52b25a39a87c567f8315f1d42d1ffec3878e22d",
+    "diagnostic_or_exit_code": 1,
+    "baseline_evidence": {
+      "file": "large-cart-baseline.tap",
+      "sha256": "92718ad93b7e6b051e3a754657c743a9498d262b5402b6523f8fbb87b5e7eb83"
+    },
+    "candidate_evidence": {
+      "file": "large-cart-static.tap",
+      "sha256": "fef465fefe732dbf380b72464073f590d87febf7d18455560b9999df528fd33b"
+    },
+    "disposition": "OPEN: explicit frozen dependency successor required. Original static-only run remains recorded. Full isolated PostgreSQL results attached below.",
+    "normal54IsolatedPostgreSQL": {
+      "source": "unmodified tests/cashier-large-cart-query.test.cjs",
+      "testFileSha256": "921e54f9e65ad15cda09a25b7a5e88a3345f5c2928c062997bf35d6166e5795e",
+      "fixture": "fresh localhost PostgreSQL 18 with original 80 migrations, synthetic rows from test contract, random SCRAM credentials, no remote endpoint, instance stopped",
+      "runs": {
+        "base": {
+          "sha256": "07e62202c2de56710e1a2ef9022ab9795f873e283eba2a5b4ce655122e514d6d",
+          "raw": "large-cart-full-base.tap",
+          "counts": {
+            "tests": 11,
+            "pass": 11,
+            "fail": 0,
+            "skipped": 0,
+            "cancelled": 0
+          },
+          "databaseCases": [
+            "baseline 54-way fanout reproduces real max2 / 5000ms pool-wait failure before any transaction",
+            "54 lines, 92 sales units, 13543 cents, current timestamps and normal local-first print handoff",
+            "two simultaneous 54-line normal carts remain bounded; existing numbering conflicts roll back atomically",
+            "eight simultaneous identical request keys produce exactly one financial result",
+            "invalid product and query timeout never enter the financial transaction",
+            "payment failure and original default transaction timeout roll back all rows",
+            "lost response or UNKNOWN is resolved read-only; payload conflict cannot create another order"
+          ]
+        },
+        "release": {
+          "sha256": "6e6434be1cbdd74403717be3106befdc72d8c5b6774a8a0f427106a132de6185",
+          "raw": "large-cart-full-release.tap",
+          "counts": {
+            "tests": 11,
+            "pass": 10,
+            "fail": 1,
+            "skipped": 0,
+            "cancelled": 0
+          },
+          "databaseCases": [
+            "baseline 54-way fanout reproduces real max2 / 5000ms pool-wait failure before any transaction",
+            "54 lines, 92 sales units, 13543 cents, current timestamps and normal local-first print handoff",
+            "two simultaneous 54-line normal carts remain bounded; existing numbering conflicts roll back atomically",
+            "eight simultaneous identical request keys produce exactly one financial result",
+            "invalid product and query timeout never enter the financial transaction",
+            "payment failure and original default transaction timeout roll back all rows",
+            "lost response or UNKNOWN is resolved read-only; payload conflict cannot create another order"
+          ]
+        }
+      },
+      "candidateOnlyFailure": "explicit CASHIER_QUERY_TEST_SOURCE_ROOT, original six-file dependency assertion; only lib/v3-print-job-adapter.ts changed",
+      "fixtureScriptSha256": "5af844b46ff7eab32511800d5de6bde615952a75aada0ee8ec3e11997df7d8e8",
+      "fixtureRunSha256": "c9d884ac0f7f07abcca320d6824e59cbc6265808fad27e047241b6b2af8fdf1f"
+    }
+  },
+  "exactUnchangedProductionBaselineSha256": {
+    "lib/v3-print-control-plane.ts": "ae2c872ce60efde7cbed31c4a3486ecb93b9cdad401c99278290348868696b47",
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts": "97ab7b428ea560e032a16228f9befc00ea7387c2e5383d06665d404692d92339",
+    "desktop/src/main/printing/executionLedger.ts": "e6809d4b40fb56f0b897b3fc63ec277e5dbbffcd1eb1e30c905016fb774d4b47",
+    "desktop/src/main/printing/executionOutbox.ts": "d2ca33e3e7cd7052f8aa86994c4582fec2c5ab970596eaafbea96a72b92ce064",
+    "app/cashier/page.tsx": "b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575",
+    "app/records/page.tsx": "ea5d384ef42d51668e4641a2f6be5e0dfd17f0a8c6f407f420bc9390b9ed664a",
+    "app/api/cashier/sales/route.ts": "85c455f564ebc5aa08c0d0b02ebe115d5794592fec07705e0e6e48ab56e81aaf",
+    "tests/cashier-large-cart-query.test.cjs": "921e54f9e65ad15cda09a25b7a5e88a3345f5c2928c062997bf35d6166e5795e",
+    "prisma/schema.prisma": "485e160deb84909a3cebb8f94a6bb68c6d7e6bd61f79aa5cd57426a5a15e4634",
+    "lib/product-unit.ts": "adf75e45cb8a904d180699958c8a6da8544d8df523c114c49efb8e31e4ba6978",
+    "lib/prisma.ts": "4a0426c1f95c122fda5a833d17a950a0e9a92079111643476ef63cff6076b3fe",
+    "lib/pos-request-ledger.ts": "e14ac283d9b208035502cff6eb5a75567d1ad9252c9e5d45ff98eadecf92f720",
+    "lib/cashier-payment-confirmation.ts": "480fd15a2fd5d543ecbc3a0d8dc890b57c18bb26d5951381d6a30845b0857147",
+    "lib/cashier-shift.ts": "a1cd9fb0783dea46180112f2aec561466bc133589a078430dd5bcb90ed562fe8"
+  },
+  "unchangedFunctions": [
+    "materializeHeldV3PrintIntents",
+    "reportV3Execution"
+  ],
+  "directoryDiffEmpty": [
+    "desktop",
+    "prisma",
+    "e-shop-tray"
+  ]
+}

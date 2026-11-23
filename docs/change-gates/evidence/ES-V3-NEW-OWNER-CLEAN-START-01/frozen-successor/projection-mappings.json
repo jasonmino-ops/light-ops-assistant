@@ -1,0 +1,126 @@
+[
+  {
+    "source": "7831461aa623d586febef9979adafec755d6c2c0",
+    "release": "35575551bdfca02214f7a9f4a21026c5bcd1da39",
+    "fingerprint": "617ebba991757ee789885214d59c700e914f29b7679613a044c4b398ce45ce5e",
+    "entries": [
+      {
+        "path": "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/legacy-front-disposition.ts",
+        "pathBytes": "6170702f6170692f6f70732f74656e616e74732f5b74656e616e7449645d2f73746f7265732f5b73746f726549645d2f76332d7072696e742d636f6e74726f6c2d706c616e652f6c65676163792d66726f6e742d646973706f736974696f6e2e7473",
+        "status": "A",
+        "oldMode": "000000",
+        "newMode": "100644",
+        "oldBytes": 0,
+        "newBytes": 23483,
+        "oldSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "newSha256": "066f8ebaa3aec5088651481ee3085fb951e060611feb1f21b7593f31912b4570"
+      },
+      {
+        "path": "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/legacy-front-grant.ts",
+        "pathBytes": "6170702f6170692f6f70732f74656e616e74732f5b74656e616e7449645d2f73746f7265732f5b73746f726549645d2f76332d7072696e742d636f6e74726f6c2d706c616e652f6c65676163792d66726f6e742d6772616e742e7473",
+        "status": "A",
+        "oldMode": "000000",
+        "newMode": "100644",
+        "oldBytes": 0,
+        "newBytes": 8630,
+        "oldSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "newSha256": "0132903037bee83d5763e128cc508d02ee3f5a7cddba5422b3e4a9fb4ac356bc"
+      },
+      {
+        "path": "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/route.ts",
+        "pathBytes": "6170702f6170692f6f70732f74656e616e74732f5b74656e616e7449645d2f73746f7265732f5b73746f726549645d2f76332d7072696e742d636f6e74726f6c2d706c616e652f726f7574652e7473",
+        "status": "M",
+        "oldMode": "100644",
+        "newMode": "100644",
+        "oldBytes": 10375,
+        "newBytes": 12243,
+        "oldSha256": "3992c42d5271e2909632641dda989dba840b5daefde638da2cbd10b38215766b",
+        "newSha256": "763d49db5ce66de98af320bfff5228a3c4f8fe4ae6466eb40600f41faa4569f0"
+      },
+      {
+        "path": "lib/v3-legacy-seven/admission.json",
+        "pathBytes": "6c69622f76332d6c65676163792d736576656e2f61646d697373696f6e2e6a736f6e",
+        "status": "A",
+        "oldMode": "000000",
+        "newMode": "100644",
+        "oldBytes": 0,
+        "newBytes": 3928,
+        "oldSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "newSha256": "5b53783cd4b979ad1370c54a57fad8540f854fe64dec64eb47cddc94afb5611c"
+      },
+      {
+        "path": "lib/v3-legacy-seven/clean-start.ts",
+        "pathBytes": "6c69622f76332d6c65676163792d736576656e2f636c65616e2d73746172742e7473",
+        "status": "A",
+        "oldMode": "000000",
+        "newMode": "100644",
+        "oldBytes": 0,
+        "newBytes": 7877,
+        "oldSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "newSha256": "4c971bb659f1b866a4718b027a57cc1b700bdd450895780e85e419b0b035c5c9"
+      },
+      {
+        "path": "lib/v3-legacy-seven/sealed-next-attempt.json",
+        "pathBytes": "6c69622f76332d6c65676163792d736576656e2f7365616c65642d6e6578742d617474656d70742e6a736f6e",
+        "status": "A",
+        "oldMode": "000000",
+        "newMode": "100644",
+        "oldBytes": 0,
+        "newBytes": 416,
+        "oldSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "newSha256": "444bc6875c0d53f0dd2d6d2b5301fde9ba2ee1d16afd0bfeb8dc80ba4caf92c2"
+      },
+      {
+        "path": "lib/v3-print-job-adapter.ts",
+        "pathBytes": "6c69622f76332d7072696e742d6a6f622d616461707465722e7473",
+        "status": "M",
+        "oldMode": "100644",
+        "newMode": "100644",
+        "oldBytes": 27773,
+        "newBytes": 28716,
+        "oldSha256": "992900c79a0d422e6d7c5359ebc15b628ceee31cbc84e19d5fbbb65076b2fb63",
+        "newSha256": "b24c4bbf902c145ffef5f48ee52b25a39a87c567f8315f1d42d1ffec3878e22d"
+      },
+      {
+        "path": "scripts/test/manifests/root-integration-tests.json",
+        "pathBytes": "736372697074732f746573742f6d616e6966657374732f726f6f742d696e746567726174696f6e2d74657374732e6a736f6e",
+        "status": "M",
+        "oldMode": "100644",
+        "newMode": "100644",
+        "oldBytes": 5430,
+        "newBytes": 6082,
+        "oldSha256": "740b7adb093b0a2a91814621da51b46fabec9c7bd59a1137b8fa0e5c221c7656",
+        "newSha256": "32724613aac5d047d26f39946e1a251be2c35b8417d014912b25b8db2b5254ba"
+      },
+      {
+        "path": "tests/v3-legacy-seven-clean-start.test.ts",
+        "pathBytes": "74657374732f76332d6c65676163792d736576656e2d636c65616e2d73746172742e746573742e7473",
+        "status": "A",
+        "oldMode": "000000",
+        "newMode": "100644",
+        "oldBytes": 0,
+        "newBytes": 30498,
+        "oldSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "newSha256": "8ffe7008e59253ac6ba3eabc9d400b097dc7cccc0e74d192528a7d9f2e7963c4"
+      }
+    ]
+  },
+  {
+    "source": "f5a1ad5dfc33a3f9c9271e1a34e9e7f24d2e84d7",
+    "release": "f33993497c107ad9090b0b64896fac5f2b0934ff",
+    "fingerprint": "5f73f73c4036b87b5cb172050d24df18e0a738e671c40a56e1fefcd894a0e25f",
+    "entries": [
+      {
+        "path": "scripts/test/manifests/root-integration-tests.json",
+        "pathBytes": "736372697074732f746573742f6d616e6966657374732f726f6f742d696e746567726174696f6e2d74657374732e6a736f6e",
+        "status": "M",
+        "oldMode": "100644",
+        "newMode": "100644",
+        "oldBytes": 6082,
+        "newBytes": 6388,
+        "oldSha256": "32724613aac5d047d26f39946e1a251be2c35b8417d014912b25b8db2b5254ba",
+        "newSha256": "280c9d7cea2f7564a462371a8cf9e1d315b4e7cec72b19c68e4e320bf44384f0"
+      }
+    ]
+  }
+]

@@ -1,0 +1,60 @@
+{
+  "kind": "offline exact-match example; no enforcement, no authorization or change to the original guard",
+  "release": "f33993497c107ad9090b0b64896fac5f2b0934ff",
+  "tree": "57f1cf3d4139011bcb9c6c929b10de212813c094",
+  "assertion": "tests/cashier-large-cart-query.test.cjs:81-84",
+  "blobs": {
+    "lib/v3-print-control-plane.ts": "ae2c872ce60efde7cbed31c4a3486ecb93b9cdad401c99278290348868696b47",
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts": "97ab7b428ea560e032a16228f9befc00ea7387c2e5383d06665d404692d92339",
+    "desktop/src/main/printing/executionLedger.ts": "e6809d4b40fb56f0b897b3fc63ec277e5dbbffcd1eb1e30c905016fb774d4b47",
+    "desktop/src/main/printing/executionOutbox.ts": "d2ca33e3e7cd7052f8aa86994c4582fec2c5ab970596eaafbea96a72b92ce064",
+    "app/cashier/page.tsx": "b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575",
+    "app/records/page.tsx": "ea5d384ef42d51668e4641a2f6be5e0dfd17f0a8c6f407f420bc9390b9ed664a",
+    "app/api/cashier/sales/route.ts": "85c455f564ebc5aa08c0d0b02ebe115d5794592fec07705e0e6e48ab56e81aaf",
+    "tests/cashier-large-cart-query.test.cjs": "921e54f9e65ad15cda09a25b7a5e88a3345f5c2928c062997bf35d6166e5795e",
+    "prisma/schema.prisma": "485e160deb84909a3cebb8f94a6bb68c6d7e6bd61f79aa5cd57426a5a15e4634",
+    "lib/product-unit.ts": "adf75e45cb8a904d180699958c8a6da8544d8df523c114c49efb8e31e4ba6978",
+    "lib/prisma.ts": "4a0426c1f95c122fda5a833d17a950a0e9a92079111643476ef63cff6076b3fe",
+    "lib/pos-request-ledger.ts": "e14ac283d9b208035502cff6eb5a75567d1ad9252c9e5d45ff98eadecf92f720",
+    "lib/cashier-payment-confirmation.ts": "480fd15a2fd5d543ecbc3a0d8dc890b57c18bb26d5951381d6a30845b0857147",
+    "lib/cashier-shift.ts": "a1cd9fb0783dea46180112f2aec561466bc133589a078430dd5bcb90ed562fe8",
+    "lib/v3-print-job-adapter.ts": "b24c4bbf902c145ffef5f48ee52b25a39a87c567f8315f1d42d1ffec3878e22d"
+  },
+  "results": [
+    {
+      "scenario": "exact release draft",
+      "expectedMatch": true,
+      "observedMatch": true
+    },
+    {
+      "scenario": "old production commit paired with exact blobs",
+      "expectedMatch": false,
+      "observedMatch": false
+    },
+    {
+      "scenario": "wrong tree",
+      "expectedMatch": false,
+      "observedMatch": false
+    },
+    {
+      "scenario": "old adapter on new release",
+      "expectedMatch": false,
+      "observedMatch": false
+    },
+    {
+      "scenario": "one additional changed cashier dependency",
+      "expectedMatch": false,
+      "observedMatch": false
+    },
+    {
+      "scenario": "different test assertion",
+      "expectedMatch": false,
+      "observedMatch": false
+    },
+    {
+      "scenario": "omitted original frozen test source",
+      "expectedMatch": false,
+      "observedMatch": false
+    }
+  ]
+}

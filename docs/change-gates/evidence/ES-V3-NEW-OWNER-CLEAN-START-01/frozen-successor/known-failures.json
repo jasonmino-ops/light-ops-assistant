@@ -1,0 +1,405 @@
+{
+  "schema_version": 1,
+  "status": "UNSIGNED_EVIDENCE_ONLY",
+  "observedUtc": "2026-11-23T19:05:08.074521+00:00",
+  "expires_at": "2026-11-24T19:05:08.074521+00:00",
+  "expiryMeaning": "Proposed freshness limit for this local comparison; no operational authority.",
+  "invalidate_on": [
+    "failure_set_change",
+    "result_change",
+    "input_change",
+    "expiry"
+  ],
+  "toolchain": {
+    "node": "v24.14.0",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "timezone": "Asia/Phnom_Penh",
+    "nodeEnv": "test",
+    "packageLockSha256": "8e9e9c97cea6468bd0f6a5eefc1f46871fb3097226b30cdbd6e81142bb571a33"
+  },
+  "core": [
+    {
+      "line": "main",
+      "baseline": {
+        "sha": "1fe4481dcc64adf48af2c4d5cfff8addf79ed3a1",
+        "tree": "1a85d94db26ea2bceebafb9e47ddbe97b0466f17"
+      },
+      "candidate": {
+        "sha": "0934e9436e292af2738dde8678895e8348a859e5",
+        "tree": "88db187b6547393ccad6c61443d96a6a489bf323"
+      },
+      "raw_status": "BLOCKED",
+      "summary": "SUITE_SUMMARY\troot-core\texpected=104\tcollected=104\texecuted=104\tpass=99\tfail=5\tknown=0\tnew=5\trecovered=1\tknown_environment_blocked=0\tenvironment_failures=0\tskipped=0\tuncollected=0\tenvironment=PASS\toverall=BLOCKED",
+      "candidate_evidence": {
+        "file": "core-dev-cambodia.log",
+        "sha256": "17120da88588edf2bd332c3611ca5bd961e84154d7cd899bbcf525ad4c69d1fe"
+      },
+      "baseline_evidence": {
+        "file": "main-timezone-results.json",
+        "sha256": "21b8e245895bdefdb2571b47efcbf97d51a95506c3041211844d05bd2adfecbd"
+      },
+      "failures": [
+        {
+          "test_id": "tests/native-inventory-m1-successor.test.cjs",
+          "assertion": {
+            "subtests": [
+              "M1 mainline handoff preserves exact product and closed freeze authority"
+            ],
+            "diagnostics": [
+              "AssertionError [ERR_ASSERTION]: trusted M1 history must verify its exact handoff",
+              "actual: undefined,",
+              "expected: true,"
+            ],
+            "assertionLines": [
+              "175"
+            ]
+          },
+          "expected": "Original assertions succeed",
+          "actual": "The listed original assertions failed",
+          "diagnostic_or_exit_code": 1,
+          "fingerprint": "286ca037465879ae7f3a430c84ce78639ec4decff33ec7a89c6ded0db625f0bf",
+          "attribution": "baseline_reproduced",
+          "reason": "Historical M1 handoff authority recognition; independent of the seven-ticket change.",
+          "evidence": {
+            "file": "main-timezone-baseline-native-inventory-m1-successor.test.log",
+            "sha256": "a9444c805ae03678dcc363639a9c2a449b59e1f3e2bfd60811119fc275da8347"
+          }
+        },
+        {
+          "test_id": "tests/cashier-realtime-integration.test.ts",
+          "assertion": {
+            "subtests": [],
+            "diagnostics": [
+              "AssertionError [ERR_ASSERTION]: app/api/orders/[orderNo]/checkout/route.ts: notify after success",
+              "actual: false,",
+              "expected: true,"
+            ],
+            "assertionLines": [
+              "167"
+            ]
+          },
+          "expected": "Original assertions succeed",
+          "actual": "The listed original assertions failed",
+          "diagnostic_or_exit_code": 1,
+          "fingerprint": "b4da96492b888eb69b792d6e81b417506e0185242a609294b32ac97b1c8a283c",
+          "attribution": "baseline_reproduced",
+          "reason": "Development: checkout notification guard. Production lineage: exact historical Diamond main registry guard.",
+          "evidence": {
+            "file": "main-timezone-baseline-cashier-realtime-integration.test.log",
+            "sha256": "fd3ba0c585c4a2ff074d93003a401d81b562e0dd68d381762bc8e6e5fbc68660"
+          }
+        },
+        {
+          "test_id": "tests/es-tray-desktop-pos-entry.test.ts",
+          "assertion": {
+            "subtests": [
+              "actual H5 handlers: CASH uses only frozen H5 facts and formal routes, zero POS side effects",
+              "actual H5 handlers: KHQR uses only frozen H5 facts and formal routes, zero POS side effects",
+              "actual Desktop poll restores COMPLETED+UNPAID entry after collection failure; browser keeps legacy source"
+            ],
+            "diagnostics": [
+              "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+              "actual: [Array],",
+              "expected: [Array],",
+              "AssertionError [ERR_ASSERTION]: reentry never reconfirms or creates kitchen"
+            ],
+            "assertionLines": [
+              "72",
+              "132"
+            ]
+          },
+          "expected": "Original assertions succeed",
+          "actual": "The listed original assertions failed",
+          "diagnostic_or_exit_code": 1,
+          "fingerprint": "1be8ecb4ed8662d3958b5fc721ddc7d9d39c7bd5ecb48659bd3856d3d80354d1",
+          "attribution": "baseline_reproduced",
+          "reason": "Existing H5 and Desktop fixtures expect old payment response projections.",
+          "evidence": {
+            "file": "main-timezone-baseline-es-tray-desktop-pos-entry.test.log",
+            "sha256": "f0fb9f1f22c4d7120ff2558c06327d611446d3a10e5c904345b07f03b27c902d"
+          }
+        },
+        {
+          "test_id": "tests/es-tray-device-print-contract.test.ts",
+          "assertion": {
+            "subtests": [],
+            "diagnostics": [
+              "AssertionError [ERR_ASSERTION]: merged shift report freeze successor does not match the checkout",
+              "actual: true,",
+              "expected: true,"
+            ],
+            "assertionLines": [
+              "476",
+              "102",
+              "462"
+            ]
+          },
+          "expected": "Original assertions succeed",
+          "actual": "The listed original assertions failed",
+          "diagnostic_or_exit_code": 1,
+          "fingerprint": "ce399bc8eb69bc54933509dfdc098a6b34637dc6f3f607f20bb6af7d6e7215a7",
+          "attribution": "baseline_reproduced",
+          "reason": "Historical Cashier freeze byte/checkout-lineage expectation.",
+          "evidence": {
+            "file": "main-timezone-baseline-es-tray-device-print-contract.test.log",
+            "sha256": "6b3ed8434cd7fa3be50f1f74c89f40b342a1ad23dcd82e678dc2b7e4228cefd1"
+          }
+        },
+        {
+          "test_id": "tests/v3-reprint-recovery.test.ts",
+          "assertion": {
+            "subtests": [],
+            "diagnostics": [
+              "AssertionError [ERR_ASSERTION]: merged shift report freeze successor does not match the checkout",
+              "actual: true,",
+              "expected: true,"
+            ],
+            "assertionLines": [
+              "848",
+              "196",
+              "835"
+            ]
+          },
+          "expected": "Original assertions succeed",
+          "actual": "The listed original assertions failed",
+          "diagnostic_or_exit_code": 1,
+          "fingerprint": "c4a0d32582b92780efd85f3504f57d26cf998326d7c8327f71b881fcbc54fcc5",
+          "attribution": "baseline_reproduced",
+          "reason": "Cashier freeze: main historical successor rejects checkout; release expects 8cdf50c3 but actual b1750480.",
+          "evidence": {
+            "file": "main-timezone-baseline-v3-reprint-recovery.test.log",
+            "sha256": "55b4d92949ec226034798515f4662f1dcb7e2a497995fd358950cff9bc8fcbc7"
+          }
+        }
+      ],
+      "failure_set_sha256": "4d2ca0dcbdf29e8d251d56a19bfc8e8c68fbde94caafd776edb875ac793da94f"
+    },
+    {
+      "line": "release",
+      "baseline": {
+        "sha": "b36c47e137693e067a7d26d40706df8f89610f29",
+        "tree": "636e1d0b37bd9bb8adcc5df9a94b5ced926acd3c"
+      },
+      "candidate": {
+        "sha": "f33993497c107ad9090b0b64896fac5f2b0934ff",
+        "tree": "57f1cf3d4139011bcb9c6c929b10de212813c094"
+      },
+      "raw_status": "BLOCKED",
+      "summary": "SUITE_SUMMARY\troot-core\texpected=103\tcollected=103\texecuted=103\tpass=99\tfail=4\tknown=0\tnew=4\trecovered=1\tknown_environment_blocked=0\tenvironment_failures=0\tskipped=0\tuncollected=0\tenvironment=PASS\toverall=BLOCKED",
+      "candidate_evidence": {
+        "file": "core-release-cambodia.log",
+        "sha256": "ccbc4770550e88c780a5ebf4aae538ed59e0b990c0513fa5a2bb15280bd6b456"
+      },
+      "baseline_evidence": {
+        "file": "release-timezone-results.json",
+        "sha256": "2fbbcee12df40bfd0458e0fd0f82312ae7f325b3bbab60d4781df5354a709440"
+      },
+      "failures": [
+        {
+          "test_id": "tests/cashier-realtime-integration.test.ts",
+          "assertion": {
+            "subtests": [],
+            "diagnostics": [
+              "AssertionError [ERR_ASSERTION]: Diamond trusted main may differ only by exact registrations and approved baseline fixes",
+              "actual: [Array],",
+              "expected: [Array],"
+            ],
+            "assertionLines": [
+              "736"
+            ]
+          },
+          "expected": "Original assertions succeed",
+          "actual": "The listed original assertions failed",
+          "diagnostic_or_exit_code": 1,
+          "fingerprint": "f5381694bc4742de66ac9126f913f6a961475a532667324f7e6a2073b86f9a11",
+          "attribution": "baseline_reproduced",
+          "reason": "Development: checkout notification guard. Production lineage: exact historical Diamond main registry guard.",
+          "evidence": {
+            "file": "release-timezone-baseline-cashier-realtime-integration.test.log",
+            "sha256": "3fb68b213e86826d86af74467f34f5e8a6f408b777dd5505a1af084f4461ebac"
+          }
+        },
+        {
+          "test_id": "tests/es-tray-device-print-contract.test.ts",
+          "assertion": {
+            "subtests": [],
+            "diagnostics": [
+              "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+              "actual: 'b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575',",
+              "expected: '8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6',"
+            ],
+            "assertionLines": [
+              "469",
+              "98",
+              "458"
+            ]
+          },
+          "expected": "Original assertions succeed",
+          "actual": "The listed original assertions failed",
+          "diagnostic_or_exit_code": 1,
+          "fingerprint": "2cfcf7060264a695bca865b428350d166667c0f3cd9fd9644f83e802fc29add7",
+          "attribution": "baseline_reproduced",
+          "reason": "Historical Cashier freeze byte/checkout-lineage expectation.",
+          "evidence": {
+            "file": "release-timezone-baseline-es-tray-device-print-contract.test.log",
+            "sha256": "f880efed58e4477516b288a9af3f9e5517fb4b28bdded684a2363716916dc8d3"
+          }
+        },
+        {
+          "test_id": "tests/customer-order-recovery.test.ts",
+          "assertion": {
+            "subtests": [
+              "recovery advances beyond ten pages and keeps renderer-blocked intents visible",
+              "expired intent is visible and removed from the actionable set",
+              "recovery persists a retry backoff for a bad row instead of leaving it at the queue head",
+              "V2_ACTIVE never creates an H5 job and recovery remains visible"
+            ],
+            "diagnostics": [
+              "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+              "503 !== 200",
+              "actual: 503,",
+              "expected: 200,",
+              "999 !== 1",
+              "actual: 999,",
+              "expected: 1,"
+            ],
+            "assertionLines": [
+              "83",
+              "109",
+              "127",
+              "152"
+            ]
+          },
+          "expected": "Original assertions succeed",
+          "actual": "The listed original assertions failed",
+          "diagnostic_or_exit_code": 1,
+          "fingerprint": "11dda2225fbcb4708e08ef03ca557c3bbbf7a58d64fc9a9b61a4b6b463fc3d16",
+          "attribution": "baseline_reproduced",
+          "reason": "Disposable/in-process test gets 503 from a path invoking the unfaked Prisma print-job delegate on both release and Production baseline.",
+          "evidence": {
+            "file": "release-timezone-baseline-customer-order-recovery.test.log",
+            "sha256": "786a527eeef8c2967bdf6bea09dcd78393437a79dd53ea8eb3bdb77fb667777f"
+          }
+        },
+        {
+          "test_id": "tests/v3-reprint-recovery.test.ts",
+          "assertion": {
+            "subtests": [],
+            "diagnostics": [
+              "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+              "actual: 'b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575',",
+              "expected: '8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6',"
+            ],
+            "assertionLines": [
+              "841",
+              "192",
+              "831"
+            ]
+          },
+          "expected": "Original assertions succeed",
+          "actual": "The listed original assertions failed",
+          "diagnostic_or_exit_code": 1,
+          "fingerprint": "13bf1a358e63c620d0205bd3fec0164c41a45ad28a122f297aef08e87cc7ffd3",
+          "attribution": "baseline_reproduced",
+          "reason": "Cashier freeze: main historical successor rejects checkout; release expects 8cdf50c3 but actual b1750480.",
+          "evidence": {
+            "file": "release-timezone-baseline-v3-reprint-recovery.test.log",
+            "sha256": "66a3a1d7014a75edfcfbd14ceaa10e9b8003250b318ce9f897451688e4c665e2"
+          }
+        }
+      ],
+      "failure_set_sha256": "bb826bd7e92186646ffa7b518923e5baacab74a809a8aa7897dd4c5b8131d443"
+    }
+  ],
+  "distinctCandidateTriggeredFailure": {
+    "test_id": "tests/cashier-large-cart-query.test.cjs",
+    "assertion": "With CASHIER_QUERY_TEST_SOURCE_ROOT, lines 81–84 bind six dependency files to b0aa38a1. Five still match. The print-job adapter is the sole mismatch.",
+    "attribution": "candidate_triggered",
+    "expected": "992900c79a0d422e6d7c5359ebc15b628ceee31cbc84e19d5fbbb65076b2fb63",
+    "actual": "b24c4bbf902c145ffef5f48ee52b25a39a87c567f8315f1d42d1ffec3878e22d",
+    "diagnostic_or_exit_code": 1,
+    "baseline_evidence": {
+      "file": "large-cart-baseline.tap",
+      "sha256": "92718ad93b7e6b051e3a754657c743a9498d262b5402b6523f8fbb87b5e7eb83"
+    },
+    "candidate_evidence": {
+      "file": "large-cart-static.tap",
+      "sha256": "fef465fefe732dbf380b72464073f590d87febf7d18455560b9999df528fd33b"
+    },
+    "disposition": "OPEN: explicit frozen dependency successor required. Original static-only run remains recorded. Full isolated PostgreSQL results attached below.",
+    "normal54IsolatedPostgreSQL": {
+      "source": "unmodified tests/cashier-large-cart-query.test.cjs",
+      "testFileSha256": "921e54f9e65ad15cda09a25b7a5e88a3345f5c2928c062997bf35d6166e5795e",
+      "fixture": "fresh localhost PostgreSQL 18 with original 80 migrations, synthetic rows from test contract, random SCRAM credentials, no remote endpoint, instance stopped",
+      "runs": {
+        "base": {
+          "sha256": "07e62202c2de56710e1a2ef9022ab9795f873e283eba2a5b4ce655122e514d6d",
+          "raw": "large-cart-full-base.tap",
+          "counts": {
+            "tests": 11,
+            "pass": 11,
+            "fail": 0,
+            "skipped": 0,
+            "cancelled": 0
+          },
+          "databaseCases": [
+            "baseline 54-way fanout reproduces real max2 / 5000ms pool-wait failure before any transaction",
+            "54 lines, 92 sales units, 13543 cents, current timestamps and normal local-first print handoff",
+            "two simultaneous 54-line normal carts remain bounded; existing numbering conflicts roll back atomically",
+            "eight simultaneous identical request keys produce exactly one financial result",
+            "invalid product and query timeout never enter the financial transaction",
+            "payment failure and original default transaction timeout roll back all rows",
+            "lost response or UNKNOWN is resolved read-only; payload conflict cannot create another order"
+          ]
+        },
+        "release": {
+          "sha256": "6e6434be1cbdd74403717be3106befdc72d8c5b6774a8a0f427106a132de6185",
+          "raw": "large-cart-full-release.tap",
+          "counts": {
+            "tests": 11,
+            "pass": 10,
+            "fail": 1,
+            "skipped": 0,
+            "cancelled": 0
+          },
+          "databaseCases": [
+            "baseline 54-way fanout reproduces real max2 / 5000ms pool-wait failure before any transaction",
+            "54 lines, 92 sales units, 13543 cents, current timestamps and normal local-first print handoff",
+            "two simultaneous 54-line normal carts remain bounded; existing numbering conflicts roll back atomically",
+            "eight simultaneous identical request keys produce exactly one financial result",
+            "invalid product and query timeout never enter the financial transaction",
+            "payment failure and original default transaction timeout roll back all rows",
+            "lost response or UNKNOWN is resolved read-only; payload conflict cannot create another order"
+          ]
+        }
+      },
+      "candidateOnlyFailure": "explicit CASHIER_QUERY_TEST_SOURCE_ROOT, original six-file dependency assertion; only lib/v3-print-job-adapter.ts changed",
+      "fixtureScriptSha256": "5af844b46ff7eab32511800d5de6bde615952a75aada0ee8ec3e11997df7d8e8",
+      "fixtureRunSha256": "c9d884ac0f7f07abcca320d6824e59cbc6265808fad27e047241b6b2af8fdf1f"
+    }
+  },
+  "utcRun": {
+    "development": {
+      "file": "core-development-ipc.log",
+      "sha256": "89b1759e93b332578f6e54a425ecefa46c382e5583171582a24376ae1af37470"
+    },
+    "release": {
+      "file": "final-release-core.log",
+      "sha256": "e4576eebc5a18161571b00a3724180ce5260214435b1af3f4fdfc0bb9b81c802"
+    },
+    "additional": "browser-print-readiness expected 67d2bdc7…; timed rendering in UTC produced 6619a9db…. Original assertion passes on both candidates in Asia/Phnom_Penh."
+  },
+  "twoOriginallyUnreachedClientCases": {
+    "extractedBodySha256": "2c1a762aaf725f0d9cad4ca94404706a493df3982b4edc1bb505cc009b545bf7",
+    "main": {
+      "file": "main-two-client-cases.log",
+      "sha256": "de910a522555b7d4881df94a0c3712f19e1ec491a15911326dae7e7363050fdc"
+    },
+    "release": {
+      "file": "release-two-client-cases.log",
+      "sha256": "de910a522555b7d4881df94a0c3712f19e1ec491a15911326dae7e7363050fdc"
+    },
+    "outcome": "2/2 supplemental checks on each; original freeze suite remains FAIL"
+  },
+  "environment_toolchain_config_sha256": "354e09b552044850755dfdf40670d6d0752e0b1b2d8e67ed44001d4f674b6231"
+}

@@ -1,0 +1,67 @@
+{
+  "subject": "100826d5b502e55d8726aaa1922b1885ad16afee and f33993497c107ad9090b0b64896fac5f2b0934ff",
+  "codex": {
+    "ref": "/root/clean_start_source_review",
+    "role": "independent Codex",
+    "originalProduct": {
+      "reviewer": "independent Codex source reviewer /root/clean_start_source_review",
+      "decision": "PASS",
+      "commit": "100826d5b502e55d8726aaa1922b1885ad16afee",
+      "tree": "440fbc2c299e7ba9f8df9ef40417bebd43fa824f",
+      "parentReview": "eff44c00d511c3bc0d460088a5bbde84e90f797b",
+      "independentRuns": {
+        "Asia_Phnom_Penh": "37/37",
+        "UTC": "37/37",
+        "existingControlPlaneContract": "11/11",
+        "diffCheck": "PASS"
+      },
+      "closedFindings": [
+        "Historical inspection through authenticated read-only GET with A/B distinction after loss, drift or revocation",
+        "Complete authenticated before/after audit and rejection of tampering",
+        "Timezone-independent PostgreSQL timestamp fixtures",
+        "Committed-readback-required notification limited to successful V3 cutover at expected state version 4746"
+      ],
+      "productionAuthority": "NONE",
+      "fieldsExecuted": "NONE"
+    },
+    "projectionDecision": "PASS, production BLOCKED",
+    "sourceProjection": [
+      "7831461aa623d586febef9979adafec755d6c2c0",
+      "f5a1ad5dfc33a3f9c9271e1a34e9e7f24d2e84d7"
+    ],
+    "release": [
+      "35575551bdfca02214f7a9f4a21026c5bcd1da39",
+      "f33993497c107ad9090b0b64896fac5f2b0934ff"
+    ],
+    "checks": [
+      "checked two patch fingerprints, trees, file modes/bytes/paths and exact one-to-one cherry-pick sources",
+      "release baseline 18 rows all retained in order, three newly registered",
+      "reproduced candidate-specific static mismatch at dependency check; other five files and cashier route identical",
+      "actual candidate parser accepted the three sealed action body templates; signer, live beforeHash and live deployment empty",
+      "actual protected validator AUTHORIZATION_MISSING; source commits not yet in trusted main"
+    ],
+    "restriction": "original independent static cashier run skipped DB suite. Subsequent local full DB evidence is separately attributed."
+  },
+  "claude": {
+    "technicalSourceSafety": "PASS (static review)",
+    "sameLineageProjection": "PASS, earlier cross-line FAIL explicitly withdrawn",
+    "PostgreSQLCoverage": "PASS; 37/37 x 2; no skipped tests",
+    "independentGitHashRecomputationByClaude": "UNKNOWN; no execution in the restricted channel",
+    "originalClaimDisposition": "Prior suspected manifest deletion and skipped PostgreSQL coverage both reconciled in attached final verbatim verdict. No change to raw frozen test failure or production gate.",
+    "frozenCash54": "FAIL / BLOCKED pending exact formal successor",
+    "productionGate": "BLOCKED",
+    "earlyFullFollowup": "timed out, no verdict counted",
+    "priorAndFinalReceipts": {
+      "claude-retry.txt": "2c3b9889aea0ff2b2538891369adaa45036cb001563cb57c5fec30eec613dff9",
+      "claude-verified-review.txt": "78417c959504568f88308babfb4e9eba6f166bcbdd811f61d317060df1f3bd7c",
+      "claude-short-input.txt": "ee2249289fd9340baad2b6a6929b0765c0ec3126a96153e0a0fadfa2fb60e7b7",
+      "claude-short-verdict.txt": "cbdc8234d1168ba36736691f97a7ff3476c4c1c4bc3dcf98a8dda53017951161"
+    },
+    "finalResponse": "**Scope note:** No tools used here either; this is a text-only reconciliation of the prior review against the new manifest-lineage lines and the two TAP files pasted above.\n\n## Scoped verdicts\n\n**1. Technical code (runtime safety logic, findings 1–7 in the prior review):** PASS (unchanged). Nothing in the new material touches the CAS/lost-response/fence/attribution logic. Still code-level only — no hash recomputation performed.\n\n**2. Manifest projection reconciliation:** PASS (reverses prior FAIL) — with a correction to the prior review's own error.\n- Each of the three lineage lines given (`24→25`, `24→26`, `18→21`) reports `removed=0`, additions only. So within any single lineage, the manifest **does** retain every original row.\n- The prior review's \"FAIL — 25→21 removes six entries\" was itself a misreading: that six-test gap is explicitly labeled here as **cross-line** divergence — \"MAIN-only six never existed on Production\" — not a deletion inside one lineage's history. Comparing a main-line manifest to a production-line manifest and calling the gap a \"removal\" conflates two different baselines.\n- Net: the prior review's FAIL finding on the projection is itself corrected by this new evidence; the manifest-integrity concern is resolved for same-lineage comparisons. Which baseline (main vs. production) is authoritative for \"current ready\" is a release-policy question, not a code-safety one — flag it as a release-hygiene open item, not a regression.\n\n**3. PostgreSQL exercised:** PASS — resolves the prior \"SQL tests skip\" finding. Both TAP files (`release-seven-0.tap`, `release-seven-1.tap`, distinct hashes, independently run) show the full `isolated PostgreSQL seven-row cutover` suites (normal readback + post-commit connection loss) executing, 37/37 pass, **0 skipped**, explicitly including the PostgreSQL connection-loss cases. The earlier \"skip\" concern no longer applies to this evidence set. (Still SOURCE/hash provenance is UNKNOWN — I cannot recompute the SHA-256s or verify `100826d...`/`57f1cf3d...` independently; the Codex \"PASS\" line is corroborating text, not independent proof.)\n\n## Separate frozen/prod gates (do not fold into the above)\n\n| Gate | Status |\n|---|---|\n| Frozen 54-cart adapter fingerprint | **FAIL / BLOCKED** — newly fails, explicitly held until formal exact freeze. This is a real regression against the frozen baseline, independent of the PG and manifest findings above. |\n| Original base overall | 11/11 — PASS, unaffected |\n| Release overall | 10/11 — the one failure is the frozen-adapter fingerprint above, carried as open |\n| Raw CORE release | 99/103, four old failures — **not waived by this review**, pre-existing and out of scope here |\n\n## Net\n\nCode safety logic: PASS (code-level). Manifest-removal concern: resolved — no in-lineage removals; the earlier FAIL was a cross-line misattribution, now corrected. PostgreSQL: confirmed exercised, 0 skipped, concern resolved. None of this clears the frozen-adapter BLOCKED state or the raw-CORE legacy failures, and none of it constitutes SOURCE hash verification — both remain open/UNKNOWN pending tool-backed recomputation. This reconciliation authorizes nothing: no deployment, no freeze exception, no FIELD.\n"
+  },
+  "verifierRunByCodex": {
+    "scriptSha256": "c01cd3f36c1264a3d0feae239020413dfa7a13e9c3e9fff7c0c7f671d3e2ac84",
+    "outputSha256": "d4fb5def61af80d869b2b13a82bc8c5356b3d7506013cfba15cd86fd4f5ab7f1"
+  },
+  "productionAuthorization": null
+}

@@ -1,0 +1,87 @@
+{
+  "status": "REQUEST_ONLY_NOT_AUTHORIZED",
+  "store": "ST04C05602",
+  "scope": {
+    "tenantId": "cmqjgcmtm000104jo54e93w1c",
+    "storeId": "cmqjgcn05000204jo83w65tja"
+  },
+  "earliestServerUTC": "2026-11-24T05:39:31.396Z",
+  "requestId": "2673e734-1728-462a-8be5-16a4bfe7ff29",
+  "method": "POST",
+  "path": "/api/ops/tenants/cmqjgcmtm000104jo54e93w1c/stores/cmqjgcn05000204jo83w65tja/v3-print-control-plane",
+  "preparedBodies": [
+    {
+      "action": "QUARANTINE_EXPIRED_UNKNOWN_FRONT_ONCE",
+      "admissionSha256": "5b53783cd4b979ad1370c54a57fad8540f854fe64dec64eb47cddc94afb5611c",
+      "designSha256": "d746925f7b4c69f4cfddf1bafdbdb309def98945673601ef8e1b23ac91eba419",
+      "requestId": "2673e734-1728-462a-8be5-16a4bfe7ff29",
+      "sourceSha": "100826d5b502e55d8726aaa1922b1885ad16afee",
+      "jobIds": [
+        "cmv9u1fsf000u06jkc2lkghtj",
+        "cmv9u906e000606l3ymf89zx2",
+        "cmv9uhgyk000806l8ai460t0e",
+        "cmvb2tzu6000u06l0ipxlj18v",
+        "cmvb2vz9r001706l0enukk5ka",
+        "cmvbx2kkg002g06l3kfxiofo2",
+        "cmwsu69ep000f08jzuf976ydq"
+      ],
+      "phase": "REVIEW"
+    },
+    {
+      "action": "QUARANTINE_EXPIRED_UNKNOWN_FRONT_ONCE",
+      "admissionSha256": "5b53783cd4b979ad1370c54a57fad8540f854fe64dec64eb47cddc94afb5611c",
+      "designSha256": "d746925f7b4c69f4cfddf1bafdbdb309def98945673601ef8e1b23ac91eba419",
+      "requestId": "2673e734-1728-462a-8be5-16a4bfe7ff29",
+      "sourceSha": "100826d5b502e55d8726aaa1922b1885ad16afee",
+      "jobIds": [
+        "cmv9u1fsf000u06jkc2lkghtj",
+        "cmv9u906e000606l3ymf89zx2",
+        "cmv9uhgyk000806l8ai460t0e",
+        "cmvb2tzu6000u06l0ipxlj18v",
+        "cmvb2vz9r001706l0enukk5ka",
+        "cmvbx2kkg002g06l3kfxiofo2",
+        "cmwsu69ep000f08jzuf976ydq"
+      ],
+      "phase": "APPLY"
+    },
+    {
+      "action": "QUARANTINE_EXPIRED_UNKNOWN_FRONT_ONCE",
+      "admissionSha256": "5b53783cd4b979ad1370c54a57fad8540f854fe64dec64eb47cddc94afb5611c",
+      "designSha256": "d746925f7b4c69f4cfddf1bafdbdb309def98945673601ef8e1b23ac91eba419",
+      "requestId": "2673e734-1728-462a-8be5-16a4bfe7ff29",
+      "sourceSha": "100826d5b502e55d8726aaa1922b1885ad16afee",
+      "jobIds": [
+        "cmv9u1fsf000u06jkc2lkghtj",
+        "cmv9u906e000606l3ymf89zx2",
+        "cmv9uhgyk000806l8ai460t0e",
+        "cmvb2tzu6000u06l0ipxlj18v",
+        "cmvb2vz9r001706l0enukk5ka",
+        "cmvbx2kkg002g06l3kfxiofo2",
+        "cmwsu69ep000f08jzuf976ydq"
+      ],
+      "phase": "READBACK"
+    }
+  ],
+  "noWriteReceiptAfterLoss": "GET /api/ops/tenants/cmqjgcmtm000104jo54e93w1c/stores/cmqjgcn05000204jo83w65tja/v3-print-control-plane?legacySevenReceipt=1",
+  "signer": null,
+  "activationGrant": null,
+  "releaseShaIfActuallyDeployed": "f33993497c107ad9090b0b64896fac5f2b0934ff",
+  "deploymentId": null,
+  "liveBeforeHash": null,
+  "reviewer": null,
+  "executor": null,
+  "postConditions": {
+    "rowCount": 7,
+    "status": "EXPIRED",
+    "resultCode": "V3_OPS_QUARANTINED_PHYSICAL_UNKNOWN",
+    "completedAt": null,
+    "resultStatus": null,
+    "effectBoundary": null,
+    "claimAttempt": 0,
+    "attemptCount": 0,
+    "physicalCompletionKnown": false,
+    "payloadAndKeys": "unchanged",
+    "ownerPlane": "same original state version 4744, epoch 1 and owner; no handoff or activation",
+    "audit": "seven TICKET before/after images plus REVIEW and APPLY summary, independently read back"
+  }
+}

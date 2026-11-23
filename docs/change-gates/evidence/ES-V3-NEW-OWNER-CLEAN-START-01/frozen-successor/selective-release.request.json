@@ -1,0 +1,21 @@
+{
+  "releaseId": "ES-V3-LEGACY-PENDING-DISPOSITION-01-ST04-DRAFT",
+  "taskIds": [
+    "ES-V3-LEGACY-PENDING-DISPOSITION-01",
+    "ES-V3-NEW-OWNER-CLEAN-START-01"
+  ],
+  "baseProductionSha": "b36c47e137693e067a7d26d40706df8f89610f29",
+  "sourceMainSha": "1fe4481dcc64adf48af2c4d5cfff8addf79ed3a1",
+  "includedSourceCommits": [
+    "7831461aa623d586febef9979adafec755d6c2c0",
+    "f5a1ad5dfc33a3f9c9271e1a34e9e7f24d2e84d7"
+  ],
+  "founderAuthorization": {
+    "status": "PENDING",
+    "approvedBy": null,
+    "approvedAt": null
+  },
+  "releaseSha": "f33993497c107ad9090b0b64896fac5f2b0934ff",
+  "deploymentId": "PENDING",
+  "productionSha": "PENDING"
+}
