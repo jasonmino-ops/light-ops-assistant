@@ -2584,7 +2584,7 @@
       "sourceTaskId": "ES-DESKTOP-COMMERCIAL-INSTALLER-01",
       "featureBranch": "codex/es-desktop-commercial-installer-01-rc3",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "baseOriginMainSha": "e79ac5b6d76445063850b63a6752df13b1c258a3",
+      "baseOriginMainSha": "ce7df582dbbd3b8ac9d776b95c06011f8153dcec",
       "status": "ACTIVE",
       "approvedBy": "Founder",
       "createdAt": "2026-11-23T06:40:02Z",
