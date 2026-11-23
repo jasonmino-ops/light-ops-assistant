@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-DESKTOP-COMMERCIAL-INSTALLER-01",
+  "version": "0.3.0-rc.2",
+  "status": "ACTIVE",
+  "payloadSha256": "af59b18422937702ab04102c71190f52b599a19e12a1f93fc3c811c104eb36bb",
+  "frozenSnapshotSha256": "14b434860ab36968ef6935b0d07e48c1dbab897b3cddabf8ab08cd5a1448a462",
+  "formalApproval": {
+    "approvedBy": "Founder",
+    "signedAt": "2026-11-23",
+    "sourceReference": "Founder personal reply in the current task conversation to request_user_input_async call_1c71d0d3d12c49b4b76b790bac4674e2 item0: \u6b63\u5f0f\u7b7e\u8ba4\u5e76\u6279\u51c6\u7cbe\u786e\u89c4\u5219\u767b\u8bb0. The question explicitly bound source686a51be51bbcaee10abdba256f415d5fd4008e5, payloadaf59b18422937702ab04102c71190f52b599a19e12a1f93fc3c811c104eb36bb, snapshot14b434860ab36968ef6935b0d07e48c1dbab897b3cddabf8ab08cd5a1448a462 and the eight exact governance/policy registration paths; RC2 INTERNAL TEST ONLY, no Product branch merge or commercial release. signedAt is date-only because the source reply has no exact timestamp.",
+    "candidateCommit": "686a51be51bbcaee10abdba256f415d5fd4008e5"
+  }
+}
