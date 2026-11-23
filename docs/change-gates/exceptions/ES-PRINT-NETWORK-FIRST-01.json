@@ -2875,7 +2875,7 @@
       "sourceTaskId": "ES-DESKTOP-FNB-HYBRID-PRINT-01",
       "featureBranch": "codex/es-desktop-fnb-hybrid-print-01",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "baseOriginMainSha": "ecac43a5187ca23e336e3e114928568294a2f70a",
+      "baseOriginMainSha": "ce7df582dbbd3b8ac9d776b95c06011f8153dcec",
       "status": "ACTIVE",
       "approvedBy": "Founder",
       "createdAt": "2026-11-23T14:25:23.088Z",
