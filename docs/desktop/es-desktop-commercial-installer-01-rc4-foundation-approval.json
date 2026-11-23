@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-DESKTOP-COMMERCIAL-INSTALLER-01",
+  "version": "0.3.0-rc.4",
+  "status": "ACTIVE",
+  "payloadSha256": "4078abdc9bf46652e5d732e389f503ea6ea4c77c6f1ebc8a153323b9decd2b12",
+  "frozenSnapshotSha256": "14b434860ab36968ef6935b0d07e48c1dbab897b3cddabf8ab08cd5a1448a462",
+  "formalApproval": {
+    "approvedBy": "Founder",
+    "signedAt": "2026-11-23",
+    "sourceReference": "Founder personal reply in current task conversation to request_user_input_async call_54964f74f44947a49d10cc7eb47decee item0. Founder 正式批准 ES-DESKTOP-COMMERCIAL-INSTALLER-01 的 RC4 精确冻结后继, binding Product b1998289ecd852f411d3e7acc5168385c8dbb5ba, source19f8b36edab7f9de5016631e98b6207e79dd0990, payload4078abdc9bf46652e5d732e389f503ea6ea4c77c6f1ebc8a153323b9decd2b12, frozen snapshot14b434860ab36968ef6935b0d07e48c1dbab897b3cddabf8ab08cd5a1448a462. Explicitly approves only the reviewed eight rule/record paths controlled registration to trusted main, then ordinary RC4 internal build and isolated V727 validation. Only0.3.0-rc.4 Windowsx64 current-user unelevated INTERNAL TEST ONLY; no Product branch merge, commercial release, Production deployment or FIELD VERIFIED. Original9 failures andCORE blocking retained. signedAt date-only because the human reply supplies no exact timestamp.",
+    "candidateCommit": "19f8b36edab7f9de5016631e98b6207e79dd0990"
+  },
+  "evidence": "Actual Founder personal exact signature received for this RC4 candidate; no inherited RC3 signature. Receipt requires independent review and lawful byte-identical trusted main registration before actual build admission."
+}
