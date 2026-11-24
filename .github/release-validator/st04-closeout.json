@@ -1,6 +1,6 @@
 {
   "taskId": "ES-V3-NEW-STORE-PRINT-CLOSEOUT",
-  "releaseId": "ES-V3-NEW-STORE-PRINT-CLOSEOUT-ST04-EXACT",
+  "releaseId": "ES-V3-NEW-STORE-PRINT-CLOSEOUT-ST04-EXACT-RECEIPTED",
   "taskIds": [
     "ES-V3-LEGACY-PENDING-DISPOSITION-01",
     "ES-V3-NEW-OWNER-CLEAN-START-01",
@@ -9,13 +9,13 @@
   "storeCode": "ST04C05602",
   "base": "b36c47e137693e067a7d26d40706df8f89610f29",
   "deployment": "dpl_Enq3R1v2BezAHNh7G1mW6KYdj53g",
-  "candidate": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+  "candidate": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
   "tree": "bc5a5403a4861f77b2394b24e14cfffc8c72ac2e",
   "product": "d274fb2f66e427d8db444af2046e9ad255bee99e",
-  "mainBase": "998860c4bda6d77e5f2ff084e47a1cfc03a41fc9",
-  "mainTree": "e24f92cafe0370254cd8e29d9e9f505fd1f01dd2",
-  "previousControl": "45b65b45af9e0eb594a9b5565449e2a412a0d005",
-  "productRef": "refs/heads/codex/es-v3-closeout-protected-20261124",
+  "mainBase": "1896ac9f52185994517bc9b612ac712184585bd4",
+  "mainTree": "54a5b0f092e9bd4fd78b937e2ccb861504072acd",
+  "previousControl": "e41b47f962cc0adf228013610977759e9fc3a17d",
+  "productRef": "refs/heads/codex/es-v3-closeout-protected-receipted-20261124",
   "orderedProjection": [
     {
       "fingerprint": "617ebba991757ee789885214d59c700e914f29b7679613a044c4b398ce45ce5e",
@@ -34,7 +34,7 @@
     },
     {
       "fingerprint": "08909262813da42025ea6b3c1d55e854212708c91daf6b5890117975fd5d9f2a",
-      "release": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+      "release": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
       "source": "da2b3fc7aaff04187e64c36399bdb941f8aecee7"
     }
   ],
@@ -96,17 +96,107 @@
   },
   "mainAdmissionReceiptSha256": "d11669eb04e0ab923db7cf4fd19be2b9a7fb9e3d12f12a25b82ad5662bce2c80",
   "postAdmissionCore": {
-    "evidenceSha256": "529104bf2a5893274bcc3666dd4df90ae16755eff3e723700c92c92e5efacee4",
+    "evidenceSha256": "e0777582ebfd1a1f2d01ff4f750c3a99c38f8affdb4cd2c21b3b1730181ac9f5",
     "historicalBase": "67338b57bf2d872e2b0755c76820036f6f0743f4",
-    "currentOperandSha256": "c6d9ae9e9da32755cc827c0b5a7330116b77856b6c23da66ee7335fd2a99680c",
-    "nextOperandSha256": "eab8596754e3c834bfb262a9f13f6fee606979fc68b217a5d7b362e3ffb82e8a",
-    "currentPathCount": 406,
-    "nextPathCount": 410,
+    "currentOperandSha256": "eab8596754e3c834bfb262a9f13f6fee606979fc68b217a5d7b362e3ffb82e8a",
+    "nextOperandSha256": "409229085031bedcf7df6699c4c9796ff41ccb005a8431b5b2f3db37c78b6138",
+    "currentPathCount": 410,
+    "nextPathCount": 414,
     "additionalGovernancePaths": [
-      "docs/releases/ES-V3-NEW-STORE-PRINT-CLOSEOUT.json",
-      "docs/releases/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/controller-review.json",
-      "docs/releases/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/founder-release.json",
-      "docs/releases/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/main-admission.json"
+      "docs/releases/ES-V3-NEW-STORE-PRINT-CLOSEOUT-RECEIPTED.json",
+      "docs/releases/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT-RECEIPTED/controller-review.json",
+      "docs/releases/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT-RECEIPTED/founder-release.json",
+      "docs/releases/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT-RECEIPTED/main-admission.json"
     ]
+  },
+  "receiptRecovery": {
+    "release": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+    "previousStatusId": 59724392713,
+    "previousWorkflowRun": 45316508730,
+    "originalAdmissionPath": "docs/releases/ES-V3-NEW-STORE-PRINT-CLOSEOUT.json",
+    "originalAdmissionSha256": "d4ba144576eee2b6f2f923956675949970ea4d5db0f0fcaa78648eddebc1e3f8",
+    "failureEvidenceSha256": "4c26d7114d9d0ff9af90e200037467dfaa1f6510ded2e2fdb1ccda814e805ad3",
+    "successorAdmissionSha256": "df8a3dd7bde542f058e70b4b03d7e0f08f1a3ce6a02c9b0223ac9c7a14e8b513",
+    "successorAdmission": {
+      "subject": "Exact ST04 protected re-issuance, frozen fingerprint and candidate-specific failure disposition",
+      "status": "REQUEST_ONLY_UNTIL_PERSONALLY_AUTHORIZED",
+      "product": "d274fb2f66e427d8db444af2046e9ad255bee99e",
+      "tree": "bc5a5403a4861f77b2394b24e14cfffc8c72ac2e",
+      "releaseSha": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+      "priorUnreleasedSha": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+      "directParent": "4fb38a6d30c4cc4e37881f508cf3732bacee4aa1",
+      "trustedMain": "1896ac9f52185994517bc9b612ac712184585bd4",
+      "baseProduction": "b36c47e137693e067a7d26d40706df8f89610f29",
+      "deployment": "dpl_Enq3R1v2BezAHNh7G1mW6KYdj53g",
+      "exactStore": "ST04C05602",
+      "sourceProjection": [
+        {
+          "fingerprint": "617ebba991757ee789885214d59c700e914f29b7679613a044c4b398ce45ce5e",
+          "release": "35575551bdfca02214f7a9f4a21026c5bcd1da39",
+          "source": "7831461aa623d586febef9979adafec755d6c2c0"
+        },
+        {
+          "fingerprint": "5f73f73c4036b87b5cb172050d24df18e0a738e671c40a56e1fefcd894a0e25f",
+          "release": "f33993497c107ad9090b0b64896fac5f2b0934ff",
+          "source": "f5a1ad5dfc33a3f9c9271e1a34e9e7f24d2e84d7"
+        },
+        {
+          "fingerprint": "d5010d2d7d648b233107e6172af9d9f5999f3db52fbca1078c8e687134779da4",
+          "release": "4fb38a6d30c4cc4e37881f508cf3732bacee4aa1",
+          "source": "b8ec5831f7403c1eebfed3756630d0ff2e3880b5"
+        },
+        {
+          "fingerprint": "08909262813da42025ea6b3c1d55e854212708c91daf6b5890117975fd5d9f2a",
+          "release": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+          "source": "da2b3fc7aaff04187e64c36399bdb941f8aecee7"
+        }
+      ],
+      "sameTreeDiffFiles": 0,
+      "schemaMigrationCount": 0,
+      "previousFrozenPayloadSha256": "28f3d77af8e9f7913b7981a0265ac763dc3199cc78a42de3d1e87ca8b2c11458",
+      "previousDispositionSha256": "3fcd25925f0d1544229c50ecc7d6368a323a56b117ba830025f72c6bdf3bf5ae",
+      "currentCoreEvidenceSha256": "e0777582ebfd1a1f2d01ff4f750c3a99c38f8affdb4cd2c21b3b1730181ac9f5",
+      "currentCore": {
+        "main": {
+          "collectedResult": "SUITE_SUMMARY\troot-core\texpected=104\tcollected=104\texecuted=104\tpass=99\tfail=5\tknown=0\tnew=5\trecovered=1\tknown_environment_blocked=0\tenvironment_failures=0\tskipped=0\tuncollected=0\tenvironment=PASS\toverall=BLOCKED",
+          "failures": [
+            "tests/cashier-realtime-integration.test.ts",
+            "tests/es-tray-desktop-pos-entry.test.ts",
+            "tests/es-tray-device-print-contract.test.ts",
+            "tests/native-inventory-m1-successor.test.cjs",
+            "tests/v3-reprint-recovery.test.ts"
+          ],
+          "rawSHA256": "681252933133ef8f26cddf0bc470f04e2d5598d70f2ec7a4099d709d64b97c62",
+          "priorAssertDiagnosticsMatch": true
+        },
+        "release": {
+          "collectedResult": "SUITE_SUMMARY\troot-core\texpected=103\tcollected=103\texecuted=103\tpass=99\tfail=4\tknown=0\tnew=4\trecovered=1\tknown_environment_blocked=0\tenvironment_failures=0\tskipped=0\tuncollected=0\tenvironment=PASS\toverall=BLOCKED",
+          "failures": [
+            "tests/cashier-realtime-integration.test.ts",
+            "tests/customer-order-recovery.test.ts",
+            "tests/es-tray-device-print-contract.test.ts",
+            "tests/v3-reprint-recovery.test.ts"
+          ],
+          "rawSHA256": "23dd88d97924a3239e4ecd6e45fc8bb9d97c1a5ab9bbfc04e6dbd308f1d0d904",
+          "priorAssertDiagnosticsMatch": true
+        }
+      },
+      "integration": {
+        "retainedResult": "18/21",
+        "evidenceSha256": "ff770d7f1286bbc21227f5922a6fc058e4664cf6bdaccedd1ba6114b0fe73321",
+        "reusedOnIdenticalProductTree": true
+      },
+      "failureReadbackSha256": "4c26d7114d9d0ff9af90e200037467dfaa1f6510ded2e2fdb1ccda814e805ad3",
+      "currentCashOperand": 410,
+      "projectedCashOperand": 414,
+      "originalCutoff": "2026-11-24T19:05:08.074521+00:00",
+      "invalidateOn": [
+        "new failure or changed assertion",
+        "changed source file, candidate tree or release/production lineage",
+        "changed platform control/rules, unsafe traffic or target store drift",
+        "expiry or revoked authority"
+      ],
+      "boundaries": "New local projection only. Freeze scope remains the single previously reviewed adapter fingerprint. Original release authority does not apply to the new SHA. A new explicit Founder decision must bind this payload, candidate, controller and time. Keep all original test failures. No approval of migration, seven-job disposition, OWNER handoff, kitchen or printing."
+    }
   }
 }

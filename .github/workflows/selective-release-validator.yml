@@ -27,7 +27,7 @@ jobs:
             *) echo 'Unexpected checkout origin'; exit 1 ;;
           esac
           node .github/release-validator/st04-closeout.mjs preflight
-      - name: Publish exact status with the protected App
+      - name: Publish once and verify the original App response ID
         env:
           ADMISSION_MAIN: ${{ steps.st04.outputs.main }}
           ADMISSION_DIGEST: ${{ steps.st04.outputs.digest }}

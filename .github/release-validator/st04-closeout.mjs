@@ -13,13 +13,13 @@ const appId = 5590705, installationId = 178077967, creatorId = 351820557
 const context = 'eshop/selective-release-validator'
 const controlRef = 'refs/heads/codex/release-validator-control'
 const manifestPath = '.github/release-validator/st04-closeout.json'
-const manifestSha = 'fcb15707ab655540a507735f28fdee7792f34c6835698843053e3f439e911df6'
+const manifestSha = '889e63e955f4ac7ff7d304fc04a7cb1995b82b2be7ed67b9c8a5b073fa295955'
 const controlPaths = [
   '.github/release-validator/st04-closeout.mjs', manifestPath,
   '.github/release-validator/st04-closeout.test.mjs', '.github/workflows/selective-release-validator.yml',
 ].sort()
-const admissionPath = 'docs/releases/ES-V3-NEW-STORE-PRINT-CLOSEOUT.json'
-const receiptDir = 'docs/releases/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/'
+const admissionPath = 'docs/releases/ES-V3-NEW-STORE-PRINT-CLOSEOUT-RECEIPTED.json'
+const receiptDir = 'docs/releases/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT-RECEIPTED/'
 const receiptPath = receiptDir + 'founder-release.json'
 const reviewPath = receiptDir + 'controller-review.json'
 const previousApprovalPath = receiptDir + 'main-admission.json'
@@ -32,6 +32,8 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 const rawManifest = readFileSync(new URL('./st04-closeout.json', import.meta.url))
 assert.equal(sha(rawManifest), manifestSha, 'Sealed ST04 manifest changed')
 const manifest = JSON.parse(rawManifest)
+const successorPayload = JSON.stringify(manifest.receiptRecovery.successorAdmission, null, 2)+'\n'
+assert.equal(sha(Buffer.from(successorPayload)), manifest.receiptRecovery.successorAdmissionSha256)
 const tree = manifest.tree
 const bytes = (...args) => execFileSync('git', ['--no-replace-objects', '-c', 'core.fsmonitor=false', ...args],
   { env: cleanEnv, timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -57,6 +59,11 @@ function verifyCashierOperand(paths, count, digest) {
 export function verifySources() {
   assert.equal(git('rev-parse', manifest.mainBase + '^{tree}'), manifest.mainTree)
   assert.equal(git('rev-parse', manifest.candidate + '^{tree}'), tree)
+  const predecessor = manifest.receiptRecovery
+  assert.notEqual(manifest.candidate, predecessor.release)
+  assert.equal(git('rev-parse', predecessor.release + '^{tree}'), tree, 'Product content changed on re-issue')
+  assert.equal(git('show','-s','--format=%P',predecessor.release), git('show','-s','--format=%P',manifest.candidate))
+  assert.equal(sha(blob(manifest.mainBase, predecessor.originalAdmissionPath)), predecessor.originalAdmissionSha256)
   git('merge-base', '--is-ancestor', manifest.product, manifest.mainBase)
   const post = manifest.postAdmissionCore
   assert.deepEqual(newMainPaths, post.additionalGovernancePaths)
@@ -131,14 +138,18 @@ export function verifyAuthorization({ record, receipt, review, control, now }) {
   assert.equal(receipt.acceptedReleaseDispositionSha256, disposition)
   assert.equal(record.acceptedReleaseDispositionSha256, disposition)
   assert.equal(record.postAdmissionCoreSha256, manifest.postAdmissionCore.evidenceSha256)
+  assert.equal(record.acceptedSuccessorAdmissionSha256, manifest.receiptRecovery.successorAdmissionSha256)
+  assert.equal(receipt.acceptedSuccessorAdmissionSha256, record.acceptedSuccessorAdmissionSha256)
+  assert.equal(receipt.successorAdmissionPayload, successorPayload)
   assert.equal(receipt.postAdmissionCoreSha256, manifest.postAdmissionCore.evidenceSha256)
   assert.equal(receipt.verbatimAnswer, record.authorizationQuote)
   assert.equal(typeof receipt.requestReference, 'string')
   assert(receipt.requestReference.trim().length > 0)
   assert.equal(typeof receipt.verbatimAnswer, 'string')
-  assert.equal(receipt.verbatimAnswer, '本人批准 ST04 精确候选通过受保护校验后发布到 Production，零迁移')
+  assert.equal(receipt.verbatimAnswer, '本人签认 ST04 同树候选 d1ffbaea，并批准其通过受保护校验后发布到 Production，零迁移')
   // The independently registered production request must explicitly identify this action.
-  for (const term of ['Production', manifest.candidate, control, disposition, manifest.postAdmissionCore.evidenceSha256]) assert(receipt.verbatimQuestion.includes(term))
+  for (const term of ['Production', manifest.candidate, tree, control, disposition, manifest.postAdmissionCore.evidenceSha256,
+    manifest.receiptRecovery.failureEvidenceSha256, manifest.receiptRecovery.successorAdmissionSha256]) assert(receipt.verbatimQuestion.includes(term))
   assert.equal(review.verdict, 'PASS')
   assert.equal(review.control, control)
   assert.equal(review.candidate, manifest.candidate)
@@ -149,10 +160,15 @@ export function verifyAuthorization({ record, receipt, review, control, now }) {
   assert.equal(sha(Buffer.from(review.evidence)), review.evidenceSha256)
 }
 
+export function requireFirstAttempt(value) {
+  assert.equal(value, '1', 'Re-running an uncertain signing attempt is prohibited')
+}
+
 function validated(expectedDigest) {
   const control = process.env.GITHUB_SHA
   assert.equal(process.env.GITHUB_ACTIONS, 'true')
   assert.equal(process.env.GITHUB_EVENT_NAME, 'push')
+  requireFirstAttempt(process.env.GITHUB_RUN_ATTEMPT)
   assert.equal(process.env.GITHUB_REPOSITORY, repo)
   assert.equal(process.env.GITHUB_REF, controlRef)
   assert.equal(git('rev-parse','HEAD'), control)
@@ -209,13 +225,42 @@ function preflight() {
 
 async function request(path, credential, method='GET', payload) {
   const res = await fetch('https://api.github.com'+path, {
-    method, redirect:'error', signal:AbortSignal.timeout(15000),
+    method, redirect:'error', cache:'no-store', signal:AbortSignal.timeout(15000),
     headers:{Authorization:'Bearer '+credential,Accept:'application/vnd.github+json',
       'Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},
     body:payload===undefined ? undefined : JSON.stringify(payload),
   })
   assert(res.ok, method+' failed with '+res.status)
   return res.status===204 ? null : res.json()
+}
+
+export function signingContextEntries(page) {
+  assert(Array.isArray(page) && page.length < 100, 'Status history is incomplete or might span multiple pages')
+  return page.filter(entry => entry.context === context)
+}
+
+// The POST is never retried. Only an absent entry can be read again.
+export async function readIssuedStatus({ id, candidate, digest, issuedAt, expiresAt, readStatuses,
+  wait = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now, log = console.log }) {
+  assert(Number.isSafeInteger(id) && id > 0, 'No valid status ID in the original POST response')
+  log(JSON.stringify({ event:'status-post-receipt', candidate, recordSha256:digest, statusId:id }))
+  for (const delay of [0, 500, 1500, 3000]) {
+    if (delay) await wait(delay)
+    assert(now() < Date.parse(expiresAt), 'Release grant expired before status readback')
+    const entries = signingContextEntries(await readStatuses())
+    if (!entries.length) continue
+    assert.equal(entries.length, 1, 'Duplicate status in the signing context')
+    const [entry] = entries
+    assert.equal(entry.id, id, 'Original POST ID and readback ID differ')
+    assert.equal(entry.state, 'success', 'Readback is not successful')
+    assert(entry.creator?.id === creatorId && entry.creator.login === 'e-shop-release-validator[bot]', 'Wrong App creator')
+    assert.equal(entry.description, 'ST04 exact release '+digest, 'Wrong authorization digest')
+    const created = Date.parse(entry.created_at)
+    assert(created >= Date.parse(issuedAt) && created < Date.parse(expiresAt) && now() < Date.parse(expiresAt),
+      'Status readback or issuance is outside the authorization window')
+    return
+  }
+  throw new Error('Original POST succeeded but its status is still absent from readback')
 }
 
 async function publish() {
@@ -269,16 +314,13 @@ async function publish() {
         'Approved ruleset revision or bypass actors changed')
     }
     const statusPath=root+'/commits/'+candidate+'/statuses?per_page=100'
-    const old=(await request(statusPath,token)).find(entry=>entry.context===context)
-    assert(!old,'Existing status on this candidate requires manual reconciliation')
+    const old=signingContextEntries(await request(statusPath,token))
+    assert.equal(old.length,0,'Existing status on this candidate requires manual reconciliation')
     const checked = validated(digest)
     assert(checked.main===main && checked.candidate===candidate,'Refs changed while preparing App signature')
     const sent=await request(root+'/statuses/'+candidate,token,'POST',{state:'success',context,description:desc})
-    const latest=(await request(statusPath,token)).find(entry=>entry.context===context)
-    assert(Number.isSafeInteger(sent.id) && latest?.id===sent.id && latest.state==='success' &&
-      latest.creator?.id===creatorId && latest.creator.login==='e-shop-release-validator[bot]' &&
-      latest.description===desc && Date.parse(latest.created_at)>=Date.parse(record.issuedAt) &&
-      Date.parse(latest.created_at)<Date.parse(record.expiresAt),'Exact App signature failed readback')
+    await readIssuedStatus({ id:sent.id, candidate, digest, issuedAt:record.issuedAt, expiresAt:record.expiresAt,
+      readStatuses:() => request(statusPath+'&page=1',token) })
     console.log(JSON.stringify({candidate,appId,status:'success',recordSha256:digest,expiresAt:record.expiresAt}))
   } finally {
     await request('/installation/token',token,'DELETE')
