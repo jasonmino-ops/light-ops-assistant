@@ -3,7 +3,7 @@ import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import pg from 'pg'
-import { PrismaClient } from '@prisma/client'
+import { type Prisma, PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import {
   controlledV3OwnerHandoff,
@@ -558,6 +558,72 @@ for (const loseReadback of [false, true])
           assert.equal((await db.v3PrintControlPlane.findUniqueOrThrow({ where: { id: plane.id } })).ownerEpoch, 2)
         }
       )
+      for (const mode of ['FINALIZE_V2_ACTIVE', 'FINALIZE_V3_ACTIVE'] as const) {
+        await t.test(`spent-case ${mode} uses the ordinary transaction on failure and success`, async () => {
+          const previous = await db.v3PrintControlPlane.findUniqueOrThrow({ where: { id: plane.id } })
+          const version = 4750
+          const audits = () => db.operationLog.count({
+            where: { ...scope, actionType: 'V3_PRINT_MODE_OPERATOR_CONFIRMATION', message: mode, status: 'SUCCESS' },
+          })
+          const before = await audits()
+          await db.v3PrintControlPlane.update({
+            where: { id: plane.id },
+            data: { mode: 'BLOCKED_UNKNOWN', stateVersion: version, ownerDeviceId: null, leaseId: null,
+              leaseExpiresAt: null, handoffRequestedAt: null, handoffQuarantineUntil: null },
+          })
+          async function expectUnchanged(result: Awaited<ReturnType<typeof runLegacyFinalization>>) {
+            assert.ok(!result.ok && result.code === 'CONCURRENT_STATE_CHANGE')
+            const current = await db.v3PrintControlPlane.findUniqueOrThrow({ where: { id: plane.id } })
+            assert.equal(current.mode, 'BLOCKED_UNKNOWN')
+            assert.equal(current.stateVersion, version)
+            assert.equal(result.controlPlane.stateVersion, version)
+            assert.equal(await audits(), before)
+          }
+          try {
+            await pool.query(`CREATE FUNCTION reject_mode_cas() RETURNS trigger LANGUAGE plpgsql AS
+              $$BEGIN RETURN NULL; END$$;
+              CREATE TRIGGER reject_mode_cas BEFORE UPDATE ON "V3PrintControlPlane"
+              FOR EACH ROW EXECUTE FUNCTION reject_mode_cas()`)
+            try {
+              await expectUnchanged(await runLegacyFinalization(db, scope, executor, version, mode))
+            } finally {
+              await pool.query('DROP TRIGGER reject_mode_cas ON "V3PrintControlPlane"; DROP FUNCTION reject_mode_cas()')
+            }
+
+            // A serialization failure after the callback must roll back its writes and reread the plane.
+            const optionsSeen: Array<unknown> = []
+            const conflictAtCommit = {
+              $transaction: <T>(operation: (tx: Prisma.TransactionClient) => Promise<T>,
+                options?: { isolationLevel?: Prisma.TransactionIsolationLevel; timeout?: number }) => {
+                optionsSeen.push(options)
+                return db.$transaction(async tx => {
+                  const value = await operation(tx)
+                  if (optionsSeen.length === 1) throw Object.assign(new Error('isolated serialization failure'), { code: 'P2034' })
+                  return value
+                }, options)
+              },
+            } as Pick<typeof db, '$transaction'>
+            await expectUnchanged(await runLegacyFinalization(conflictAtCommit, scope, executor, version, mode))
+            assert.deepEqual(optionsSeen, [
+              mode === 'FINALIZE_V3_ACTIVE' ? { isolationLevel: 'Serializable', timeout: 10_000 } : { isolationLevel: 'Serializable' },
+              undefined,
+            ])
+
+            const ok = await runLegacyFinalization(db, scope, executor, version, mode)
+            assert.ok(ok.ok)
+            assert.equal(ok.controlPlane.mode, mode === 'FINALIZE_V2_ACTIVE' ? 'V2_ACTIVE' : 'V3_ACTIVE')
+            assert.equal(ok.controlPlane.stateVersion, version + 1)
+            assert.equal(await audits(), before + 1)
+          } finally {
+            const { mode, stateVersion, ownerDeviceId, leaseId, leaseExpiresAt, handoffRequestedAt,
+              handoffQuarantineUntil, updatedAt } = previous
+            await db.v3PrintControlPlane.update({
+              where: { id: plane.id },
+              data: { mode, stateVersion, ownerDeviceId, leaseId, leaseExpiresAt, handoffRequestedAt, handoffQuarantineUntil, updatedAt },
+            })
+          }
+        })
+      }
       await t.test(
         'spent facts are readable after approval revocation and release drift, without new authority',
         async () => {
@@ -656,6 +722,7 @@ for (const loseReadback of [false, true])
             data: { payloadSnapshot: { ...original, cutoffUtc: past.toISOString() } },
           })
           assert.equal(await cleanStartSelector(db.operationLog, device, 2), null)
+          await assert.rejects(runLegacyFinalization(db, scope, executor, 4750, 'FINALIZE_V2_ACTIVE'), /CASE_FINALIZE_BLOCKED/)
           await db.operationLog.update({ where: { id: row.id }, data: { payloadSnapshot: original } })
           const j = await db.operationLog.findUniqueOrThrow({ where: { id: prefix + jobIds[0] } })
           const v = j.payloadSnapshot as any
