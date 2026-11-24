@@ -525,28 +525,33 @@ export async function runLegacyFinalization(
   mode: 'FINALIZE_V3_ACTIVE' | 'FINALIZE_V2_ACTIVE'
 ) {
   check(isTarget(store), 'CASE_STORE_FORBIDDEN')
+  const input = {
+    ...scope,
+    action: mode,
+    operatorAdminId: actor.id,
+    operatorRole: actor.role,
+    expectedStateVersion: version,
+  }
+  if (version >= plan.control.stateVersion + 3) {
+    // The ordinary service owns the real commit, rollback, timeout and conflict readback.
+    // Verify the spent receipt in the same snapshot as each ordinary transaction.
+    const afterCutover = {
+      $transaction: <T>(
+        operation: (tx: Tx) => Promise<T>,
+        options?: { isolationLevel?: Prisma.TransactionIsolationLevel; timeout?: number }
+      ) => db.$transaction(async (tx) => {
+        check(await trustedCutoff(tx.operationLog), 'CASE_FINALIZE_BLOCKED')
+        return operation(tx)
+      }, options),
+    } as unknown as OpsPrintControlDb
+    return runOpsPrintModeAction(afterCutover, input)
+  }
   const result = await db.$transaction(async (tx) => {
-    // Preserve future normal operations once this one controlled cutover is verifiably spent.
     const closed = await tx.operationLog.findUnique({ where: { id: activatedId } })
-    const spent = closed && (await trustedCutoff(tx.operationLog))
-    const wantsLater = spent && version >= plan.control.stateVersion + 3
     const boundDb = {
       ...tx,
       $transaction: <T>(fn: (transaction: Tx) => Promise<T>) => fn(tx),
     } as unknown as OpsPrintControlDb
-    const run = (at: Date) =>
-      runOpsPrintModeAction(
-        boundDb,
-        {
-          ...scope,
-          action: mode,
-          operatorAdminId: actor.id,
-          operatorRole: actor.role,
-          expectedStateVersion: version,
-        },
-        at
-      )
-    if (wantsLater) return run(await dbTime(tx))
     check(
       !closed && mode === 'FINALIZE_V3_ACTIVE' && version === plan.control.stateVersion + 2,
       'CASE_FINALIZE_BLOCKED'
@@ -562,7 +567,7 @@ export async function runLegacyFinalization(
     const before = await dbTime(tx)
     live(g, before)
     await checkFence(tx, true, before)
-    const result = await run(before)
+    const result = await runOpsPrintModeAction(boundDb, input, before)
     check(result.ok, 'CASE_ORIGINAL_FINALIZE_REFUSED')
     const c = result.controlPlane
     check(
