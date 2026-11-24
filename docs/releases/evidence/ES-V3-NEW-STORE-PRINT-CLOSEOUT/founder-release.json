@@ -1,0 +1,24 @@
+{
+  "releaseSha": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+  "releaseTree": "bc5a5403a4861f77b2394b24e14cfffc8c72ac2e",
+  "sourceMainSha": "998860c4bda6d77e5f2ff084e47a1cfc03a41fc9",
+  "baseProductionSha": "b36c47e137693e067a7d26d40706df8f89610f29",
+  "productionDeployment": "dpl_Enq3R1v2BezAHNh7G1mW6KYdj53g",
+  "control": "e41b47f962cc0adf228013610977759e9fc3a17d",
+  "includedSourceCommits": [
+    "7831461aa623d586febef9979adafec755d6c2c0",
+    "f5a1ad5dfc33a3f9c9271e1a34e9e7f24d2e84d7",
+    "b8ec5831f7403c1eebfed3756630d0ff2e3880b5",
+    "da2b3fc7aaff04187e64c36399bdb941f8aecee7"
+  ],
+  "expiresAt": "2026-11-24T04:56:12.882Z",
+  "acceptedReleaseDispositionSha256": "3fcd25925f0d1544229c50ecc7d6368a323a56b117ba830025f72c6bdf3bf5ae",
+  "postAdmissionCoreSha256": "529104bf2a5893274bcc3666dd4df90ae16755eff3e723700c92c92e5efacee4",
+  "decision": "APPROVE_EXACT_SELECTIVE_PRODUCTION_RELEASE",
+  "approvedBy": "Founder",
+  "authorizationId": "ES-V3-NEW-STORE-PRINT-CLOSEOUT-ST04-EXACT-PROTECTED-RELEASE",
+  "approvedAt": "2026-11-24T02:56:12.882Z",
+  "requestReference": "[\"request_user_input_async\",\"call_9f6644c7d80d45e2911d38cc50ae5281\",0]",
+  "verbatimAnswer": "本人批准 ST04 精确候选通过受保护校验后发布到 Production，零迁移",
+  "verbatimQuestion": "是否批准 ST04 精确候选 `91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966`（树 `bc5a5403a4861f77b2394b24e14cfffc8c72ac2e`）通过受保护校验后发布到 Production，零迁移？当前 Production 为 `b36c47e137693e067a7d26d40706df8f89610f29`，部署 `dpl_Enq3R1v2BezAHNh7G1mW6KYdj53g`。此决定接受逐项失败处置 `3fcd25925f0d1544229c50ecc7d6368a323a56b117ba830025f72c6bdf3bf5ae` 和 main 登记后 CORE 证据 `529104bf2a5893274bcc3666dd4df90ae16755eff3e723700c92c92e5efacee4`。若批准，依次建立精确候选引用、在 `998860c4` 上登记四份发布治理文件、将受保护控制分支从 `45b65b45` 快进至 `e41b47f962cc0adf228013610977759e9fc3a17d`。仅在真实 App 签发、独占窗口和七票前像复核通过、回退条件成立且授权有效时，才将 release 快进至该候选。授权自答复起至多两小时，最晚到金边时间 11 月 25 日 02:05:08。七票隔离、Owner 交接、厨房开关及实体打印另行受控。[精确发布决策单](/Users/jason/.codex/worktrees/99a3/light-ops-assistant/.task-state/ES-V3-NEW-STORE-PRINT-CLOSEOUT/protected-controller/final/受保护发布决策单.md)"
+}

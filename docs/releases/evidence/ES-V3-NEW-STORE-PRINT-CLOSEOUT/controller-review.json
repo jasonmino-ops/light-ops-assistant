@@ -1,0 +1,11 @@
+{
+  "verdict": "PASS",
+  "control": "e41b47f962cc0adf228013610977759e9fc3a17d",
+  "candidate": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+  "tree": "bc5a5403a4861f77b2394b24e14cfffc8c72ac2e",
+  "manifestSha256": "fcb15707ab655540a507735f28fdee7792f34c6835698843053e3f439e911df6",
+  "evidence": "Independent Codex closeout_finalize_review passed final controller e41b47f962cc0adf228013610977759e9fc3a17d, candidate 91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966, release tree bc5a5403a4861f77b2394b24e14cfffc8c72ac2e, manifest fcb15707ab655540a507735f28fdee7792f34c6835698843053e3f439e911df6. Recomputed Git path operand 372 to 406, 34 added and 3 previously present, zero removed; future exact governance operand 410. Verified post-main CORE receipt 529104bf2a5893274bcc3666dd4df90ae16755eff3e723700c92c92e5efacee4, 99/104 main and 99/103 release, 26/26 tests and four-path Scope. App has not issued a status. Recheck actual Production SHA, deployment and unexpired grant before updating release.",
+  "evidenceSha256": "7df6ca0b05c3b921a38b782e463137c683f30cb9b6057f41f144df487d57daea",
+  "provenance": "Independent Codex closeout_finalize_review final reply in this chat; recorded summary.",
+  "scope": "local source and evidence; no remote publish, deployment or field verification"
+}
