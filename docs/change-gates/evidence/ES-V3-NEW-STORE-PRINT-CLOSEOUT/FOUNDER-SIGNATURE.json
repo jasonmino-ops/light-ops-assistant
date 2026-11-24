@@ -1,0 +1,14 @@
+{
+  "task": "ES-V3-NEW-STORE-PRINT-CLOSEOUT",
+  "status": "FOUNDER_SIGNED_EXACT_FROZEN_SUCCESSOR",
+  "source": "Founder reply in this chat to request_user_input_async call_0b76c5de8e1941008894e79aa3a34828[0]",
+  "verbatimReply": "本人正式签认上述精确冻结后继",
+  "recordedUtc": "2026-11-24T02:31:08.335573+00:00",
+  "recordedUtcMeaning": "local time of recording the actual reply",
+  "product": "d274fb2f66e427d8db444af2046e9ad255bee99e",
+  "release": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+  "releaseTree": "bc5a5403a4861f77b2394b24e14cfffc8c72ac2e",
+  "payloadSha256": "28f3d77af8e9f7913b7981a0265ac763dc3199cc78a42de3d1e87ca8b2c11458",
+  "approvedScope": "Exact frozen successor of the adapter fingerprint specified by the signing request.",
+  "otherAuthorizationsGranted": []
+}

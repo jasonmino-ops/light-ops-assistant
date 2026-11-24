@@ -1,0 +1,18 @@
+{
+  "status": "LOCAL_INTEGRATION_PREVIEW_ONLY",
+  "worktree": "/private/tmp/st04-proposed-main-onxq2_kz/repo",
+  "commit": "0de2fd3e0fbda5f5df22bae3a167df08e26299e8",
+  "tree": "e5b53869f77398980393514f35783106f57a1132",
+  "parent1": "d274fb2f66e427d8db444af2046e9ad255bee99e",
+  "parent2": "da2b3fc7aaff04187e64c36399bdb941f8aecee7",
+  "mainAtRead": "1fe4481dcc64adf48af2c4d5cfff8addf79ed3a1",
+  "releaseProjectionFiles": 21,
+  "preservedMainRegistrations": 24,
+  "newMainRegistrations": [
+    "tests/cashier-large-cart-query.test.cjs",
+    "tests/v3-legacy-seven-clean-start.test.ts"
+  ],
+  "resolution": "same reviewed 26-entry manifest; phase-two file exists only on production-line projection",
+  "deployed": false,
+  "remoteChanged": false
+}

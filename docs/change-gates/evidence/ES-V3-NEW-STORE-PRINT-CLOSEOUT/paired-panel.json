@@ -1,0 +1,20 @@
+{
+  "base": {
+    "source": "b36c47e137693e067a7d26d40706df8f89610f29",
+    "exit": 1,
+    "material": [
+      "locator.waitFor: Timeout 20000ms exceeded.",
+      "- waiting for getByRole('button', { name: /门店配置/ }) to be visible",
+      "\"  - waiting for getByRole('button', { name: /门店配置/ }) to be visible\""
+    ]
+  },
+  "release": {
+    "source": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+    "exit": 1,
+    "material": [
+      "locator.waitFor: Timeout 20000ms exceeded.",
+      "- waiting for getByRole('button', { name: /门店配置/ }) to be visible",
+      "\"  - waiting for getByRole('button', { name: /门店配置/ }) to be visible\""
+    ]
+  }
+}

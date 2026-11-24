@@ -1,0 +1,122 @@
+{
+  "cash": {
+    "baseline": [
+      11,
+      11
+    ],
+    "failure": "unchanged six-dependency guard mismatches only lib/v3-print-job-adapter.ts",
+    "functionalDbSubcases": [
+      7,
+      7
+    ],
+    "raw": "large-cart-full-release.tap",
+    "release": [
+      10,
+      11
+    ]
+  },
+  "main": {
+    "baseline": "1fe4481dcc64adf48af2c4d5cfff8addf79ed3a1",
+    "collection": "SUITE_SUMMARY\troot-core\texpected=104\tcollected=104\texecuted=104\tpass=99\tfail=5\tknown=0\tnew=5\trecovered=1\tknown_environment_blocked=0\tenvironment_failures=0\tskipped=0\tuncollected=0\tenvironment=PASS\toverall=BLOCKED",
+    "comparedFailures": [
+      {
+        "baselineDiagnosticsMatched": [
+          "AssertionError [ERR_ASSERTION]: trusted M1 history must verify its exact handoff",
+          "actual: undefined,",
+          "expected: true,"
+        ],
+        "file": "tests/native-inventory-m1-successor.test.cjs",
+        "historicalClassification": "baseline_reproduced"
+      },
+      {
+        "baselineDiagnosticsMatched": [
+          "AssertionError [ERR_ASSERTION]: app/api/orders/[orderNo]/checkout/route.ts: notify after success",
+          "actual: false,",
+          "expected: true,"
+        ],
+        "file": "tests/cashier-realtime-integration.test.ts",
+        "historicalClassification": "baseline_reproduced"
+      },
+      {
+        "baselineDiagnosticsMatched": [
+          "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+          "actual: [Array],",
+          "expected: [Array],",
+          "AssertionError [ERR_ASSERTION]: reentry never reconfirms or creates kitchen"
+        ],
+        "file": "tests/es-tray-desktop-pos-entry.test.ts",
+        "historicalClassification": "baseline_reproduced"
+      },
+      {
+        "baselineDiagnosticsMatched": [
+          "AssertionError [ERR_ASSERTION]: merged shift report freeze successor does not match the checkout",
+          "actual: true,",
+          "expected: true,"
+        ],
+        "file": "tests/es-tray-device-print-contract.test.ts",
+        "historicalClassification": "baseline_reproduced"
+      },
+      {
+        "baselineDiagnosticsMatched": [
+          "AssertionError [ERR_ASSERTION]: merged shift report freeze successor does not match the checkout",
+          "actual: true,",
+          "expected: true,"
+        ],
+        "file": "tests/v3-reprint-recovery.test.ts",
+        "historicalClassification": "baseline_reproduced"
+      }
+    ],
+    "rawSha256": "9b412293669ad60c2ede40034233be00c19a57fbc461459d86e6b49342987235",
+    "rawStatus": "BLOCKED",
+    "sameFailureSetAsBaseline": true
+  },
+  "release": {
+    "baseline": "b36c47e137693e067a7d26d40706df8f89610f29",
+    "collection": "SUITE_SUMMARY\troot-core\texpected=103\tcollected=103\texecuted=103\tpass=99\tfail=4\tknown=0\tnew=4\trecovered=1\tknown_environment_blocked=0\tenvironment_failures=0\tskipped=0\tuncollected=0\tenvironment=PASS\toverall=BLOCKED",
+    "comparedFailures": [
+      {
+        "baselineDiagnosticsMatched": [
+          "AssertionError [ERR_ASSERTION]: Diamond trusted main may differ only by exact registrations and approved baseline fixes",
+          "actual: [Array],",
+          "expected: [Array],"
+        ],
+        "file": "tests/cashier-realtime-integration.test.ts",
+        "historicalClassification": "baseline_reproduced"
+      },
+      {
+        "baselineDiagnosticsMatched": [
+          "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+          "actual: 'b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575',",
+          "expected: '8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6',"
+        ],
+        "file": "tests/es-tray-device-print-contract.test.ts",
+        "historicalClassification": "baseline_reproduced"
+      },
+      {
+        "baselineDiagnosticsMatched": [
+          "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+          "503 !== 200",
+          "actual: 503,",
+          "expected: 200,",
+          "999 !== 1",
+          "actual: 999,",
+          "expected: 1,"
+        ],
+        "file": "tests/customer-order-recovery.test.ts",
+        "historicalClassification": "baseline_reproduced"
+      },
+      {
+        "baselineDiagnosticsMatched": [
+          "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+          "actual: 'b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575',",
+          "expected: '8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6',"
+        ],
+        "file": "tests/v3-reprint-recovery.test.ts",
+        "historicalClassification": "baseline_reproduced"
+      }
+    ],
+    "rawSha256": "e08d8c0622bec1a0b39c48e53906d1898d552a1d6c70778f3740762bc6b5d5c6",
+    "rawStatus": "BLOCKED",
+    "sameFailureSetAsBaseline": true
+  }
+}
