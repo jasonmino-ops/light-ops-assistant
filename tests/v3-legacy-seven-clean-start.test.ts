@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict'
 import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { resolve } from 'node:path'
+import ts from 'typescript'
+import { NextRequest } from 'next/server'
 import test from 'node:test'
 import pg from 'pg'
-import { type Prisma, PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import {
   controlledV3OwnerHandoff,
@@ -16,6 +20,7 @@ import nextAttempt from '../lib/v3-legacy-seven/sealed-next-attempt.json'
 import { deliverV3PrintIntent, enqueueV3PrintIntent, reportV3Execution } from '../lib/v3-print-job-adapter'
 import {
   parseCommand,
+  CaseStop,
   plan,
   jobIds,
   action,
@@ -46,6 +51,54 @@ test('production manifest is byte-bound and the route retains its protected norm
   assert.match(route, /await runLegacyFinalization/)
   assert.match(route, /activationCommitted = legacyRequest && result\.ok && finalAction === 'FINALIZE_V3_ACTIVE'\s*&& command\.value\.expectedStateVersion === legacyPlan\.control\.stateVersion \+ 2/)
   assert.throws(() => parseCommand({ action, phase: 'APPLY', jobIds }), /CASE_COMMAND_INVALID/)
+})
+
+test('ordinary post-cutover FINALIZE keeps the HTTP error of the action or state read', async () => {
+  const file = resolve('app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/route.ts')
+  const routeRequire = createRequire(file)
+  const route = {} as typeof import('../app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/route')
+  const js = ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+  let failOn: 'action' | 'read' = 'action'
+  let fault: Error
+  // Exercise the shipped POST and error mapping. Only actors, data access and fault sites are fixtures.
+  function load(name: string) {
+    if (name === '@/lib/ops-auth') return { getFkBackedOpsAdminIdentity: async () => ({ id: 'local-ops', role: 'OPS_ADMIN' }) }
+    if (name === '@/lib/prisma') return { prisma: { store: { findFirst: async () => ({ ...scope, id: scope.storeId, code: plan.scope.code }) } } }
+    if (name === './legacy-front-disposition') return { ...routeRequire(name), runLegacyFinalization: async () => {
+      if (failOn === 'action') throw fault
+      return { ok: true, requestId: 'local-request' }
+    } }
+    if (name === './service') return { ...routeRequire(name), readOpsPrintModeState: async () => { throw fault } }
+    return routeRequire(name)
+  }
+  new Function('require', 'exports', js)(load, route)
+  async function verify(action: string, expectedStateVersion: number, status: number, error: string) {
+    const request = new NextRequest('https://fixture.invalid/api/ops/print', { method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://fixture.invalid', 'sec-fetch-site': 'same-origin' },
+      body: JSON.stringify({ action, confirmed: true, expectedStateVersion }),
+    })
+    const response = await route.POST(request, { params: Promise.resolve(scope) })
+    assert.equal(response.status, status)
+    assert.deepEqual(await response.json(), { ok: false, error })
+  }
+  for (const action of ['FINALIZE_V2_ACTIVE', 'FINALIZE_V3_ACTIVE']) {
+    for (const phase of ['action', 'read'] as const) {
+      failOn = phase
+      for (const code of ['P2028', 'P2010']) {
+        fault = new Prisma.PrismaClientKnownRequestError('local database fault', { code, clientVersion: 'fixture' })
+        await verify(action, 4750, 500, 'UNEXPECTED_SERVER_ERROR')
+      }
+      fault = Object.assign(new Error('connection lost'), { code: 'ECONNRESET' })
+      await verify(action, 4750, 503, 'CONTROL_PLANE_UNAVAILABLE')
+    }
+    failOn = 'action'
+    fault = new CaseStop('CASE_FINALIZE_BLOCKED')
+    await verify(action, 4750, 409, 'CASE_FINALIZE_BLOCKED')
+  }
+  fault = new Prisma.PrismaClientKnownRequestError('one-time fault', { code: 'P2028', clientVersion: 'fixture' })
+  await verify('FINALIZE_V3_ACTIVE', 4746, 409, 'CASE_OUTCOME_REQUIRES_READBACK')
+  failOn = 'read'
+  await verify('FINALIZE_V3_ACTIVE', 4746, 409, 'CASE_ACTIVATION_COMMITTED_READBACK_REQUIRED')
 })
 
 const socket = process.env.DIAMOND_QUEUE_TEST_SOCKET
@@ -608,6 +661,30 @@ for (const loseReadback of [false, true])
               mode === 'FINALIZE_V3_ACTIVE' ? { isolationLevel: 'Serializable', timeout: 10_000 } : { isolationLevel: 'Serializable' },
               undefined,
             ])
+
+            // An independent PostgreSQL writer wins while the serializable FINALIZE is waiting on the plane.
+            const writer = await pool.connect()
+            let loser: ReturnType<typeof runLegacyFinalization> | undefined
+            try {
+              await writer.query('BEGIN')
+              const writerPid = (await writer.query('SELECT pg_backend_pid() AS pid')).rows[0].pid
+              await writer.query('UPDATE "V3PrintControlPlane" SET "updatedAt"="updatedAt" WHERE id=$1', [plane.id])
+              loser = runLegacyFinalization(db, scope, executor, version, mode)
+              void loser.catch(() => {})
+              let blocked = false
+              const deadline = Date.now() + 3000
+              while (!blocked && Date.now() < deadline) {
+                blocked = (await pool.query('SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))) AS blocked', [writerPid])).rows[0].blocked
+                if (!blocked) await new Promise(resolve => setTimeout(resolve, 10))
+              }
+              assert.ok(blocked, 'second database connection observed waiting on the writer')
+              await writer.query('COMMIT')
+              await expectUnchanged(await loser)
+            } finally {
+              await writer.query('ROLLBACK')
+              writer.release()
+              if (loser) await loser
+            }
 
             const ok = await runLegacyFinalization(db, scope, executor, version, mode)
             assert.ok(ok.ok)

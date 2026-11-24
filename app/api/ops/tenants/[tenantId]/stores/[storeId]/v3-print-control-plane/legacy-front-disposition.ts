@@ -625,10 +625,10 @@ export async function runLegacyFinalization(
   return result
 }
 
-export function caseRejection(error: unknown) {
+export function caseRejection(error: unknown, includeDatabaseErrors = true) {
   if (error instanceof CaseStop) return error.message
   if (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
+    includeDatabaseErrors && error instanceof Prisma.PrismaClientKnownRequestError &&
     ['P2002', 'P2025', 'P2028', 'P2034', 'P2010'].includes(error.code)
   )
     return 'CASE_OUTCOME_REQUIRES_READBACK'

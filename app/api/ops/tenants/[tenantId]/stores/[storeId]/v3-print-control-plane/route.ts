@@ -206,6 +206,7 @@ export async function POST(
     })
   }
   let legacyRequest = false
+  let ordinaryAfterCutover = false
   let activationCommitted = false
   try {
     const auth = await authorizeStore(req, params)
@@ -230,6 +231,7 @@ export async function POST(
     if (!command.ok) return noStoreJson({ ok: false, error: command.code }, { status: 400 })
     const finalAction = command.value.action
     legacyRequest = isTarget(scope) && (finalAction === 'FINALIZE_V3_ACTIVE' || finalAction === 'FINALIZE_V2_ACTIVE')
+    ordinaryAfterCutover = legacyRequest && command.value.expectedStateVersion >= legacyPlan.control.stateVersion + 3
     const result = legacyRequest && (finalAction === 'FINALIZE_V3_ACTIVE' || finalAction === 'FINALIZE_V2_ACTIVE')
       ? await runLegacyFinalization(prisma, scope, auth.operator, command.value.expectedStateVersion, finalAction)
       : await runOpsPrintModeAction(db, {
@@ -250,7 +252,7 @@ export async function POST(
       ? noStoreJson({ ok: true, requestId: result.requestId, state })
       : noStoreJson({ ok: false, error: result.code, state }, { status: 409 })
   } catch (error) {
-    const code = activationCommitted ? 'CASE_ACTIVATION_COMMITTED_READBACK_REQUIRED' : legacyRequest && caseRejection(error)
+    const code = activationCommitted ? 'CASE_ACTIVATION_COMMITTED_READBACK_REQUIRED' : legacyRequest && caseRejection(error, !ordinaryAfterCutover)
     if (code) return noStoreJson({ ok: false, error: code }, { status: code.endsWith('FORBIDDEN') ? 403 : code === 'CASE_COMMAND_INVALID' ? 400 : 409 })
     return serverFailure(error)
   }
