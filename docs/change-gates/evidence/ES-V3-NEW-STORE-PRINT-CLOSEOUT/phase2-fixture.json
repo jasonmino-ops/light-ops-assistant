@@ -1,0 +1,6 @@
+{
+  "source": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+  "environment": "new empty local cluster; candidate app and legacy feed HTTP are separate loopback processes; synthetic scope only",
+  "exit": 0,
+  "stopped": true
+}

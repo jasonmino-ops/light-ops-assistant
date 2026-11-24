@@ -1,0 +1,24 @@
+{
+  "releaseId": "ES-V3-NEW-STORE-PRINT-CLOSEOUT-ST04-EXACT",
+  "taskIds": [
+    "ES-V3-LEGACY-PENDING-DISPOSITION-01",
+    "ES-V3-NEW-OWNER-CLEAN-START-01",
+    "ES-V3-NEW-STORE-PRINT-CLOSEOUT"
+  ],
+  "baseProductionSha": "b36c47e137693e067a7d26d40706df8f89610f29",
+  "sourceMainSha": "1fe4481dcc64adf48af2c4d5cfff8addf79ed3a1",
+  "includedSourceCommits": [
+    "7831461aa623d586febef9979adafec755d6c2c0",
+    "f5a1ad5dfc33a3f9c9271e1a34e9e7f24d2e84d7",
+    "b8ec5831f7403c1eebfed3756630d0ff2e3880b5",
+    "da2b3fc7aaff04187e64c36399bdb941f8aecee7"
+  ],
+  "founderAuthorization": {
+    "status": "PENDING",
+    "approvedBy": null,
+    "approvedAt": null
+  },
+  "releaseSha": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+  "deploymentId": "PENDING",
+  "productionSha": "PENDING"
+}

@@ -1,0 +1,155 @@
+{
+  "OpsOrOwnerGrant": null,
+  "alreadySignedFrozenPayloadSha256": "28f3d77af8e9f7913b7981a0265ac763dc3199cc78a42de3d1e87ca8b2c11458",
+  "confirmedOnly": "Exact frozen successor of the adapter fingerprint specified by the signing request.",
+  "core": {
+    "main": {
+      "baseline": "1fe4481dcc64adf48af2c4d5cfff8addf79ed3a1",
+      "collection": "SUITE_SUMMARY\troot-core\texpected=104\tcollected=104\texecuted=104\tpass=99\tfail=5\tknown=0\tnew=5\trecovered=1\tknown_environment_blocked=0\tenvironment_failures=0\tskipped=0\tuncollected=0\tenvironment=PASS\toverall=BLOCKED",
+      "comparedFailures": [
+        {
+          "baselineDiagnosticsMatched": [
+            "AssertionError [ERR_ASSERTION]: trusted M1 history must verify its exact handoff",
+            "actual: undefined,",
+            "expected: true,"
+          ],
+          "file": "tests/native-inventory-m1-successor.test.cjs",
+          "historicalClassification": "baseline_reproduced"
+        },
+        {
+          "baselineDiagnosticsMatched": [
+            "AssertionError [ERR_ASSERTION]: app/api/orders/[orderNo]/checkout/route.ts: notify after success",
+            "actual: false,",
+            "expected: true,"
+          ],
+          "file": "tests/cashier-realtime-integration.test.ts",
+          "historicalClassification": "baseline_reproduced"
+        },
+        {
+          "baselineDiagnosticsMatched": [
+            "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+            "actual: [Array],",
+            "expected: [Array],",
+            "AssertionError [ERR_ASSERTION]: reentry never reconfirms or creates kitchen"
+          ],
+          "file": "tests/es-tray-desktop-pos-entry.test.ts",
+          "historicalClassification": "baseline_reproduced"
+        },
+        {
+          "baselineDiagnosticsMatched": [
+            "AssertionError [ERR_ASSERTION]: merged shift report freeze successor does not match the checkout",
+            "actual: true,",
+            "expected: true,"
+          ],
+          "file": "tests/es-tray-device-print-contract.test.ts",
+          "historicalClassification": "baseline_reproduced"
+        },
+        {
+          "baselineDiagnosticsMatched": [
+            "AssertionError [ERR_ASSERTION]: merged shift report freeze successor does not match the checkout",
+            "actual: true,",
+            "expected: true,"
+          ],
+          "file": "tests/v3-reprint-recovery.test.ts",
+          "historicalClassification": "baseline_reproduced"
+        }
+      ],
+      "rawSha256": "9b412293669ad60c2ede40034233be00c19a57fbc461459d86e6b49342987235",
+      "rawStatus": "BLOCKED",
+      "sameFailureSetAsBaseline": true
+    },
+    "release": {
+      "baseline": "b36c47e137693e067a7d26d40706df8f89610f29",
+      "collection": "SUITE_SUMMARY\troot-core\texpected=103\tcollected=103\texecuted=103\tpass=99\tfail=4\tknown=0\tnew=4\trecovered=1\tknown_environment_blocked=0\tenvironment_failures=0\tskipped=0\tuncollected=0\tenvironment=PASS\toverall=BLOCKED",
+      "comparedFailures": [
+        {
+          "baselineDiagnosticsMatched": [
+            "AssertionError [ERR_ASSERTION]: Diamond trusted main may differ only by exact registrations and approved baseline fixes",
+            "actual: [Array],",
+            "expected: [Array],"
+          ],
+          "file": "tests/cashier-realtime-integration.test.ts",
+          "historicalClassification": "baseline_reproduced"
+        },
+        {
+          "baselineDiagnosticsMatched": [
+            "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+            "actual: 'b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575',",
+            "expected: '8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6',"
+          ],
+          "file": "tests/es-tray-device-print-contract.test.ts",
+          "historicalClassification": "baseline_reproduced"
+        },
+        {
+          "baselineDiagnosticsMatched": [
+            "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+            "503 !== 200",
+            "actual: 503,",
+            "expected: 200,",
+            "999 !== 1",
+            "actual: 999,",
+            "expected: 1,"
+          ],
+          "file": "tests/customer-order-recovery.test.ts",
+          "historicalClassification": "baseline_reproduced"
+        },
+        {
+          "baselineDiagnosticsMatched": [
+            "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+            "actual: 'b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575',",
+            "expected: '8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6',"
+          ],
+          "file": "tests/v3-reprint-recovery.test.ts",
+          "historicalClassification": "baseline_reproduced"
+        }
+      ],
+      "rawSha256": "e08d8c0622bec1a0b39c48e53906d1898d552a1d6c70778f3740762bc6b5d5c6",
+      "rawStatus": "BLOCKED",
+      "sameFailureSetAsBaseline": true
+    }
+  },
+  "founderAdmissionAuthorization": null,
+  "integration": {
+    "cash": "Frozen original assertion on six dependency bytes: only the new personally accepted adapter differs. Seven financial DB subcases passed; raw original test 10/11.",
+    "dashboard": "Same original 20-second wait for 门店配置 reproduced on incumbent and exact candidate; direct comparison stored. No declaration that this browser test passed. Field must use an authorized available runtime settings path and actual readback.",
+    "phase2": "Immutable test demands a dedicated database name differing from the single shared lane DATABASE_URL. Same unmodified test passed on final release with dedicated DB and two private HTTP services. Raw lane failure retained.",
+    "raw": "18 PASS / 3 FAIL / 21 collected / zero file skips; aggregate BLOCKED",
+    "stockRunnerResult": "SUITE_SUMMARY\troot-integration\texpected=21\tcollected=21\texecuted=21\tpass=18\tfail=3\tknown=1\tnew=2\trecovered=1\tknown_environment_blocked=0\tenvironment_failures=0\tskipped=0\tuncollected=0\tenvironment=PASS\toverall=BLOCKED"
+  },
+  "invalidateOn": [
+    "new failure or changed assertion",
+    "changed source file, candidate tree or release/production lineage",
+    "changed platform control/rules, unsafe traffic or target store drift",
+    "expiry or revoked authority"
+  ],
+  "originalSealedHistoricalComparison": "fd2f27136557f03c97b0c0c2091361b4225ae5ae1fb2e4737d59f6bc3da4f20b",
+  "originalTimeLimitUtc": "2026-11-24T19:05:08.074521+00:00",
+  "product": "d274fb2f66e427d8db444af2046e9ad255bee99e",
+  "productionBase": "b36c47e137693e067a7d26d40706df8f89610f29",
+  "releaseAuthorization": null,
+  "releaseSha": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+  "releaseTree": "bc5a5403a4861f77b2394b24e14cfffc8c72ac2e",
+  "schemaMigrationCount": 0,
+  "sourcePreview": "0de2fd3e0fbda5f5df22bae3a167df08e26299e8",
+  "status": "REQUEST_ONLY_INACTIVE",
+  "supplementalEvidenceHashes": {
+    "FOUNDER-SIGNATURE.json": "6db4503667b96f821f3293b85055ad78cab6377785d504d4469eb2b50ba84bf3",
+    "development-source-scope.txt": "c53f03b3a7631e0fea985c7f17c1f2e5975b9e3d8b93d6c2bcfd806e459c0de3",
+    "field-readiness.json": "4490115565c1d13fd98c27d592e9aa77fb83cb56c89bff4ef291dd06c2047f78",
+    "main-provenance-preview.json": "e52a16395c752c7418a5e2d7af687451d1970df5641051a4ad7e340857549eea",
+    "paired-panel-base.log": "9e44ac443203551cb8a245f619d3954447eca46bb10ea5e782c4c6d8a6f6da38",
+    "paired-panel-release.log": "89981dd3771fc0d9a7e15b79a41708b519252bb9110f5fb8a4d4611cbd436a0f",
+    "paired-panel.json": "a58c6727278683a6f53c1f43b2830a37c01d7058babdcee2a6604f6ff5db265b",
+    "paired-panel.py": "8659ba1f83d739292c51f4a4b701d863808ff1c40d9dbd5ecb89e4bd9ba3b943",
+    "phase2-first.tap": "dbfeac9967371c3c661073c8adb40dbcab6a4c9ce42fac2f10b5859fc49aa390",
+    "phase2-fixture.json": "40a68bfa7e76e9af6e26a7c26a6a0d8cbfa8b244564b2171c3a8e48a186f8430",
+    "phase2-fixture.py": "041d301294945bd428e6fdff7eefa695857fce712b100bc634708852db8145fb",
+    "phase2-fixture.tap": "b7bb5c60e771de6acfde2d4d2545fc84414d043f6ec2740ea724b785117ecbeb",
+    "protected-integration.json": "ff770d7f1286bbc21227f5922a6fc058e4664cf6bdaccedd1ba6114b0fe73321",
+    "protected-integration.log": "616c40474e4787f83125c5de0fbe549b1889537461a97be098992017f288c41e",
+    "protected-source-scope.txt": "8b97a490f7cabc6408f09246e38d2ca6614221d974e10ffeccb44b60d1bf99c7",
+    "run-protected-integration.py": "3e3b5bdd50262891df87047843674b48bb47b468fdd7a191e1e00e760a92b7a8"
+  },
+  "task": "ES-V3-NEW-STORE-PRINT-CLOSEOUT",
+  "trustedMainBaseline": "1fe4481dcc64adf48af2c4d5cfff8addf79ed3a1"
+}

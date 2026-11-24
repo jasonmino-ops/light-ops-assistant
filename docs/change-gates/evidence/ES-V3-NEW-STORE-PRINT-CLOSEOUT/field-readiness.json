@@ -1,0 +1,35 @@
+{
+  "store": "ST04C05602",
+  "serverUtc": "2026-11-24T02:24:56.900726+00:00",
+  "sevenIdsExactlyEqual": true,
+  "compared": [
+    "jobs",
+    "control",
+    "store",
+    "gate",
+    "batches",
+    "devices"
+  ],
+  "physicalResults": "UNKNOWN",
+  "oldDevice": "cmv7pcvbz000206lat4q50o87",
+  "ownerEpoch": 1,
+  "controlVersion": 4744,
+  "validExecutionBatches": 0,
+  "unrevokedExpiredBatches": 1,
+  "actualDispositionOrHandoff": false,
+  "next": {
+    "actionA": "requires exact deployed release, authenticated distinct Ops, fresh grant and strict readback",
+    "handoffConfirmationId": "ST04C05602-V727-LEGACY7-20261124-01",
+    "candidateDevice": "cmwsu4zip001s08l4a3464hkt",
+    "expectedVersions": [
+      4744,
+      4745,
+      4746,
+      4747
+    ],
+    "expectedOwnerEpochAfterHandoff": 2,
+    "actionB": "separate fresh grant and empty-queue/lease/HELD preflight"
+  },
+  "endpointFileActive": false,
+  "fieldTicketsCreated": 0
+}

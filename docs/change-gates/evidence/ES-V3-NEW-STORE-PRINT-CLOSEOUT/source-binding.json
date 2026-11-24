@@ -1,0 +1,47 @@
+[
+  {
+    "path": "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/legacy-front-disposition.ts",
+    "product": "eedf2d668c626ce7c2bcdd0f32dad3b61483bf57eda1dff6361462db700a8c7b",
+    "release": "eedf2d668c626ce7c2bcdd0f32dad3b61483bf57eda1dff6361462db700a8c7b"
+  },
+  {
+    "path": "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/legacy-front-grant.ts",
+    "product": "0132903037bee83d5763e128cc508d02ee3f5a7cddba5422b3e4a9fb4ac356bc",
+    "release": "0132903037bee83d5763e128cc508d02ee3f5a7cddba5422b3e4a9fb4ac356bc"
+  },
+  {
+    "path": "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/route.ts",
+    "product": "2e2faa8149c7652b9213bbd842ba38b808832daca3820dea8cb708c6c648c282",
+    "release": "2e2faa8149c7652b9213bbd842ba38b808832daca3820dea8cb708c6c648c282"
+  },
+  {
+    "path": "lib/v3-legacy-seven/admission.json",
+    "product": "5b53783cd4b979ad1370c54a57fad8540f854fe64dec64eb47cddc94afb5611c",
+    "release": "5b53783cd4b979ad1370c54a57fad8540f854fe64dec64eb47cddc94afb5611c"
+  },
+  {
+    "path": "lib/v3-legacy-seven/clean-start.ts",
+    "product": "4c971bb659f1b866a4718b027a57cc1b700bdd450895780e85e419b0b035c5c9",
+    "release": "4c971bb659f1b866a4718b027a57cc1b700bdd450895780e85e419b0b035c5c9"
+  },
+  {
+    "path": "lib/v3-legacy-seven/sealed-next-attempt.json",
+    "product": "444bc6875c0d53f0dd2d6d2b5301fde9ba2ee1d16afd0bfeb8dc80ba4caf92c2",
+    "release": "444bc6875c0d53f0dd2d6d2b5301fde9ba2ee1d16afd0bfeb8dc80ba4caf92c2"
+  },
+  {
+    "path": "lib/v3-print-job-adapter.ts",
+    "product": "b24c4bbf902c145ffef5f48ee52b25a39a87c567f8315f1d42d1ffec3878e22d",
+    "release": "b24c4bbf902c145ffef5f48ee52b25a39a87c567f8315f1d42d1ffec3878e22d"
+  },
+  {
+    "path": "scripts/test/manifests/root-integration-tests.json",
+    "product": "5dab8718ec8d47ba46f307e9e51c71e3214c77d3130de8f4d00ffd349e49b661",
+    "release": "280c9d7cea2f7564a462371a8cf9e1d315b4e7cec72b19c68e4e320bf44384f0"
+  },
+  {
+    "path": "tests/v3-legacy-seven-clean-start.test.ts",
+    "product": "1fc8394489ea9087a03964c421c6b61822305bd04ff4f314ca8a88c043e6ea68",
+    "release": "1fc8394489ea9087a03964c421c6b61822305bd04ff4f314ca8a88c043e6ea68"
+  }
+]
