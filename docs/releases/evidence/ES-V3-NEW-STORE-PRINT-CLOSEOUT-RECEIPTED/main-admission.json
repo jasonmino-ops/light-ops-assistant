@@ -1,0 +1,10 @@
+{
+  "task": "ES-V3-NEW-STORE-PRINT-CLOSEOUT",
+  "request": "call_95b178f84a3b476db5b05877a57eda33[0]",
+  "verbatim": "批准精确处置、main 登记及校验器准备",
+  "recordedUtc": "2026-11-24T02:44:03.718737+00:00",
+  "approvedDispositionSha256": "3fcd25925f0d1544229c50ecc7d6368a323a56b117ba830025f72c6bdf3bf5ae",
+  "from": "1fe4481dcc64adf48af2c4d5cfff8addf79ed3a1",
+  "to": "998860c4bda6d77e5f2ff084e47a1cfc03a41fc9",
+  "scope": "candidate-specific disposition for source registration and preparation; exact FF main; local preparation of exact ST04 controller; no release, production write or owner handoff"
+}

@@ -1,0 +1,10 @@
+{
+  "verdict": "PASS",
+  "control": "6617214dfb56b3e8b7bd6283590a1962892a4570",
+  "candidate": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+  "tree": "bc5a5403a4861f77b2394b24e14cfffc8c72ac2e",
+  "manifestSha256": "889e63e955f4ac7ff7d304fc04a7cb1995b82b2be7ed67b9c8a5b073fa295955",
+  "evidence": "Independent Codex closeout_finalize_review PASS on final recovery controller 6617214dfb56b3e8b7bd6283590a1962892a4570, candidate d1ffbaea3d01c219bfb45a99ea360c511f27cf36, tree bc5a5403a4861f77b2394b24e14cfffc8c72ac2e, manifest 889e63e955f4ac7ff7d304fc04a7cb1995b82b2be7ed67b9c8a5b073fa295955. Both phases reject reruns and ambiguous history. For the fresh SHA the signer posts at most once, records the original response ID before readback, and retries only absent state with bounded GETs. Independent 42/42 tests, four-path Scope PASS. Original failure, missing initial POST receipt, and raw CORE remain recorded. No external action. New exact grant, live App success, active window and unchanged preconditions remain required.",
+  "evidenceSha256": "7d7c7c4c760bbe2d5a424b5e538a73552789f11f991d63774c0dee59669eacbc",
+  "provenance": "Independent Codex closeout_finalize_review final reply, this task. Exact local review only."
+}

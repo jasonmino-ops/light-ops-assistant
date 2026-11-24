@@ -1,0 +1,51 @@
+{
+  "releaseId": "ES-V3-NEW-STORE-PRINT-CLOSEOUT-ST04-EXACT-RECEIPTED",
+  "taskIds": [
+    "ES-V3-LEGACY-PENDING-DISPOSITION-01",
+    "ES-V3-NEW-OWNER-CLEAN-START-01",
+    "ES-V3-NEW-STORE-PRINT-CLOSEOUT"
+  ],
+  "baseProductionSha": "b36c47e137693e067a7d26d40706df8f89610f29",
+  "sourceMainSha": "1896ac9f52185994517bc9b612ac712184585bd4",
+  "includedSourceCommits": [
+    "7831461aa623d586febef9979adafec755d6c2c0",
+    "f5a1ad5dfc33a3f9c9271e1a34e9e7f24d2e84d7",
+    "b8ec5831f7403c1eebfed3756630d0ff2e3880b5",
+    "da2b3fc7aaff04187e64c36399bdb941f8aecee7"
+  ],
+  "founderAuthorization": {
+    "approvedBy": "Founder",
+    "status": "APPROVED",
+    "authorizationId": "ES-V3-NEW-STORE-PRINT-CLOSEOUT-ST04-EXACT-RECEIPTED-PROTECTED-RELEASE",
+    "approvedAt": "2026-11-24T03:15:59.727Z",
+    "includedSourceCommits": [
+      "7831461aa623d586febef9979adafec755d6c2c0",
+      "f5a1ad5dfc33a3f9c9271e1a34e9e7f24d2e84d7",
+      "b8ec5831f7403c1eebfed3756630d0ff2e3880b5",
+      "da2b3fc7aaff04187e64c36399bdb941f8aecee7"
+    ]
+  },
+  "releaseSha": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+  "deploymentId": "PENDING",
+  "productionSha": "PENDING",
+  "control": "6617214dfb56b3e8b7bd6283590a1962892a4570",
+  "releaseTree": "bc5a5403a4861f77b2394b24e14cfffc8c72ac2e",
+  "productionDeployment": "dpl_Enq3R1v2BezAHNh7G1mW6KYdj53g",
+  "storeCode": "ST04C05602",
+  "migrationCount": 0,
+  "manifestSha256": "889e63e955f4ac7ff7d304fc04a7cb1995b82b2be7ed67b9c8a5b073fa295955",
+  "controllerSha256": {
+    ".github/release-validator/st04-closeout.json": "889e63e955f4ac7ff7d304fc04a7cb1995b82b2be7ed67b9c8a5b073fa295955",
+    ".github/release-validator/st04-closeout.mjs": "44ee1027cb41541ae6258905cc764911512e14f3e9a8b73e85530aca0425ce19",
+    ".github/release-validator/st04-closeout.test.mjs": "6a1f74ccc263e176ab0dae90b7f494ed46d657d17ed2983364b1b2ae29b672c1",
+    ".github/workflows/selective-release-validator.yml": "f6289accf3a6f9e7ddd04927611054096ebddfd66858b13795f5cebc4b0b6bdc"
+  },
+  "reviewReceiptSha256": "dfd23d23b48c05f4afad95958ffade4d689fccca58e49e2aa0604357d407a60f",
+  "authorizationReceiptSha256": "ed5aca51eb52b39c81b9ebf24e00f6f8814a06e8b22dc9136d156054fb1691e2",
+  "authorizationQuote": "本人签认 ST04 同树候选 d1ffbaea，并批准其通过受保护校验后发布到 Production，零迁移",
+  "issuedAt": "2026-11-24T03:17:15.270Z",
+  "expiresAt": "2026-11-24T05:15:59.727Z",
+  "acceptedReleaseDispositionSha256": "3fcd25925f0d1544229c50ecc7d6368a323a56b117ba830025f72c6bdf3bf5ae",
+  "postAdmissionCoreSha256": "e0777582ebfd1a1f2d01ff4f750c3a99c38f8affdb4cd2c21b3b1730181ac9f5",
+  "acceptedSuccessorAdmissionSha256": "df8a3dd7bde542f058e70b4b03d7e0f08f1a3ce6a02c9b0223ac9c7a14e8b513"
+}
