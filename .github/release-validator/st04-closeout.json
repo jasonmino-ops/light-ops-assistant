@@ -1,0 +1,112 @@
+{
+  "taskId": "ES-V3-NEW-STORE-PRINT-CLOSEOUT",
+  "releaseId": "ES-V3-NEW-STORE-PRINT-CLOSEOUT-ST04-EXACT",
+  "taskIds": [
+    "ES-V3-LEGACY-PENDING-DISPOSITION-01",
+    "ES-V3-NEW-OWNER-CLEAN-START-01",
+    "ES-V3-NEW-STORE-PRINT-CLOSEOUT"
+  ],
+  "storeCode": "ST04C05602",
+  "base": "b36c47e137693e067a7d26d40706df8f89610f29",
+  "deployment": "dpl_Enq3R1v2BezAHNh7G1mW6KYdj53g",
+  "candidate": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+  "tree": "bc5a5403a4861f77b2394b24e14cfffc8c72ac2e",
+  "product": "d274fb2f66e427d8db444af2046e9ad255bee99e",
+  "mainBase": "998860c4bda6d77e5f2ff084e47a1cfc03a41fc9",
+  "mainTree": "e24f92cafe0370254cd8e29d9e9f505fd1f01dd2",
+  "previousControl": "45b65b45af9e0eb594a9b5565449e2a412a0d005",
+  "productRef": "refs/heads/codex/es-v3-closeout-protected-20261124",
+  "orderedProjection": [
+    {
+      "fingerprint": "617ebba991757ee789885214d59c700e914f29b7679613a044c4b398ce45ce5e",
+      "release": "35575551bdfca02214f7a9f4a21026c5bcd1da39",
+      "source": "7831461aa623d586febef9979adafec755d6c2c0"
+    },
+    {
+      "fingerprint": "5f73f73c4036b87b5cb172050d24df18e0a738e671c40a56e1fefcd894a0e25f",
+      "release": "f33993497c107ad9090b0b64896fac5f2b0934ff",
+      "source": "f5a1ad5dfc33a3f9c9271e1a34e9e7f24d2e84d7"
+    },
+    {
+      "fingerprint": "d5010d2d7d648b233107e6172af9d9f5999f3db52fbca1078c8e687134779da4",
+      "release": "4fb38a6d30c4cc4e37881f508cf3732bacee4aa1",
+      "source": "b8ec5831f7403c1eebfed3756630d0ff2e3880b5"
+    },
+    {
+      "fingerprint": "08909262813da42025ea6b3c1d55e854212708c91daf6b5890117975fd5d9f2a",
+      "release": "91c84d82b3edbb8b430bbbf9da4f1e7ce3d06966",
+      "source": "da2b3fc7aaff04187e64c36399bdb941f8aecee7"
+    }
+  ],
+  "expiresNoLaterThan": "2026-11-24T19:05:08.074521+00:00",
+  "trustedEvidence": {
+    "docs/change-gates/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/FOUNDER-SIGNATURE.json": "6db4503667b96f821f3293b85055ad78cab6377785d504d4469eb2b50ba84bf3",
+    "docs/change-gates/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/frozen-successor.payload.json": "28f3d77af8e9f7913b7981a0265ac763dc3199cc78a42de3d1e87ca8b2c11458",
+    "docs/change-gates/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/candidate-scoped-disposition.request.json": "3fcd25925f0d1544229c50ecc7d6368a323a56b117ba830025f72c6bdf3bf5ae",
+    "docs/change-gates/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/verification.json": "8606f0900bda8a247153101b3aa91459af1cb1dbd3598e6378ddd07300e9f753",
+    "docs/change-gates/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/source-binding.json": "aece340a99b7467319744c18b022e5880b7cf64d9879aaf1a8bf712f31f279e6",
+    "docs/change-gates/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/projection-mappings.json": "4d31c85f01b2c401d4a17c51ee076718b7919c3af69318fd45b8503779bed918",
+    "docs/change-gates/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/review.json": "18d192370067bc7a75a23b701ad641af89ec423dc7b84670ffff3b001d4cf1a1",
+    "docs/change-gates/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/protected-integration.json": "ff770d7f1286bbc21227f5922a6fc058e4664cf6bdaccedd1ba6114b0fe73321",
+    "docs/change-gates/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/phase2-fixture.json": "40a68bfa7e76e9af6e26a7c26a6a0d8cbfa8b244564b2171c3a8e48a186f8430",
+    "docs/change-gates/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/paired-panel.json": "a58c6727278683a6f53c1f43b2830a37c01d7058babdcee2a6604f6ff5db265b"
+  },
+  "scopePaths": [
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/legacy-front-disposition.ts",
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/legacy-front-grant.ts",
+    "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/route.ts",
+    "lib/v3-legacy-seven/admission.json",
+    "lib/v3-legacy-seven/clean-start.ts",
+    "lib/v3-legacy-seven/sealed-next-attempt.json",
+    "lib/v3-print-job-adapter.ts",
+    "scripts/test/manifests/root-integration-tests.json",
+    "tests/v3-legacy-seven-clean-start.test.ts"
+  ],
+  "guards": {
+    "scripts/check-selective-release.sh": {
+      "main": "21a2e097d8abee173abd4ca21304d5450a81429ce7ce54c4b31fcb5639d43b6d",
+      "candidate": "21a2e097d8abee173abd4ca21304d5450a81429ce7ce54c4b31fcb5639d43b6d",
+      "mainMode": "100755",
+      "candidateMode": "100755"
+    },
+    "scripts/lib/release-provenance.mjs": {
+      "main": "6e877689166d605d83c1b357783c06cad28353ff66ba632d39635fe675398e0b",
+      "candidate": "079e8031d4f2f2a57c153ac9b786eb2dc98a54090684f372a4eccaaab5693dc2",
+      "mainMode": "100755",
+      "candidateMode": "100755"
+    },
+    "scripts/guards/check-change-scope.js": {
+      "main": "5081a836751f7bdcc0272e28e099e3a31ed9960b7a9254cb65c5108a1d502283",
+      "candidate": "5081a836751f7bdcc0272e28e099e3a31ed9960b7a9254cb65c5108a1d502283",
+      "mainMode": "100644",
+      "candidateMode": "100644"
+    },
+    "docs/change-gates/gate-config.json": {
+      "main": "0410ac1629d87ea99d4089ef38184617a657e866282c0cc5c5048ce607fabd9f",
+      "candidate": "0410ac1629d87ea99d4089ef38184617a657e866282c0cc5c5048ce607fabd9f",
+      "mainMode": "100644",
+      "candidateMode": "100644"
+    },
+    "vercel.json": {
+      "main": "eb54ee01c62b86da2b1ac33d3f7126b0340b646abc9a553ee54c4470c2add7ba",
+      "candidate": "eb54ee01c62b86da2b1ac33d3f7126b0340b646abc9a553ee54c4470c2add7ba",
+      "mainMode": "100644",
+      "candidateMode": "100644"
+    }
+  },
+  "mainAdmissionReceiptSha256": "d11669eb04e0ab923db7cf4fd19be2b9a7fb9e3d12f12a25b82ad5662bce2c80",
+  "postAdmissionCore": {
+    "evidenceSha256": "529104bf2a5893274bcc3666dd4df90ae16755eff3e723700c92c92e5efacee4",
+    "historicalBase": "67338b57bf2d872e2b0755c76820036f6f0743f4",
+    "currentOperandSha256": "c6d9ae9e9da32755cc827c0b5a7330116b77856b6c23da66ee7335fd2a99680c",
+    "nextOperandSha256": "eab8596754e3c834bfb262a9f13f6fee606979fc68b217a5d7b362e3ffb82e8a",
+    "currentPathCount": 406,
+    "nextPathCount": 410,
+    "additionalGovernancePaths": [
+      "docs/releases/ES-V3-NEW-STORE-PRINT-CLOSEOUT.json",
+      "docs/releases/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/controller-review.json",
+      "docs/releases/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/founder-release.json",
+      "docs/releases/evidence/ES-V3-NEW-STORE-PRINT-CLOSEOUT/main-admission.json"
+    ]
+  }
+}
