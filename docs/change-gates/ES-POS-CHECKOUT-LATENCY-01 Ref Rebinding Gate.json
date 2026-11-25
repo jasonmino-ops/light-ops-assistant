@@ -1,0 +1,57 @@
+{
+  "taskId": "ES-POS-CHECKOUT-LATENCY-01",
+  "status": "DRAFT_NOT_APPROVED_NOT_ACTIVE",
+  "decisionRequired": "Exact task-only governance-ref rebinding; conditional seven-case approval and implementation are not requested again",
+  "approvedGateSha256": "d8ead67ed9ce05cb8155970a95df7aaa4b9484d5ec1ba0dc5afd3f7c6a15e287",
+  "founderConditionalAuthorizationSha256": "a669062da6b9900ace133cdc04886a0b01529888266ecdf12154db93b49f4a90",
+  "candidate": "93527d125baeb6c62559b7b9deb251c7960212da",
+  "tree": "aa7e7a9568c481d3ca94786791cf29e1ededa7e7",
+  "productionBaseline": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+  "approvedTrustedMain": "9288844c6ada7ee17b87bd91c352d43c03129924",
+  "revalidatedTrustedMain": "e0f9e5cf24aa00523e250686412a487ea8d57f09",
+  "deadlineExclusive": "2026-11-26T12:51:20Z",
+  "casesRemainExactlySeven": "FAILURE-IDENTITIES.json",
+  "failureIdentitiesSha256": "0a939441d9a43a8260fb087e33b2acd3f88538758a133483cbf2cbca18fe5cd8",
+  "rawCoreStatus": "BLOCKED_99PASS_4FAIL_0SKIP_103EXECUTED",
+  "supplementalRecovery": "Unmodified original assertions on d1ff and935 each5PASS0FAIL0SKIP; missing no-job fixture completed externally; no live DB certification",
+  "noNewOrExpandedBusinessRegression": "PASS_BOUNDED_BY_EVIDENCE_AND_INDEPENDENT_REVIEW",
+  "proposedPermission": {
+    "rebindCurrentGovernanceHead": true,
+    "laterGovernanceHeadAdvance": "For this candidate and fixed deadline only, allow independently reviewed unrelated documentary exact-exception/release-authorization record advances and necessary own Acceptance-registration commits, after checks below. This is not a global governance-rule change.",
+    "requiredAtEveryAdvance": [
+      "Same93527 candidate/tree and exact four-file Production delta; same actualProduction d1ff and environment/dependencies",
+      "Complete semantic diff contains only unrelated task documentary exception/release records or this task necessary Acceptance receipt; no other authority use",
+      "No runtime/test/schema/dependency/build/CI/workflow/Guard/KTF/authority/freeze/task-exception/Scope/rule change",
+      "Verify all unaffected evidence inputs and deadline; rerun affected applicable checks under WorkflowV2 section5.5",
+      "Same seven reached failure identities; same raw FAIL/BLOCKED/counts/execution coverage, no added/replaced/skipped/unexecuted case",
+      "T2-T7 expected and actual unchanged; T1 variation allowed ONLY as separately preserved deterministic extra unrelated documentary paths or explicitly approved necessary own Acceptance-registration paths in the rejected main-diff list, with original expected five-path whitelist/predicate unchanged and exact baseline/candidate normalized failure equality at each ref",
+      "Independent read-only review of changed governance influence, source immutability, affected evidence and permitted T1 variation",
+      "Preserve all raw failures and all originally unexecuted assertions; supplemental PASS results remain separate",
+      "Record exact resulting Governance Head independently of Product Candidate; do not claim STRICT ancestry or release authority"
+    ],
+    "ifSatisfied": "Complete exact seven-case documentary disposition and separate formal pre-merge Acceptance decision under the existing process; necessary governance records may be committed/pushed/merged into trusted main",
+    "ifNotSatisfied": "Do not activate or transfer; retain formal Acceptance PENDING and Release BLOCKED"
+  },
+  "neverAuthorized": [
+    "business or additional test change",
+    "Guard/KTF/test expectation/rule weakening",
+    "blanket CORE PASS or unlisted failure waiver",
+    "business main merge",
+    "release-ref write",
+    "Preview or Production deploy",
+    "migration",
+    "terminal/realorder/printing operation",
+    "FIELD VERIFIED or CLOSED"
+  ],
+  "evidenceBindings": {
+    "TRUSTED-REF-REVALIDATION.json": "545ac3c876877f8939cc68a597d436e01cad9781ae09390fbf296a738bb7e2b4",
+    "EXECUTION-RECEIPT.json": "772bd71019f1a8fe8c04e079cceff48feeccce24ac68fa3026a23427215dfebb",
+    "KNOWN-FAILURES-EVIDENCE-v1.json": "7d4027272ba05482267686cfb50f2af135d2465ac87592464de0e47302572353",
+    "CUSTOMER-REGRESSION-INDEPENDENT-REVIEW.md": "8c4d3d96075a3a95f29ed135942fcd9d3589a888862e34df993c45838b243337",
+    "AUTHORITY-INDEPENDENT-REVIEW.md": "bec039977c19461d737f6ae8a574430675dd7ddca05132cc4ee5e62cbfd6ee42"
+  },
+  "sourceRawEvidenceUnmodified": true,
+  "expiryNotExtended": true,
+  "approvedBy": null,
+  "approvedAt": null
+}

@@ -1,0 +1,100 @@
+{
+  "taskId": "ES-POS-CHECKOUT-LATENCY-01",
+  "status": "DRAFT_NOT_APPROVED_NOT_ACTIVE",
+  "candidate": "93527d125baeb6c62559b7b9deb251c7960212da",
+  "tree": "aa7e7a9568c481d3ca94786791cf29e1ededa7e7",
+  "trustedMain": "9288844c6ada7ee17b87bd91c352d43c03129924",
+  "productionBaseline": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+  "rawCore": "103/103 executed;99PASS4FAIL0SKIP;BLOCKED;runner newFailures4 versus KTF",
+  "taskRelativeAddedObservedFailedFiles": 0,
+  "historicalApprovedProposalSha256": "51c10106741c44ecb8cd6a6626e885e98f2a250a666d46cfb974bab72b5f8d90",
+  "historicalGrantAutomaticallyInherited": false,
+  "cases": [
+    {
+      "id": "T1",
+      "assertion": "tests/cashier-realtime-integration.test.ts:736",
+      "name": "Diamond trusted main may differ only by exact registrations and approved baseline fixes",
+      "actual": "actual origin/main diff fails the exact expected path whitelist; exact values preserved in raw log",
+      "historicalCoverage": "old F1 is :167 notify marker, not this reached assertion"
+    },
+    {
+      "id": "T2",
+      "assertion": "tests/es-tray-device-print-contract.test.ts:469",
+      "name": "the cashier page remains byte-identical to its merged exact governance approval",
+      "expected": "8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6",
+      "actual": "b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575",
+      "historicalCoverage": "old F4 is :476 successor.blocked, not this reached digest assertion"
+    },
+    {
+      "id": "T3",
+      "assertion": "tests/customer-order-recovery.test.ts:83",
+      "name": "recovery advances beyond ten pages and keeps renderer-blocked intents visible",
+      "expected": 200,
+      "actual": 503,
+      "historicalCoverage": "not included in the approved historical seven cases"
+    },
+    {
+      "id": "T4",
+      "assertion": "tests/customer-order-recovery.test.ts:109",
+      "name": "expired intent is visible and removed from the actionable set",
+      "expected": 200,
+      "actual": 503,
+      "historicalCoverage": "not included in the approved historical seven cases"
+    },
+    {
+      "id": "T5",
+      "assertion": "tests/customer-order-recovery.test.ts:127",
+      "name": "recovery persists a retry backoff for a bad row instead of leaving it at the queue head",
+      "expected": 1,
+      "actual": 999,
+      "historicalCoverage": "not included in the approved historical seven cases"
+    },
+    {
+      "id": "T6",
+      "assertion": "tests/customer-order-recovery.test.ts:152",
+      "name": "V2_ACTIVE never creates an H5 job and recovery remains visible",
+      "expected": 200,
+      "actual": 503,
+      "historicalCoverage": "not included in the approved historical seven cases"
+    },
+    {
+      "id": "T7",
+      "assertion": "tests/v3-reprint-recovery.test.ts:841",
+      "name": "protected Cashier and Records blobs match the exact active authorization",
+      "expected": "8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6",
+      "actual": "b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575",
+      "historicalCoverage": "old F6 is :848 successor.blocked, not this reached digest assertion; later Records digest NOT_EXECUTED_NOT_PASS"
+    }
+  ],
+  "rawLogSha256": "4346894f0643d3138972fa149745c97a0f1747a02874899e66d753c9b0b19993",
+  "summarySha256": "c8cadfc3c2adcbf3c417ee030f1f09c96929db5032af412fc39e4cb89befdf59",
+  "baselineComparisonSha256": "fb9332781bcae85b6ddf1fd5d65724619982540afb8f63700384be189d9e8952",
+  "executionReceiptSha256": "798ce23299f0b3baa9b05691754ace72113d64dccbf5cfa0347b9e7aabf15e5b",
+  "testReviewSha256": "72140f1dd87284c443493210fe431c6152fdf9cd39ba2002937b1655b994a21a",
+  "governanceReviewSha256": "794f55388a89ac2f0f3754b846e6cbe5e7977a8d26d89d427413a5bbe2fe6f9a",
+  "question": "Whether Founder authorizes a new exact-target documentary admission for these seven reached baseline-reproduced assertions, with explicit formal Acceptance effect, through the existing exception process. Otherwise retain Acceptance PENDING and release BLOCKED. Current no-expanded-waiver authorization does not supply this approval.",
+  "approvedBy": null,
+  "approvedAt": null,
+  "deadlineExclusive": "2026-11-26T12:51:20Z",
+  "rawStatusesRemainUnchanged": true,
+  "unexecutedAssertionsRemainNotCertified": true,
+  "notAuthorized": [
+    "blanketCOREPASS",
+    "unlisted failure or candidate waiver",
+    "Guard/KTF/rule or additional test edits",
+    "business code changes",
+    "main business merge",
+    "deploy",
+    "migration",
+    "terminal/realorder/printing operation"
+  ],
+  "invalidateOn": [
+    "sha/tree/content/ref/environment/case/result drift",
+    "baseline repair",
+    "expiry"
+  ],
+  "supersedesPendingDraftSha256": "5ba540755be5540132d8cd05ae534671fa3c027d02a7b0140d20308a36d496df",
+  "supersededReason": "trusted ref changed only another task governance record; old pending draft never approved or active",
+  "trustedRefDriftAssessmentSha256": "ee610db9602185b372b570f33cb3502ef4d6bd73abce3dc0c739749edd11ce00",
+  "baselineFocusedRefRevalidationSha256": "3fa901ad0584bb9e8c2910822af48f965ae2dd9f4f4c4df9059f6b970baff6c7"
+}
