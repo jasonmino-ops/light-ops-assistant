@@ -61,6 +61,99 @@
       "actualProductionParent": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
       "sealedManifestSha256": "8527b8eed1c7dc4813823d13464632542f3c84e785afc740d5b84a7c88af5f0d",
       "approvalSource": "Founder Release Readiness Authorization approves exact sealed projection; subsequent Founder Authorization expressly approves proposal SHA25651c101...f8d90 and necessary governance registration. Registration time only; no product merge/deploy approval."
+    },
+    {
+      "authorizationId": "CURRENT-PRODUCTION-ADMISSION",
+      "featureBranch": "codex/es-pos-checkout-latency-01-production-admission",
+      "baseOriginMainSha": "ff1e8696860c2d9c2f3285d066d0cd56e1054691",
+      "baseMeaning": "Scope ancestry anchor only; actual repair/development/release Lineage gates remain independently mandatory",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-11-25T20:50:18Z",
+      "approvedAt": "2026-11-25T20:50:18Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Repositoryadmissiononly ofexistingProductionfile; noSQLexecution; preciseACTIVEregistration/Freezeapprovalbeforewrite",
+      "authorizedPaths": [
+        "prisma/migrations/20261125120000_diamond_sales_control/migration.sql"
+      ],
+      "authorizedPathSha256": {
+        "prisma/migrations/20261125120000_diamond_sales_control/migration.sql": "54a7afd834121651e1744c99f98770b5baaae616cea6f4bf0f54873f68699688"
+      },
+      "approvalSource": {
+        "taskId": "ES-POS-CHECKOUT-LATENCY-01",
+        "approvedExactGateSha256": "f047fab3f22c3cc28c32dee236042aabd97b53a2a49295d11c7eed993bcf71b0",
+        "userDecision": "ES-POS-CHECKOUT-LATENCY-01 / Final Integration Authorization",
+        "approvedScope": "main最小真实准入＋Production独立四文件投影；精确14路径main准入、必要治理、STRICT、新测试源、必要提交推送main合并；不授权生产部署/数据库迁移/营业终端变更",
+        "recordedAt": "2026-11-25T20:50:18Z",
+        "notExternalSignature": true,
+        "noDeployment": true,
+        "originalDispositionDeadline": "2026-11-26T12:51:20Z"
+      },
+      "expiresAt": "2026-11-26T12:51:20Z",
+      "noProductionDeploymentOrMigration": true
+    },
+    {
+      "authorizationId": "ACCEPTED-SOURCE-MAIN-ADMISSION",
+      "featureBranch": "codex/es-pos-checkout-latency-01-source-admission",
+      "baseOriginMainSha": "ff1e8696860c2d9c2f3285d066d0cd56e1054691",
+      "baseMeaning": "Scope ancestry anchor only; actual repair/development/release Lineage gates remain independently mandatory",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-11-25T20:50:18Z",
+      "approvedAt": "2026-11-25T20:50:18Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "SameearlierStage3sealedmain-routebytes, newbranch-specificgrant needed. Preserve maincurrency; nottheProductionroute.",
+      "authorizedPaths": [
+        "app/api/cashier/sales/route.ts"
+      ],
+      "authorizedPathSha256": {
+        "app/api/cashier/sales/route.ts": "1a2ed22149bb6cd81d463d950fa8c8abe2e07cb309576e7ba0531761c966a6e9"
+      },
+      "approvalSource": {
+        "taskId": "ES-POS-CHECKOUT-LATENCY-01",
+        "approvedExactGateSha256": "f047fab3f22c3cc28c32dee236042aabd97b53a2a49295d11c7eed993bcf71b0",
+        "userDecision": "ES-POS-CHECKOUT-LATENCY-01 / Final Integration Authorization",
+        "approvedScope": "main最小真实准入＋Production独立四文件投影；精确14路径main准入、必要治理、STRICT、新测试源、必要提交推送main合并；不授权生产部署/数据库迁移/营业终端变更",
+        "recordedAt": "2026-11-25T20:50:18Z",
+        "notExternalSignature": true,
+        "noDeployment": true,
+        "originalDispositionDeadline": "2026-11-26T12:51:20Z"
+      },
+      "expiresAt": "2026-11-26T12:51:20Z",
+      "noProductionDeploymentOrMigration": true
+    },
+    {
+      "authorizationId": "FINAL-RELEASE-PROJECTION",
+      "featureBranch": "codex/es-pos-checkout-latency-01-release-projection",
+      "baseOriginMainSha": "b0aa38a1d1bf4d1aa0f375f1c42da6e4436dc481",
+      "baseMeaning": "Scope ancestry anchor only; actual repair/development/release Lineage gates remain independently mandatory",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-11-25T20:50:18Z",
+      "approvedAt": "2026-11-25T20:50:18Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "ExactacceptedProductionroutebytes; branch-specificformalregistrationunderexistingmechanism, noGuardweakening",
+      "authorizedPaths": [
+        "app/api/cashier/sales/route.ts"
+      ],
+      "authorizedPathSha256": {
+        "app/api/cashier/sales/route.ts": "a04f1bd365c56c1f73c0a648844a6d0468cf2690119b04acd826d1dab36b68c7"
+      },
+      "approvalSource": {
+        "taskId": "ES-POS-CHECKOUT-LATENCY-01",
+        "approvedExactGateSha256": "f047fab3f22c3cc28c32dee236042aabd97b53a2a49295d11c7eed993bcf71b0",
+        "userDecision": "ES-POS-CHECKOUT-LATENCY-01 / Final Integration Authorization",
+        "approvedScope": "main最小真实准入＋Production独立四文件投影；精确14路径main准入、必要治理、STRICT、新测试源、必要提交推送main合并；不授权生产部署/数据库迁移/营业终端变更",
+        "recordedAt": "2026-11-25T20:50:18Z",
+        "notExternalSignature": true,
+        "noDeployment": true,
+        "originalDispositionDeadline": "2026-11-26T12:51:20Z"
+      },
+      "expiresAt": "2026-11-26T12:51:20Z",
+      "noProductionDeploymentOrMigration": true
     }
   ]
 }

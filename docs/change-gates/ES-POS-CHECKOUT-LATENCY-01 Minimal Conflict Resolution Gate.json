@@ -1,0 +1,191 @@
+{
+  "taskId": "ES-POS-CHECKOUT-LATENCY-01",
+  "status": "DRAFT_NOT_APPROVED_NOT_ACTIVE",
+  "purpose": "Exact minimum conflict/source-admission and later candidate preparation authorization ONLY, not deployment",
+  "trustedMain": "ff1e8696860c2d9c2f3285d066d0cd56e1054691",
+  "actualProduction": "1f4e3acb8455a72b2aabd3885c3db161607aad25",
+  "acceptedSource935": "93527d125baeb6c62559b7b9deb251c7960212da",
+  "manifestSha256": "d9f933bffd0bb93c28cf31bd7d1cf90b7020791a758f5f6cd3991f5349d8286e",
+  "currentRulesReleaseFirstHotfix": "HOLD under selective§8 and WorkflowV2§5.6; no rules/Guard change proposed",
+  "requestedMainPreparationScope": {
+    "stageA": {
+      "purpose": "Genuine proposed2parentmain+actualProduction ancestry admission with actual10pathcontent. Preserve main runtime contracts; NOT a union or semanticcertification of Production runtime on main. CurrentProduction capabilities guaranteed on separate release tree only; explicitly requires Founder acceptance of this narrowed invariant. No ours-only/tree-equal fake merge.",
+      "files": [
+        {
+          "path": "app/api/native-inventory/sales-control/route.ts",
+          "mainBeforeSha256": null,
+          "proposedSha256": "6b163bc6dea5b55c1f4013b321fa422723ea678db1ac039c082beab7637e47f5",
+          "productionSha256": "6b163bc6dea5b55c1f4013b321fa422723ea678db1ac039c082beab7637e47f5",
+          "productionIdentical": true
+        },
+        {
+          "path": "app/native-inventory/page.tsx",
+          "mainBeforeSha256": "aba624d066f9fbafacc169223e54169990ea1419846e4d51ccd4a8a8ae6c8c10",
+          "proposedSha256": "456587c89b5aa0fd33d9418dc3521177260a3b3c4d76dd977c840e4bbfb7f4bb",
+          "productionSha256": "1b8a5f22cc0cf4635243300ff2a02b91bed640efe589548b24199232c896c177",
+          "productionIdentical": false
+        },
+        {
+          "path": "app/native-inventory/sales-control.tsx",
+          "mainBeforeSha256": null,
+          "proposedSha256": "ee5ad5f749e3249069f8d25ec41eb332e79350d2eadc2a80eeedd514f384b776",
+          "productionSha256": "ee5ad5f749e3249069f8d25ec41eb332e79350d2eadc2a80eeedd514f384b776",
+          "productionIdentical": true
+        },
+        {
+          "path": "lib/native-inventory/sales-control.ts",
+          "mainBeforeSha256": null,
+          "proposedSha256": "d772c7ca5e54e4e30bc18e158c52e8ded2ccb7353633a3198f5ff664b103635f",
+          "productionSha256": "d772c7ca5e54e4e30bc18e158c52e8ded2ccb7353633a3198f5ff664b103635f",
+          "productionIdentical": true
+        },
+        {
+          "path": "lib/pos-request-ledger.ts",
+          "mainBeforeSha256": null,
+          "proposedSha256": "d763250fbca32c80eaccbb39346417b2bb0c5f9d24330f487223eb60c65379f1",
+          "productionSha256": "d763250fbca32c80eaccbb39346417b2bb0c5f9d24330f487223eb60c65379f1",
+          "productionIdentical": true
+        },
+        {
+          "path": "prisma/migrations/20261125120000_diamond_sales_control/migration.sql",
+          "mainBeforeSha256": null,
+          "proposedSha256": "54a7afd834121651e1744c99f98770b5baaae616cea6f4bf0f54873f68699688",
+          "productionSha256": "54a7afd834121651e1744c99f98770b5baaae616cea6f4bf0f54873f68699688",
+          "productionIdentical": true
+        },
+        {
+          "path": "scripts/test/manifests/root-integration-tests.json",
+          "mainBeforeSha256": "5dab8718ec8d47ba46f307e9e51c71e3214c77d3130de8f4d00ffd349e49b661",
+          "proposedSha256": "a9969ef689a060b5c0c437ccec28666e368d38982a433c4949cbe8ff37193ad6",
+          "productionSha256": "b8efabd24868b463a1ae597f6450aa3766c397a147ace9f23b14d857e189cf9e",
+          "productionIdentical": false
+        },
+        {
+          "path": "tests/native-inventory-control.test.ts",
+          "mainBeforeSha256": null,
+          "proposedSha256": "95c3b9d1ca79654e7fe442dd74702346fa6252c984eae66121bd47e18701a308",
+          "productionSha256": "95c3b9d1ca79654e7fe442dd74702346fa6252c984eae66121bd47e18701a308",
+          "productionIdentical": true
+        },
+        {
+          "path": "tests/native-inventory-control/control.test.ts",
+          "mainBeforeSha256": null,
+          "proposedSha256": "7b98bc0c86b71a2e5e18e7d03e1b62453fbb876414a8114a867def3270e4bd6f",
+          "productionSha256": "7b98bc0c86b71a2e5e18e7d03e1b62453fbb876414a8114a867def3270e4bd6f",
+          "productionIdentical": true
+        },
+        {
+          "path": "tests/native-inventory-control/run.py",
+          "mainBeforeSha256": null,
+          "proposedSha256": "e2a555294b942b497ac708d84dc4ee3ffcf7a8c7391171b32bbda5130af43afb",
+          "productionSha256": "e2a555294b942b497ac708d84dc4ee3ffcf7a8c7391171b32bbda5130af43afb",
+          "productionIdentical": true
+        }
+      ],
+      "source11thAlreadyMainIdentical": "tests/fixtures/native-inventory-legacy-acl.sql"
+    },
+    "stageB": {
+      "purpose": "Genuine proposedmain+935 admission; retain maincurrency byteimplementation, implement exactly2optimizations. Source935history unchanged, main variant is not Productionrelease tree.",
+      "files": [
+        {
+          "path": "app/api/cashier/sales/route.ts",
+          "sha256": "1a2ed22149bb6cd81d463d950fa8c8abe2e07cb309576e7ba0531761c966a6e9"
+        },
+        {
+          "path": "lib/cashier-product-batch.ts",
+          "sha256": "a6fb512aa10b526da7394540d840dcfc276fa3fea73a65ce3d2a2e5c67453fe6"
+        },
+        {
+          "path": "tests/cashier-large-cart-query.test.cjs",
+          "sha256": "2bdf7f0aabb3d65e13709e5b30c51a786abafae02fc1e1b94004f9816310c3fd"
+        },
+        {
+          "path": "tests/product-bulk-import-core.test.ts",
+          "sha256": "a4ee38daf67c6dc3b71d67d3881a9180d03ef45eaac2e373d7a63e9d3536438d"
+        }
+      ]
+    },
+    "stageC": {
+      "purpose": "New focused test-only source commit on admitted main, singleparent; changes productionBase d1ff→1f4 only; original935 notrewritten. Needed to keep original all-surroundings assertion meaningful on new target. No approvedsevenfailurewaiver transfer.",
+      "path": "tests/cashier-large-cart-query.test.cjs",
+      "beforeSha256": "2bdf7f0aabb3d65e13709e5b30c51a786abafae02fc1e1b94004f9816310c3fd",
+      "afterSha256": "c06ffa7c40f6c01e09619eafd88e4b5148c0e8edf1b558db175cfcc01d9f6871",
+      "assertionsDeletedOrSkipped": false,
+      "newSourceSha": "NOT_CREATED_NOT_AUTHORIZED"
+    },
+    "uniquePathCount": 14,
+    "note": "Same14paths total; StageC updates one existingStageBtest only. EightStageAfiles copied exactcurrentProduction, page/manifest minimalmaincompatiblecompositions. Existingphase2Productionmigration deliberately notrestoredtomain; currentmaincurrencyandrolloutstate unchanged."
+  },
+  "requiredExplicitBoundaryDecision": {
+    "notProductionRuntimeUnion": true,
+    "notGenerallyReleasableMain": true,
+    "currentMainCurrencySourceRetained": true,
+    "newControlHttpBrowserMigrationOnMain": "NOT_CERTIFIED_BY_BUILD",
+    "exactUserDecisionRequired": "Accept minimal main ancestry/content admission with its own existing currency runtime, not a full currentProduction/main runtime union. Production preservation is established only on the separatecurrentProduction releaseprojection. This narrowing and StageC newtestonlysource are not silently inherited from prior4c authority.",
+    "broaderNativeInventoryAndLedgerClientIntegrationExcluded": true,
+    "noMainOrCurrencyFeatureReleaseAuthorized": true
+  },
+  "proposedBranchScopedProtectedAuthorizations": [
+    {
+      "branch": "codex/es-pos-checkout-latency-01-production-admission",
+      "path": "prisma/migrations/20261125120000_diamond_sales_control/migration.sql",
+      "sha256": "54a7afd834121651e1744c99f98770b5baaae616cea6f4bf0f54873f68699688",
+      "meaning": "Repositoryadmissiononly ofexistingProductionfile; noSQLexecution; preciseACTIVEregistration/Freezeapprovalbeforewrite"
+    },
+    {
+      "branch": "codex/es-pos-checkout-latency-01-source-admission",
+      "path": "app/api/cashier/sales/route.ts",
+      "sha256": "1a2ed22149bb6cd81d463d950fa8c8abe2e07cb309576e7ba0531761c966a6e9",
+      "meaning": "SameearlierStage3sealedmain-routebytes, newbranch-specificgrant needed. Preserve maincurrency; nottheProductionroute."
+    },
+    {
+      "branch": "codex/es-pos-checkout-latency-01-release-projection",
+      "path": "app/api/cashier/sales/route.ts",
+      "sha256": "a04f1bd365c56c1f73c0a648844a6d0468cf2690119b04acd826d1dab36b68c7",
+      "meaning": "ExactacceptedProductionroutebytes; branch-specificformalregistrationunderexistingmechanism, noGuardweakening"
+    }
+  ],
+  "requestedFutureActions": [
+    "Register/review only required exacttaskgovernance, formalACTIVE and frozenapproval records; preserve every existingGuard/config/rule/KTF byte. Existingexceptionclosure rules apply, no blanketACTIVEevergreen.",
+    "After exactFounderimplementation/admissionapproval, construct genuine no-rename main+actual1f4 reconciliation with exactStageA content, review/gates and actualmainmerge; neverours-only/fakeSTRICT. Beforethat do notclaimSAFEdevelopmentPASS.",
+    "Genuine935 history admission with exactStageB mainvariant, preserving all unlisted mainbytes; source935 itself unchanged. No main deployment or currencyfeature release.",
+    "One new single-parent testonlysource commit with exactStageC d1ff→1f4 constantpatch, not changedassertions or rewritten935. Mustactuallyentertrustedmain before selectiveReleasevalidation.",
+    "On then-current authoritativeProduction1f4 and unexpiredauthority, prepare genuine-x b465,935,newtestsource mappedcandidate; exactfourfilefinaldelta, everyotherProductionpath/mode preserved. No deployingrefwrite.",
+    "Run actualcandidate applicable Build/tests/Scope/Lineage/Acceptance/freshreview; reuse only matchingvalidproofs and exactseven-case disposition applicability. RAWFAIL/BLOCKED/unexecuted retained. Noautomaticwaiver.",
+    "Present actualunique mappedSHA, Gate results and exactorderedselectedset for finalFounder release/deploy decision."
+  ],
+  "orderedReleaseSourceSet": [
+    "b465dba9f3e85441a1e7d6e7c06f9559b7d73680",
+    "93527d125baeb6c62559b7b9deb251c7960212da",
+    "PENDING_ACTUAL_SINGLE_PARENT_TEST_ONLY_SOURCE_COMMIT"
+  ],
+  "noDeploymentAuthorizationInThisRequest": true,
+  "notRequested": [
+    "ProductionorPreviewdeploy",
+    "origin/releasewrite",
+    "SQLexecutionorDBmigration",
+    "terminalchange",
+    "fullmainrelease",
+    "currencyfeaturepromotion",
+    "fullmainProductionruntimeunion",
+    "newNativeinventorydevelopment",
+    "Guard/KTF/rulechange",
+    "sevenfailureblanketwaiver",
+    "realordersorprinting",
+    "FIELD/CLOSED"
+  ],
+  "stopConditions": [
+    "actualmainorProductiondriftoutsideapprovedexactscope",
+    "anyunlistedcontent/conflict/dependency",
+    "protectedwritebeforetrustedACTIVE/frozenapproval",
+    "expiredorunknownauthority/evidence",
+    "neworchangedbusinessfailure",
+    "fingerprint/order/Scope/Lineage/Acceptance/reviewfailure",
+    "anyrequesttoaltermaincurrencyreleaseorunselectedProductionbytes"
+  ],
+  "originalDispositionDeadlineExclusive": "2026-11-26T12:51:20Z",
+  "noDeadlineExtension": true,
+  "founderApproval": null,
+  "source935NotReapprovedByThisNewDecision": true,
+  "sevenCaseDispositionNotReapprovedOrExpanded": true
+}
