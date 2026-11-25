@@ -24,5 +24,32 @@
   "closeAfter": "FEATURE_MERGE",
   "createdAt": "2026-11-25T19:11:17Z",
   "approvedAt": "2026-11-25T19:11:17Z",
-  "approvedBy": "Founder"
+  "approvedBy": "Founder",
+  "additionalAuthorizations": [
+    {
+      "authorizationId": "PRODUCTION-SOURCE-PROJECTION",
+      "featureBranch": "codex/es-print-device-takeover-web-projection",
+      "baseOriginMainSha": "da2b3fc7aaff04187e64c36399bdb941f8aecee7",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "approvedAt": "2026-11-25T19:21:33.210Z",
+      "createdAt": "2026-11-25T19:21:33.210Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Exact cashier response-origin additions projected on the current Production tree while preserving Diamond transaction idempotency. Scope entry only; protected release and frozen successor require their own evidence.",
+      "authorizedPaths": [
+        "app/api/cashier/member-balance-pay/route.ts",
+        "app/api/cashier/sales/route.ts"
+      ],
+      "authorizedPathSha256": {
+        "app/api/cashier/member-balance-pay/route.ts": "96d7c400728550d65d0c36c34da8c2be7098186a00455f8680d1ac6d3402246b",
+        "app/api/cashier/sales/route.ts": "7e8273cfeed01b04341abb3625bc04b5e7ee7709b26f6c80a4a6a565d867eebd"
+      },
+      "sourceCandidate": "ddbb815e0e55e7a021c0f08c18a1704268e643af",
+      "actualProductionParent": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+      "latestTrustedMain": "9288844c6ada7ee17b87bd91c352d43c03129924",
+      "sealedManifestSha256": "0cd2b276b940458a6ce49a34619289175d4138c198ce668e326c69cb0b2e9d48",
+      "approvalSource": "Standing Founder decision authorizes necessary Scope registration and protected release preparation. Timestamp is registration time. No personal frozen signature is represented."
+    }
+  ]
 }
