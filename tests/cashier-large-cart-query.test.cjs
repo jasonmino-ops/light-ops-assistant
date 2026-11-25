@@ -22,7 +22,7 @@ const baseline = execFileSync('git', ['show', `${base}:${routePath}`], { cwd: re
 const routeText = fs.readFileSync(path.join(source, routePath), 'utf8');
 const block = (text) => text.slice(text.indexOf('  let saleLines\n'), text.indexOf('  // 门店未配置系统内图片'));
 const candidateBlock = block(routeText);
-const productionBase = 'd1ffbaea3d01c219bfb45a99ea360c511f27cf36';
+const productionBase = '1f4e3acb8455a72b2aabd3885c3db161607aad25';
 const productionRoute = execFileSync('git', ['show', `${productionBase}:${routePath}`], { cwd: repo, encoding: 'utf8' });
 const tenantId = 'cmvulpn2e000006jvsqrt3y2n';
 const storeId = 'cmvulpn8r000106jvpo58kye4';
