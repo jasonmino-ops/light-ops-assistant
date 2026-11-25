@@ -36,5 +36,31 @@
       "app/api/cashier/sales/route.ts": "1a2ed22149bb6cd81d463d950fa8c8abe2e07cb309576e7ba0531761c966a6e9"
     },
     "releaseBoundary": "No product main merge, Preview/Production deploy, migration or terminal modification."
-  }
+  },
+  "additionalAuthorizations": [
+    {
+      "authorizationId": "PRODUCTION-SOURCE-PROJECTION",
+      "featureBranch": "codex/es-pos-checkout-latency-01-production-source",
+      "baseOriginMainSha": "b0aa38a1d1bf4d1aa0f375f1c42da6e4436dc481",
+      "baseMeaning": "Scope ancestry anchor only, not latest development baseline or STRICT proof",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "approvedAt": "2026-11-25T15:37:23Z",
+      "createdAt": "2026-11-25T13:11:21Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Current Founder approves exact nondeployed Production projection of reviewed fd84909a; preserve all d1ff surroundings; register under current exact mechanism after CORE documentary disposition is resolved. No product merge/deployment.",
+      "authorizedPaths": [
+        "app/api/cashier/sales/route.ts"
+      ],
+      "authorizedPathSha256": {
+        "app/api/cashier/sales/route.ts": "a04f1bd365c56c1f73c0a648844a6d0468cf2690119b04acd826d1dab36b68c7"
+      },
+      "sourceCandidate": "fd84909a113dc464b01e66b6715f62e7f52f3621",
+      "latestTrustedMain": "c6e110904d94204d2671bb7c3369e4b3ab076b29",
+      "actualProductionParent": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+      "sealedManifestSha256": "8527b8eed1c7dc4813823d13464632542f3c84e785afc740d5b84a7c88af5f0d",
+      "approvalSource": "Founder Release Readiness Authorization approves exact sealed projection; subsequent Founder Authorization expressly approves proposal SHA25651c101...f8d90 and necessary governance registration. Registration time only; no product merge/deploy approval."
+    }
+  ]
 }
