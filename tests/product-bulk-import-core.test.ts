@@ -362,7 +362,17 @@ async function main() {
     'app/api/cashier/offline-sync/route.ts',
   ]) {
     const source = fs.readFileSync(route, 'utf8')
-    assert.match(source, /resolveProductSellingUnit/, `${route} must use the shared server-side exact resolver`)
+    if (route === 'app/api/cashier/sales/route.ts') {
+      assert.match(source, /import \{ resolveCashierProductsBatched \} from '@\/lib\/cashier-product-batch'/)
+      assert.match(source, /saleLines = await resolveCashierProductsBatched\(prisma, \{\s*tenantId: store\.tenantId,\s*businessType: store\.businessType,\s*\}, items\)/)
+      const batchSource = fs.readFileSync('lib/cashier-product-batch.ts', 'utf8')
+      assert.match(batchSource, /resolveProductSellingUnit,[\s\S]*from '\.\/product-unit'/,
+        'the batch adapter must import the existing shared exact resolver')
+      assert.match(batchSource, /await resolveProductSellingUnit\(productDb, \{\s*tenantId: scope\.tenantId,\s*businessType: scope\.businessType,\s*barcode: item\.barcode,\s*quantity: item\.quantity,\s*\}\)/,
+        'every batch line must retain the trusted scope and shared unit validation')
+    } else {
+      assert.match(source, /resolveProductSellingUnit/, `${route} must use the shared server-side exact resolver`)
+    }
     assert.match(source, /productUnitSnapshot/, `${route} must persist the shared selling-unit snapshot contract`)
   }
   const offlineSource = fs.readFileSync('app/api/cashier/offline-sync/route.ts', 'utf8')
