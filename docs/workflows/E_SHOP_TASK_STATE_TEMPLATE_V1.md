@@ -44,6 +44,7 @@
 <用户明确目标；明确不做的内容>
 
 - 最小方案 Preflight: <现有能力/正常路径能否复用；根因证据与假设；最小改动及选择理由；引用已有 Readiness 即可，不另建检查表>
+- 最终交付目标: <main 来源/已批准的生产投影；最终树如何形成；先核对不同基线及所需测试，避免对中间候选重复处置>
 
 ## Frozen Boundaries
 
@@ -55,6 +56,9 @@
 ## Baseline / Branch / Worktree
 
 - origin/main SHA（创建线路时）: <sha>
+- Product Candidate SHA / tree: <固定产品候选；未形成时写 NONE>
+- Governance Head: <取证/登记时实际可信 SHA，与产品候选分开>
+- 治理推进适用性: <原授权是否允许；允许的精确文档路径/自身登记动作；差异审阅和证据输入摘要；无许可或明文精确 ref 失效时不可静默续接>
 - Production SHA: <sha / N/A（Docs-only Exception）/ UNKNOWN>
 - Release Lineage Gate: <PASS / BLOCKED / N/A（Docs-only Exception，判定依据）>
 - Branch: <codex/...>
@@ -79,6 +83,7 @@
 - 未运行或未验证的项及原因: <列表，或 NONE>
 - Scope Guard: <PASS / BLOCKED / 未运行>
 - 证据复用: <已有证据及其字节/依赖/环境/范围/期限适用性；本次补验及失效重验原因；N/A>
+- 失败与准入: <原始 FAIL/未执行、相对实际基线归因、原处置覆盖范围、正式 Acceptance 分别记录；不把补证 PASS 写回旧运行>
 - 业务验收: <按风险关联订单/付款/库存/打印实体/报表交班等受影响结果及证据；未到时或未取得的项明确待验；不相关项 N/A>
 - UNKNOWN 处置: <NONE / 原业务标识、停止的副作用、只读核对结果及仍待确定的事实；不得以新 key/body/身份重提或重印>
 

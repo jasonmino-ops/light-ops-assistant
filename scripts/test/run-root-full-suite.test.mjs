@@ -229,6 +229,93 @@ test('ordinary is-required assertion is not hidden as an environment failure', (
   )
 })
 
+// Verbatim exception block from the Diamond stage3/core-candidate raw log;
+// paths and PID are sanitized, while the actual tsx startup/error shape remains.
+const tsxIpcDenied = `Error: listen EPERM: operation not permitted /tmp/tsx-501/61453.pipe
+    at Server.setupListenHandle [as _listen2] (node:net:1926:21)
+    at listenInCluster (node:net:2005:12)
+    at Server.listen (node:net:2127:5)
+    at file:///tmp/fixture/node_modules/tsx/dist/cli.mjs:53:31537
+    at new Promise (<anonymous>)
+    at createIpcServer (file:///tmp/fixture/node_modules/tsx/dist/cli.mjs:53:31515)
+    at async file:///tmp/fixture/node_modules/tsx/dist/cli.mjs:55:459 {
+  code: 'EPERM',
+  errno: -1,
+  syscall: 'listen',
+  address: '/tmp/tsx-501/61453.pipe',
+  port: -1
+}
+
+Node.js v24.14.0
+`
+
+test('fatal tsx IPC permission denial preserves raw failure and blocks environment health', () => {
+  const blocked = detectEnvironmentFailure(files[0], tsxIpcDenied, [])
+  assert.deepEqual(blocked, {
+    code: 'TSX_IPC_PERMISSION_DENIED',
+    fingerprint: tsxIpcDenied.split('\n', 1)[0],
+  })
+  const summary = evaluate({
+    results: [
+      outcome(files[0], 'FAIL', {
+        classification: 'ENVIRONMENT',
+        environmentCode: blocked.code,
+        observedOutput: tsxIpcDenied,
+      }),
+      outcome(files[1], 'FAIL'),
+      outcome(files[2], 'PASS'),
+    ],
+  })
+  assert.equal(summary.counts.collected, 3)
+  assert.equal(summary.counts.executed, 3)
+  assert.equal(summary.counts.failed, 2)
+  assert.equal(summary.counts.passed, 1)
+  assert.equal(summary.counts.skipped, 0)
+  assert.equal(summary.counts.environmentFailures, 1)
+  assert.equal(summary.counts.knownFailures, 1)
+  assert.equal(summary.counts.newFailures, 0)
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.equal(summary.testEnvironmentHealth, 'BLOCKED')
+  assert.equal(summary.exitCode, 2)
+  assert.ok(summary.environmentReasons.some(({ code }) => code === 'TEST_ENVIRONMENT_FAILURE'))
+})
+
+test('IPC environment diagnosis never hides an independent product regression', () => {
+  const summary = evaluate({
+    results: [
+      outcome(files[0], 'FAIL', { classification: 'ENVIRONMENT', environmentCode: 'TSX_IPC_PERMISSION_DENIED' }),
+      outcome(files[1], 'FAIL', { observedOutput: 'new payment invariant violation' }),
+      outcome(files[2], 'PASS'),
+    ],
+  })
+  assert.equal(summary.counts.failed, 2)
+  assert.equal(summary.counts.environmentFailures, 1)
+  assert.equal(summary.counts.newFailures, 1)
+  assert.deepEqual(summary.files.newFailures, [{ file: files[1], reason: 'KNOWN_FAILURE_IDENTITY_MISMATCH' }])
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.equal(summary.exitCode, 2)
+})
+
+test('tsx IPC diagnosis accepts EACCES and CRLF without accepting ordinary application errors', () => {
+  assert.equal(detectEnvironmentFailure(files[0], tsxIpcDenied.replaceAll('EPERM', 'EACCES'), [])?.code,
+    'TSX_IPC_PERMISSION_DENIED')
+  assert.equal(detectEnvironmentFailure(files[0], tsxIpcDenied.replaceAll('\n', '\r\n'), [])?.code,
+    'TSX_IPC_PERMISSION_DENIED')
+  const applicationErrors = [
+    "Error: EPERM: operation not permitted, open '/tmp/payment-ledger'",
+    'AssertionError: expected listen EPERM /tmp/tsx-501/61453.pipe',
+    tsxIpcDenied.replaceAll('createIpcServer', 'createPaymentServer'),
+    tsxIpcDenied.replaceAll('/node_modules/tsx/dist/cli.mjs', '/app/payment-server.mjs'),
+    tsxIpcDenied.replaceAll('/tmp/tsx-501/61453.pipe', '/tmp/application.sock'),
+    tsxIpcDenied.replace("code: 'EPERM'", "code: 'UNKNOWN'"),
+    tsxIpcDenied.replace("syscall: 'listen'", "syscall: 'open'"),
+    tsxIpcDenied.replace("address: '/tmp/tsx-501/61453.pipe'", "address: '/tmp/another.pipe'"),
+  ]
+  for (const output of applicationErrors) {
+    assert.equal(detectEnvironmentFailure(files[0], output, []), null, output)
+  }
+})
+
 test('Markdown remains the single source of truth for expected and active known failures', () => {
   const markdown = `
 - 全量口径：仓库根 tests，顺序执行，共 3 个测试文件。
