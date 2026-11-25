@@ -8,6 +8,7 @@ import { ProfitReport, ReceiptDetail, Receipts, SupplierDetail, Suppliers } from
 import { CatalogSetup, ReadState, StockDetail, StockList } from './stock'
 import { Choices, Icon } from './ui'
 import { DesktopPairing } from './desktop-pairing'
+import { SalesControl } from './sales-control'
 import './inventory.css'
 
 const BarcodeScanner = dynamic(() => import('@/app/components/BarcodeScanner'), { ssr: false })
@@ -144,6 +145,7 @@ function Inventory({ access, endDesktopSession }: { access: Access; endDesktopSe
           : destination === 'stock' ? <section className="page">
             <div className="phead"><h1>库存管理</h1><Choices tabs values={['当前库存', '入库记录']} value={tab} onChange={(t) => { setTab(t); reload() }} />
               <span className="grow" /><button className="btn primary" disabled={!!pending} onClick={() => setDraft(localDraft ?? newDraft())}>＋ {localDraft ? '继续本地草稿' : '新建入库单'}</button></div>
+            <SalesControl access={access} />
             {tab === '当前库存' ? <StockList access={access} refresh={refresh} reload={reload} query={query} setQuery={setQuery} justReceived={received}
               scan={() => beginScan(setQuery)} setup={() => setOverlay({ kind: 'catalog' })} open={(item) => setOverlay({ kind: 'stock', item })} />
               : <Receipts access={access} refresh={refresh} reload={reload} open={openReceipt} localDrafts={localDrafts} resumeLocal={setDraft} pending={pending} clearPending={() => setPending(null)} />}
