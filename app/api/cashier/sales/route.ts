@@ -10,6 +10,7 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { resolveCashierProductsBatched } from '@/lib/cashier-product-batch'
 import { posRequestIdentity, replayPosRequest, writePosRequest } from '@/lib/pos-request-ledger'
 import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
@@ -26,7 +27,6 @@ import {
 import {
   productUnitSnapshot,
   ProductUnitError,
-  resolveProductSellingUnit,
 } from '@/lib/product-unit'
 
 type CartItem = { barcode: string; quantity: number; sugar?: string }
@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const desktopNetworkMode = desktopRequest
+  const desktopNetworkMode = desktopRequest && validPrinting
     ? await resolveDesktopNetworkMode({ tenantId: store.tenantId, storeId: store.id })
     : null
   // Unknown, stale, ambiguous, or disabled observations preserve the
@@ -175,30 +175,10 @@ export async function POST(req: NextRequest) {
 
   let saleLines
   try {
-    // Queue cart reads here instead of starting a pg connection-wait timer per line.
-    // Keep input indices: sugar, record numbers and kitchen items use this order.
-    saleLines = new Array<Awaited<ReturnType<typeof resolveProductSellingUnit>>>(items.length)
-    let nextIndex = 0
-    let failed = false
-    const resolveNext = async () => {
-      while (!failed) {
-        const index = nextIndex++
-        if (index >= items.length) return
-        const item = items[index]
-        try {
-          saleLines[index] = await resolveProductSellingUnit(prisma, {
-            tenantId: store.tenantId,
-            businessType: store.businessType,
-            barcode: item.barcode,
-            quantity: item.quantity,
-          })
-        } catch (error) {
-          failed = true
-          throw error
-        }
-      }
-    }
-    await Promise.all(Array.from({ length: Math.min(2, items.length) }, resolveNext))
+    saleLines = await resolveCashierProductsBatched(prisma, {
+      tenantId: store.tenantId,
+      businessType: store.businessType,
+    }, items)
   } catch (error) {
     if (error instanceof ProductUnitError) {
       return NextResponse.json({ error: error.code, message: error.message }, { status: error.status })
