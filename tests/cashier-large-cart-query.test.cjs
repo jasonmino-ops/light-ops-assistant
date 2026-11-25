@@ -22,7 +22,8 @@ const baseline = execFileSync('git', ['show', `${base}:${routePath}`], { cwd: re
 const routeText = fs.readFileSync(path.join(source, routePath), 'utf8');
 const block = (text) => text.slice(text.indexOf('  let saleLines\n'), text.indexOf('  // 门店未配置系统内图片'));
 const candidateBlock = block(routeText);
-const baselineBlock = block(baseline);
+const productionBase = '1f4e3acb8455a72b2aabd3885c3db161607aad25';
+const productionRoute = execFileSync('git', ['show', `${productionBase}:${routePath}`], { cwd: repo, encoding: 'utf8' });
 const tenantId = 'cmvulpn2e000006jvsqrt3y2n';
 const storeId = 'cmvulpn8r000106jvpo58kye4';
 const userId = 'cmvulpnf9000206jvi09qdgs9';
@@ -37,51 +38,79 @@ const requestKey = (label) => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
-function lookupFunction(text, resolver) {
+// Run the actual batch adapter and original unit authority, not a fabricated result array.
+const lookupModules = loader({});
+const { ProductUnitError: LookupDomainError } = lookupModules.load('lib/product-unit.ts');
+const { resolveCashierProductsBatched } = lookupModules.load('lib/cashier-product-batch.ts');
+function lookupFunction(text, database) {
   const code = ts.transpileModule(`async function run(prisma, store, items) { ${block(text)} return saleLines; } exports.run=run;`,
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const m = { exports: {} };
-  new Function('exports', 'resolveProductSellingUnit', 'ProductUnitError', 'NextResponse', code)(
-    m.exports, resolver, class ProductUnitError extends Error {}, { json: () => { throw Error('UNEXPECTED_DOMAIN_RESPONSE'); } });
-  return (items) => m.exports.run({}, { tenantId, businessType: 'RETAIL' }, items);
+  new Function('exports', 'resolveCashierProductsBatched', 'ProductUnitError', 'NextResponse', code)(
+    m.exports, resolveCashierProductsBatched, LookupDomainError, { json: (body, options) => ({ body, status: options.status }) });
+  return (items) => m.exports.run(database, { tenantId, businessType: 'RETAIL' }, items);
 }
 
-test('query workers preserve all original indices under reversed completion, including repeated barcodes', async () => {
-  let active = 0, peak = 0;
-  const items = Array.from({ length: 54 }, (_, index) => ({ barcode: `REPEATED-${index % 3}`, quantity: index + 1 }));
-  const run = lookupFunction(routeText, async (_db, item) => {
-    peak = Math.max(peak, ++active);
-    try { await sleep(item.quantity % 2 ? 3 : 1); return item; } finally { active--; }
-  });
-  const resolved = await run(items);
-  assert(resolved.every(x => x.tenantId === tenantId && x.businessType === 'RETAIL'));
-  assert.deepEqual(resolved.map(({ barcode, quantity }) => ({ barcode, quantity })), items);
-  assert.equal(peak, 2);
-});
-
-test('first observed error stops queued reads; a second in-flight rejection is handled and no result escapes', async () => {
+test('one batch preserves all original indices under reversed database order, including repeated barcodes', async () => {
+  const items = Array.from({ length: 54 }, (_, index) => ({ barcode: `REPEATED-${index % 3}`, quantity: index + 1,
+    tenantId: 'UNTRUSTED', businessType: 'RESTAURANT' }));
+  const codes = ['REPEATED-0', 'REPEATED-1', 'REPEATED-2'];
+  const rows = codes.map((barcode, i) => ({ id: barcode, tenantId, status: 'ACTIVE', barcode,
+    sellPrice: i + 1, mainUnitName: 'piece', auxEnabled: false }));
   let calls = 0;
-  const late = Error('SECOND_IN_FLIGHT_FAILURE');
-  const run = lookupFunction(routeText, async (_db, item) => {
-    calls++;
-    if (item.quantity === 1) { await sleep(1); throw Error('FIRST_OBSERVED_FAILURE'); }
-    await sleep(5); throw late;
-  });
-  await assert.rejects(run(expected.map((x, i) => ({ ...x, quantity: i + 1 }))), /FIRST_OBSERVED_FAILURE/);
-  await sleep(10);
-  assert.equal(calls, 2);
+  const run = lookupFunction(routeText, { product: {
+    findMany: async ({ where }) => {
+      calls++;
+      assert.deepEqual(where, { tenantId, status: 'ACTIVE', OR: [
+        { barcode: { in: codes } }, { auxEnabled: true, auxBarcode: { in: codes } },
+      ] });
+      await sleep(1);
+      return [...rows].reverse();
+    },
+    findFirst: async () => { assert.fail('unique batch matches must not issue per-line database queries'); },
+  } });
+  const resolved = await run(items);
+  assert.equal(calls, 1);
+  assert(resolved.every(x => x.product.tenantId === tenantId && x.multiUnitEligible));
+  assert.deepEqual(resolved.map(x => ({ barcode: x.barcode, quantity: Number(x.sellingQuantity) })),
+    items.map(({ barcode, quantity }) => ({ barcode, quantity })));
+  resolved.forEach((line, i) => assert.equal(Number(line.lineAmount), (i % 3 + 1) * items[i].quantity));
 });
 
-test('runtime candidate changes only the pre-transaction query block against Production', () => {
-  assert(candidateBlock.includes('Math.min(2, items.length)'));
+test('a failed batch has no queued, in-flight fallback or retried reads and never releases a result', async () => {
+  let calls = 0;
+  const failure = Error('FIRST_OBSERVED_FAILURE');
+  const run = lookupFunction(routeText, { product: {
+    findMany: async () => { calls++; await sleep(1); throw failure; },
+    findFirst: async () => { assert.fail('failed batches must not start fallback reads'); },
+  } });
+  await assert.rejects(run(expected.map((x, i) => ({ ...x, quantity: i + 1 }))), error => error === failure);
+  await sleep(10);
+  assert.equal(calls, 1, 'one failed batch cannot leave another database request in flight');
+  const missing = await lookupFunction(routeText, { product: {
+    findMany: async () => [], findFirst: async () => { assert.fail('missing products must not query again'); },
+  } })([{ barcode: 'MISSING', quantity: 1 }]);
+  assert.deepEqual(missing, { status: 404, body: { error: 'PRODUCT_NOT_FOUND', message: '商品不存在或已停用' } });
+});
+
+test('runtime candidate contains only the two approved deltas and preserves all Production transaction surroundings', () => {
+  assert(candidateBlock.includes('saleLines = await resolveCashierProductsBatched(prisma,'));
   assert(!candidateBlock.includes('$transaction'));
-  if (process.env.CASHIER_QUERY_TEST_SOURCE_ROOT) {
-    assert.equal(routeText.replace(candidateBlock, baselineBlock), baseline);
-    for (const file of ['lib/product-unit.ts', 'lib/prisma.ts', 'lib/pos-request-ledger.ts',
-      'lib/cashier-payment-confirmation.ts', 'lib/v3-print-job-adapter.ts', 'lib/cashier-shift.ts']) {
-      assert.equal(fs.readFileSync(path.join(source, file), 'utf8'),
-        execFileSync('git', ['show', `${base}:${file}`], { cwd: repo, encoding: 'utf8' }));
-    }
+  const reverseOnce = (text, from, to) => {
+    assert.equal(text.split(from).length - 1, 1, `exactly one approved delta: ${from}`);
+    return text.replace(from, to);
+  };
+  let restored = reverseOnce(routeText,
+    "import { resolveCashierProductsBatched } from '@/lib/cashier-product-batch'\n", '');
+  restored = reverseOnce(restored, '  ProductUnitError,\n', '  ProductUnitError,\n  resolveProductSellingUnit,\n');
+  restored = reverseOnce(restored, candidateBlock, block(productionRoute));
+  restored = reverseOnce(restored, 'const desktopNetworkMode = desktopRequest && validPrinting\n',
+    'const desktopNetworkMode = desktopRequest\n');
+  assert.equal(restored, productionRoute, 'financial transaction, idempotency ledger and print admission must remain byte-identical');
+  for (const file of ['lib/product-unit.ts', 'lib/prisma.ts', 'lib/pos-request-ledger.ts',
+    'lib/cashier-payment-confirmation.ts', 'lib/v3-print-job-adapter.ts', 'lib/cashier-shift.ts']) {
+    assert.equal(fs.readFileSync(path.join(source, file), 'utf8'),
+      execFileSync('git', ['show', `${productionBase}:${file}`], { cwd: repo, encoding: 'utf8' }));
   }
 });
 
@@ -133,7 +162,7 @@ test('normal 54-line CASH route with unchanged business transaction on isolated 
     await setup.query('GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA native_inventory TO postgres');
     await setup.query('GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA native_inventory TO postgres');
     await setup.end();
-    const stats = { active: 0, peak: 0, started: 0, transactionCalls: 0 };
+    const stats = { active: 0, peak: 0, started: 0, transactionCalls: 0, byOperation: { findFirst: 0, findMany: 0 } };
     class DelayedClient extends pg.Client {
       query(text, values, cb) {
         if (typeof values === 'function') { cb = values; values = undefined; }
@@ -156,11 +185,16 @@ test('normal 54-line CASH route with unchanged business transaction on isolated 
       auxConversionFactor: item.aux ? 2 : null, auxSellPrice: item.aux ? item.price : null,
     })) });
     const instrumented = new Proxy(db, { get(target, key) {
-      if (key === 'product') return { ...target.product, findFirst: async (args) => {
-        stats.started++; stats.peak = Math.max(stats.peak, ++stats.active);
-        try { if (failProduct) throw Error('SIMULATED_CONNECTION_ACQUISITION_TIMEOUT'); return await target.product.findFirst(args); }
-        finally { stats.active--; }
-      } };
+      if (key === 'product') return new Proxy(target.product, { get(delegate, operation) {
+        const value = delegate[operation];
+        if (!['findFirst', 'findMany'].includes(operation)) return typeof value === 'function' ? value.bind(delegate) : value;
+        return async (...args) => {
+          stats.started++; stats.byOperation[operation]++;
+          stats.peak = Math.max(stats.peak, ++stats.active);
+          try { if (failProduct) throw Error('SIMULATED_CONNECTION_ACQUISITION_TIMEOUT'); return await value.apply(delegate, args); }
+          finally { stats.active--; }
+        };
+      } });
       if (key === '$transaction') return (fn, ...options) => {
         stats.transactionCalls++;
         return target.$transaction(async tx => fn(new Proxy(tx, { get(inner, name) {
@@ -200,13 +234,16 @@ test('normal 54-line CASH route with unchanged business transaction on isolated 
       await assert.rejects(f.post(f.request('normal54-baseline')), /timeout|connection/i);
       await sleep(1000);
       assert.equal(f.stats.peak, 54); assert.equal(f.stats.transactionCalls, 0);
+      assert.deepEqual(f.stats.byOperation, { findFirst: 54, findMany: 0 });
       assert.deepEqual(await f.counts(), zero);
     });
     await check('54 lines, 92 sales units, 13543 cents, current timestamps and normal local-first print handoff', async () => {
       const f = await fixture({ delay: 350 }); const before = Date.now();
       const response = await f.post(f.request('normal54-success')); const body = await response.json();
       assert.equal(response.status, 201, JSON.stringify(body)); assert.equal(cents(body.totalAmount), 13543);
-      assert.equal(f.stats.peak, 2);
+      assert.equal(f.stats.peak, 1, 'the normal cart is one bounded database batch');
+      assert.equal(f.stats.started, 1);
+      assert.deepEqual(f.stats.byOperation, { findFirst: 0, findMany: 1 });
       const lines = await f.db.saleRecord.findMany({ orderBy: { createdAt: 'asc' } });
       assert.equal(lines.length, 54); assert.equal(new Set(lines.map(x => x.orderNo)).size, 1);
       assert.equal(lines.reduce((s, x) => s + Number(x.sellingQuantity ?? x.quantity), 0), 92);
@@ -241,7 +278,9 @@ test('normal 54-line CASH route with unchanged business transaction on isolated 
     await check('two simultaneous 54-line normal carts remain bounded; existing numbering conflicts roll back atomically', async () => {
       const f = await fixture({ delay: 150 });
       const start = Date.now(); const results = await Promise.all(['cart-a', 'cart-b'].map(k => f.post(f.request(k))));
-      assert(results.every(x => [201, 500].includes(x.status))); assert(f.stats.peak <= 4);
+      assert(results.every(x => [201, 500].includes(x.status))); assert(f.stats.peak <= 4); // Retain the old outer concurrency safety bound.
+      assert(f.stats.peak <= 2);
+      assert.deepEqual(f.stats.byOperation, { findFirst: 0, findMany: 2 });
       const committed = results.filter(x => x.status === 201).length; assert(committed >= 1);
       // Original generateRecordNo uses count+1: distinct concurrent orders can collide.
       // Preserve this rule; verify failures cannot leave a partial order/payment.
@@ -265,6 +304,8 @@ test('normal 54-line CASH route with unchanged business transaction on isolated 
       const timed = await fixture({ failProduct: true });
       await assert.rejects(timed.post(timed.request('query-timeout')), /SIMULATED_CONNECTION_ACQUISITION_TIMEOUT/);
       assert.equal(timed.stats.transactionCalls, 0); assert.deepEqual(await timed.counts(), zero);
+      assert.equal(timed.stats.started, 1, 'a batch failure must not retry');
+      assert.deepEqual(timed.stats.byOperation, { findFirst: 0, findMany: 1 });
     });
     await check('payment failure and original default transaction timeout roll back all rows', async () => {
       for (const options of [{ failPayment: true }, { transactionDelay: 5200 }]) {
