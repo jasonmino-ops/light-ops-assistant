@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-POS-CHECKOUT-LATENCY-01",
+  "status": "PENDING_EXPLICIT_CANDIDATE_ADMISSION_DISPOSITION_NOT_ACTIVE",
+  "approvedBy": null,
+  "approvedAt": null,
+  "sourceCandidate": {
+    "sha": "fd84909a113dc464b01e66b6715f62e7f52f3621",
+    "tree": "6834accd2259748c7b02ab2eea3b8d026813951a"
+  },
+  "trustedBaseline": {
+    "sha": "c6e110904d94204d2671bb7c3369e4b3ab076b29",
+    "tree": "2f0dc169c8b2a080a07e265fdafc32b85d7c6669"
+  },
+  "productionBase": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+  "candidateSealSha256": "8527b8eed1c7dc4813823d13464632542f3c84e785afc740d5b84a7c88af5f0d",
+  "rawResults": {
+    "baseline": {
+      "head": "c6e110904d94204d2671bb7c3369e4b3ab076b29",
+      "counts": {
+        "expected": 104,
+        "collected": 104,
+        "executed": 104,
+        "passed": 99,
+        "failed": 5,
+        "knownFailures": 0,
+        "newFailures": 5,
+        "recoveredFailures": 1,
+        "knownEnvironmentBlocked": 0,
+        "skipped": 0,
+        "uncollected": 0,
+        "environmentFailures": 0
+      },
+      "overallStatus": "BLOCKED",
+      "logPath": "/private/tmp/ES-POS-CHECKOUT-LATENCY-01/release-readiness/core-clean-baseline/core/root-core-suite.log",
+      "logSha256": "2dcf9a76fa24a83481539ba0e710f7aa35113786861fa8442e7c120850f0e71f",
+      "summarySha256": "d00c67d0e774fb4b4c59505016ce7a40c54a621ef656910d0d6ba31d27677cc0"
+    },
+    "source": {
+      "head": "fd84909a113dc464b01e66b6715f62e7f52f3621",
+      "counts": {
+        "expected": 105,
+        "collected": 105,
+        "executed": 105,
+        "passed": 100,
+        "failed": 5,
+        "knownFailures": 0,
+        "newFailures": 5,
+        "recoveredFailures": 1,
+        "knownEnvironmentBlocked": 0,
+        "skipped": 0,
+        "uncollected": 0,
+        "environmentFailures": 0
+      },
+      "overallStatus": "BLOCKED",
+      "logPath": "/private/tmp/ES-POS-CHECKOUT-LATENCY-01/release-readiness/core-clean-source/core/root-core-suite.log",
+      "logSha256": "4c2e29e3757ba513d3d579aebdbce00c78fcb44e246555b8d9b22b0441733a39",
+      "summarySha256": "31edb4114765f8244975e4053ee08bda54652f8b400abe2f189c0266ab338625"
+    }
+  },
+  "failedFiles": 5,
+  "failedCaseInstances": 7,
+  "sourceLocations": 6,
+  "cases": [
+    {
+      "id": "F1",
+      "assertion": "tests/cashier-realtime-integration.test.ts:167",
+      "testName": "orders checkout notify after success",
+      "expected": "true",
+      "actual": "false",
+      "immediateCause": "Null M1 selects legacy marker which is absent from unchanged checkout source."
+    },
+    {
+      "id": "F2-CASH",
+      "assertion": "tests/es-tray-desktop-pos-entry.test.ts:72",
+      "testName": "actual H5 handlers: CASH uses only frozen H5 facts and formal routes, zero POS side effects",
+      "expected": "CASH payload without displayedCurrency",
+      "actual": "CASH payload includes displayedCurrency USD",
+      "immediateCause": "Null M1 switches expected payload; actual H5 unchanged."
+    },
+    {
+      "id": "F2-KHQR",
+      "assertion": "tests/es-tray-desktop-pos-entry.test.ts:72",
+      "testName": "actual H5 handlers: KHQR uses only frozen H5 facts and formal routes, zero POS side effects",
+      "expected": "QR payload without displayedCurrency",
+      "actual": "QR payload includes displayedCurrency USD",
+      "immediateCause": "Distinct case from CASH at same source location."
+    },
+    {
+      "id": "F3",
+      "assertion": "tests/es-tray-desktop-pos-entry.test.ts:132",
+      "testName": "actual Desktop poll restores COMPLETED+UNPAID entry after collection failure; browser keeps legacy source",
+      "expected": "CASH payload without displayedCurrency",
+      "actual": "CASH payload includes displayedCurrency XAF",
+      "immediateCause": "Same expectation switch with separate reentry case."
+    },
+    {
+      "id": "F4",
+      "assertion": "tests/es-tray-device-print-contract.test.ts:476",
+      "testName": "the cashier page remains byte-identical to its merged exact governance approval",
+      "expected": "successor.blocked not true",
+      "actual": "successor.blocked true",
+      "immediateCause": "Null native/direct -> follow-front blocked executable mismatch, subsequent digest not reached."
+    },
+    {
+      "id": "F5",
+      "assertion": "tests/native-inventory-m1-successor.test.cjs:175",
+      "testName": "M1 mainline handoff preserves exact product and closed freeze authority",
+      "expected": "registered.mainline or closedBaseline true",
+      "actual": "undefined",
+      "immediateCause": "Clean c6 reaches rollout integration-manifest mismatch; clean fd rejects Diamond HEAD/trusted gate earlier."
+    },
+    {
+      "id": "F6",
+      "assertion": "tests/v3-reprint-recovery.test.ts:848",
+      "testName": "protected Cashier and Records blobs match the exact active authorization",
+      "expected": "successor.blocked not true",
+      "actual": "successor.blocked true",
+      "immediateCause": "Same follow-front blocked fallback; later checks not reached."
+    }
+  ],
+  "causality": {
+    "sameImmediateOutcomes": true,
+    "sameReachedCause": false,
+    "baselineReached": "Diamond admission accepted; sales-rollout line93 integration manifest expected8c855abc...actual5dab8718...; main wrapper null91",
+    "sourceReached": "Diamond line26 HEAD!=trusted rejects; main wrapper null77, baseline deeper cause masked",
+    "causalOverlap": "root-core manifest explicitly in original M1 EXECUTABLES: baseline937428ed... -> source2b0f9eaa... adds latent mismatch; no additional observed raw failing file established",
+    "downstreamAssertions": "NOT_EXECUTED_NOT_PASS as enumerated CAUSAL-REPORT.txt",
+    "diagnosticEvidenceSha256": "52ef86d35b5df934cf27c9b2bac0363ca0f2cd813e27c49df161b81cbbe6d7c2"
+  },
+  "authorizedCurrentCondition": "Formal baseline exception only if same failure, triggering conditions, reason and no introduced/expanded failure; condition not met",
+  "requestedNewDisposition": "RAW FAIL — EXACT CANDIDATE-SPECIFIC ADMISSION DISPOSITION, distinguish unchanged assertion outcomes from different admission causes and latent overlap; not all-baseline",
+  "deadlineExclusive": "2026-11-26T12:51:20Z",
+  "invalidateOn": [
+    "sha/tree/content/branch/trustedref/environment/input drift",
+    "new/changed/missing failure instance",
+    "cause/result/count change",
+    "dependency evidence missing",
+    "baseline repair",
+    "deadline expiry"
+  ],
+  "notAuthorized": [
+    "test/assertion/guard/KTF weakening or edits",
+    "other task or candidate waiver",
+    "blanket downstream PASS",
+    "business main merge/source admission",
+    "Preview/Production deployment",
+    "database/terminal/real order/printing operations"
+  ]
+}
