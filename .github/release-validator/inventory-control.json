@@ -1,0 +1,89 @@
+{
+  "taskId": "ES-NATIVE-INVENTORY-AUTO-DEDUCTION-CONTROL-01",
+  "releaseId": "ES-NATIVE-INVENTORY-AUTO-DEDUCTION-CONTROL-01-PRODUCTION",
+  "candidate": "1f4e3acb8455a72b2aabd3885c3db161607aad25",
+  "tree": "bf43fa367ea658d024d2cc8a7da07091076f523b",
+  "base": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+  "productionDeployment": "dpl_C7PXZ2iDiX2T2PtpoxTaVo9vEwYf",
+  "mainBase": "9288844c6ada7ee17b87bd91c352d43c03129924",
+  "previousControl": "6617214dfb56b3e8b7bd6283590a1962892a4570",
+  "productRef": "refs/heads/codex/es-inventory-auto-deduction-control-candidate",
+  "productBranch": "codex/es-inventory-auto-deduction-control-candidate",
+  "paths": [
+    {
+      "path": "app/api/native-inventory/sales-control/route.ts",
+      "sha256": "6b163bc6dea5b55c1f4013b321fa422723ea678db1ac039c082beab7637e47f5",
+      "beforeSha256": null
+    },
+    {
+      "path": "app/native-inventory/page.tsx",
+      "sha256": "1b8a5f22cc0cf4635243300ff2a02b91bed640efe589548b24199232c896c177",
+      "beforeSha256": "27a0b9af35eed4dd33aeb35570ce6e975a9fb4cd6c18b7f8c42c764933a8620f"
+    },
+    {
+      "path": "app/native-inventory/sales-control.tsx",
+      "sha256": "ee5ad5f749e3249069f8d25ec41eb332e79350d2eadc2a80eeedd514f384b776",
+      "beforeSha256": null
+    },
+    {
+      "path": "lib/native-inventory/sales-control.ts",
+      "sha256": "d772c7ca5e54e4e30bc18e158c52e8ded2ccb7353633a3198f5ff664b103635f",
+      "beforeSha256": null
+    },
+    {
+      "path": "lib/pos-request-ledger.ts",
+      "sha256": "d763250fbca32c80eaccbb39346417b2bb0c5f9d24330f487223eb60c65379f1",
+      "beforeSha256": "e14ac283d9b208035502cff6eb5a75567d1ad9252c9e5d45ff98eadecf92f720"
+    },
+    {
+      "path": "prisma/migrations/20261125120000_diamond_sales_control/migration.sql",
+      "sha256": "54a7afd834121651e1744c99f98770b5baaae616cea6f4bf0f54873f68699688",
+      "beforeSha256": null
+    },
+    {
+      "path": "scripts/test/manifests/root-integration-tests.json",
+      "sha256": "b8efabd24868b463a1ae597f6450aa3766c397a147ace9f23b14d857e189cf9e",
+      "beforeSha256": "280c9d7cea2f7564a462371a8cf9e1d315b4e7cec72b19c68e4e320bf44384f0"
+    },
+    {
+      "path": "tests/fixtures/native-inventory-legacy-acl.sql",
+      "sha256": "42cda6969205636ed60595a4b08704132699e79521aa6c8d020bb0c5405fc6be",
+      "beforeSha256": null
+    },
+    {
+      "path": "tests/native-inventory-control.test.ts",
+      "sha256": "95c3b9d1ca79654e7fe442dd74702346fa6252c984eae66121bd47e18701a308",
+      "beforeSha256": null
+    },
+    {
+      "path": "tests/native-inventory-control/control.test.ts",
+      "sha256": "7b98bc0c86b71a2e5e18e7d03e1b62453fbb876414a8114a867def3270e4bd6f",
+      "beforeSha256": null
+    },
+    {
+      "path": "tests/native-inventory-control/run.py",
+      "sha256": "e2a555294b942b497ac708d84dc4ee3ffcf7a8c7391171b32bbda5130af43afb",
+      "beforeSha256": null
+    }
+  ],
+  "patchSha256": "1b03533ff9f2657c960a0f0d5febf00b2a8311dae0bd145a27fafb00673cbe6f",
+  "cloudRun": 45593644753,
+  "migration": "prisma/migrations/20261125120000_diamond_sales_control/migration.sql",
+  "migrationSha256": "54a7afd834121651e1744c99f98770b5baaae616cea6f4bf0f54873f68699688",
+  "engineeringRecord": "docs/change-gates/ES-NATIVE-INVENTORY-AUTO-DEDUCTION-CONTROL-01.json",
+  "trustedEngineering": {
+    "docs/change-gates/ES-NATIVE-INVENTORY-AUTO-DEDUCTION-CONTROL-01.json": "676709f9bc6fdb098876b7f29a3c2a81892c61a808446c875d54030c48ab6fbd",
+    "docs/change-gates/exceptions/ES-NATIVE-INVENTORY-AUTO-DEDUCTION-CONTROL-01.json": "24f574624f4ec975d2fda3389e0ad02dae2f01f7c91b6593b046cca82a574565",
+    "docs/freezes/ES-NATIVE-INVENTORY-AUTO-DEDUCTION-CONTROL-01.json": "39c2acb1d0f4e332d17ad095844e6112ca594561105acb5754807888795fdae8",
+    "scripts/governance/verify-inventory-control-admission.cjs": "4d81458672c0d5804d669e33fe23422c98956eb19c9b5a30b30e556af9f24269",
+    "scripts/governance/tests/inventory-control-admission.test.cjs": "f682554584584f705bbca134e42c5cac99fe7d37ab08ec914c0de39a532fbc3c",
+    "scripts/guards/check-change-scope.js": "5081a836751f7bdcc0272e28e099e3a31ed9960b7a9254cb65c5108a1d502283",
+    "docs/change-gates/gate-config.json": "0410ac1629d87ea99d4089ef38184617a657e866282c0cc5c5048ce607fabd9f"
+  },
+  "coreDispositionExpiresAt": "2026-12-02T05:34:56.266Z",
+  "signatureLifetimeSeconds": 7200,
+  "storeCode": "ST883DC00C",
+  "diamondSalesMustRemainOff": true,
+  "pilotAndFeedMutationAuthorized": false,
+  "h5RefundRestock": false
+}

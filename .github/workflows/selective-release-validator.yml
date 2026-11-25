@@ -4,6 +4,7 @@ on:
     branches: [codex/release-validator-control]
 permissions:
   contents: read
+  actions: read
 concurrency: eshop-release-validator
 jobs:
   validate:
@@ -16,8 +17,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify exact ST04 release and live trusted refs
-        id: st04
+      - name: Verify exact inventory control release and live trusted refs
+        id: inventory
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -26,10 +27,11 @@ jobs:
             "$canonical"|"${canonical%.git}") git remote set-url origin "$canonical" ;;
             *) echo 'Unexpected checkout origin'; exit 1 ;;
           esac
-          node .github/release-validator/st04-closeout.mjs preflight
+          node .github/release-validator/inventory-control.mjs preflight
       - name: Publish once and verify the original App response ID
         env:
-          ADMISSION_MAIN: ${{ steps.st04.outputs.main }}
-          ADMISSION_DIGEST: ${{ steps.st04.outputs.digest }}
+          ADMISSION_MAIN: ${{ steps.inventory.outputs.main }}
+          ADMISSION_DIGEST: ${{ steps.inventory.outputs.digest }}
+          GH_TOKEN: ${{ github.token }}
           ESHOP_RELEASE_VALIDATOR_PEM: ${{ secrets.ESHOP_RELEASE_VALIDATOR_PEM }}
-        run: node .github/release-validator/st04-closeout.mjs publish
+        run: node .github/release-validator/inventory-control.mjs publish
