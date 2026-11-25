@@ -1,0 +1,14 @@
+{
+  "production_fixture_base": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+  "phase2_sha256": "91c3145cefe79556a10786b6ea1fd6ffa7cafe6d31fe56c04f67f5c14f330a7c",
+  "source_has_phase2": true,
+  "source": {
+    "applied": 81,
+    "failed": 0
+  },
+  "production": {
+    "applied": 81,
+    "failed": 0
+  },
+  "cleanup": "temporary cluster stopped and removed on exit"
+}

@@ -1,0 +1,37 @@
+[
+  {
+    "file": "tests/cashier-realtime-integration.test.ts",
+    "baseline_exit": 1,
+    "candidate_exit": 1,
+    "normalized_output_equal": true,
+    "baseline_sha256": "fb5f316d338698a5de55317b5b5d16bcaecfde89b2620e6be31195a4a058f8d9",
+    "candidate_sha256": "d71b228865ff463df528b5350ca985b5e35af7f2610d064c248c42c360fa36a0"
+  },
+  {
+    "file": "tests/customer-order-recovery.test.ts",
+    "baseline_exit": 1,
+    "candidate_exit": 1,
+    "normalized_output_equal": false,
+    "baseline_sha256": "a7afbb7c1bd5a4628de63dfcdb4a5c234d4110cc717d6a0b6c491a7658b94578",
+    "candidate_sha256": "f03b1752777ad9a7c3473b9271f4c67434c51cfd99c6cc2ca853cbb74f58a2f7",
+    "identical_env_normalized_output_equal": true,
+    "baseline_identical_env_sha256": "001358fdeb26205e3473c0ad3f78bf815a0d840f18bc19028e5ed8423deea444",
+    "candidate_identical_env_sha256": "cebab3477c183237b3fdd0ffc9906f5b1202729c6a0a8fc313c9ff99724da444"
+  },
+  {
+    "file": "tests/es-tray-device-print-contract.test.ts",
+    "baseline_exit": 1,
+    "candidate_exit": 1,
+    "normalized_output_equal": true,
+    "baseline_sha256": "df6259f91df3c6d77616a1a5138400135966f4b47266892f8d24e59732c05abd",
+    "candidate_sha256": "abb94b4033da0d18059b4072c3b082fda5adbc1363d24b4c75883444cb275fd8"
+  },
+  {
+    "file": "tests/v3-reprint-recovery.test.ts",
+    "baseline_exit": 1,
+    "candidate_exit": 1,
+    "normalized_output_equal": true,
+    "baseline_sha256": "a370651ee2ed35e76ae92fafa2ec133d966fd3c4d9cbe3123e31531a2cdca5ee",
+    "candidate_sha256": "1e15553e74fb40dbda416f6192ee5d37156576c3a36911d279b693033094c4c8"
+  }
+]

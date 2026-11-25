@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-NATIVE-INVENTORY-AUTO-DEDUCTION-CONTROL-01",
+  "status": "FOUNDER_APPROVED_ENGINEERING_ONLY_EXACT_SUCCESSOR",
+  "approvedBy": "Founder",
+  "recordedBy": "Codex recorder",
+  "sourceAuthorizationSha256": "ede12767c604bf583d5fc7c03d4b61e7c3e475d7cf09e8878fac823394c25727",
+  "priorProduction": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+  "productTree": "bf43fa367ea658d024d2cc8a7da07091076f523b",
+  "productionAuthorized": false,
+  "paths": {
+    "app/native-inventory/page.tsx": {
+      "before": "27a0b9af35eed4dd33aeb35570ce6e975a9fb4cd6c18b7f8c42c764933a8620f",
+      "after": "1b8a5f22cc0cf4635243300ff2a02b91bed640efe589548b24199232c896c177"
+    },
+    "lib/pos-request-ledger.ts": {
+      "before": "e14ac283d9b208035502cff6eb5a75567d1ad9252c9e5d45ff98eadecf92f720",
+      "after": "d763250fbca32c80eaccbb39346417b2bb0c5f9d24330f487223eb60c65379f1"
+    },
+    "scripts/test/manifests/root-integration-tests.json": {
+      "before": "280c9d7cea2f7564a462371a8cf9e1d315b4e7cec72b19c68e4e320bf44384f0",
+      "after": "b8efabd24868b463a1ae597f6450aa3766c397a147ace9f23b14d857e189cf9e"
+    }
+  },
+  "nonAffectedSafetyPathsSha256": {
+    "app/cashier/page.tsx": "b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575",
+    "app/api/cron/customer-order-fulfillment-recovery/route.ts": "e8f9911c672af0a5ca18777d2ac1e66da400ea946fa3b5edf10d0077356868d9",
+    "lib/customer-order-fulfillment.ts": "7611a003ebbfba7a1dabf18fcd7c1b93ee025885ae645d91e6ae24409d1039e0",
+    "tests/cashier-realtime-integration.test.ts": "d10fd1cf16c1c9b142ca76742e31a5928ba514384c4a347fea5d7630bb0bc3b8",
+    "tests/customer-order-recovery.test.ts": "4cf808927f334f9480fb55e7baa41dcbf8c7451c3849d51bd4ce848ee3354142",
+    "tests/es-tray-device-print-contract.test.ts": "563b06d5f9cc8e325c6c9b98ade5178dca2197d5af0c8851e1a77a8b3e0cec33",
+    "tests/v3-reprint-recovery.test.ts": "d403c6200677499541b91c66db2ce8583b8cf942b45dada40df3600a75ae3a28",
+    "scripts/test/manifests/root-core-tests.json": "be7b3d97d93f63ff6a09ee807621614a43f78b810a2ca0270050bd1e78d8d4a2",
+    "docs/change-gates/ES-PRINT-RC7-KNOWN-TEST-FAILURES.md": "7276b7901c643299abda73e10c6d24465909a7a2790bad63edf40dfbce67ee99"
+  },
+  "preserved": "No change to old M1 executors, frozen assertions, default selective validator, protected workflow/App identity, inventory table history, cashier/payment/H5/printing API bytes. Existing raw failures remain FAIL.",
+  "executor": "scripts/governance/verify-inventory-control-admission.cjs"
+}

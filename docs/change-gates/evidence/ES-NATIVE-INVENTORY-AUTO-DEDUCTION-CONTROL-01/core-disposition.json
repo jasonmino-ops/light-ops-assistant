@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "taskId": "ES-NATIVE-INVENTORY-AUTO-DEDUCTION-CONTROL-01",
+  "status": "FOUNDER_APPROVED_CANDIDATE_SCOPED_NON_REGRESSION_DISPOSITION",
+  "approvedBy": "Founder",
+  "recordedBy": "Codex recorder",
+  "authority": "Current exact Founder message; existing BASELINE-ATTRIBUTED CORE CLOSEOUT mechanism (ES-OPS-LOCAL-FIRST-UX-01)",
+  "authorizationReceiptSha256": "ede12767c604bf583d5fc7c03d4b61e7c3e475d7cf09e8878fac823394c25727",
+  "baseline": {
+    "sha": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+    "tree": "bc5a5403a4861f77b2394b24e14cfffc8c72ac2e"
+  },
+  "candidate": {
+    "tree": "bf43fa367ea658d024d2cc8a7da07091076f523b",
+    "pathManifestSha256": "ce9fa0d2d900a91f47c98f701b042a5695f6639db683c9524afc6803d6ee28a6"
+  },
+  "issued_at": "2026-11-25T05:34:56.266Z",
+  "expires_at": "2026-12-02T05:34:56.266Z",
+  "raw_status": "BLOCKED",
+  "raw_counts": {
+    "expected": 103,
+    "executed": 103,
+    "pass": 99,
+    "fail": 4,
+    "skip": 0
+  },
+  "disposition": "Only the evidenced baseline-reproduced assertions are not automatic engineering-admission vetoes. No FAIL is PASS; no core-risk waiver, runner/KTF modification or Production permission.",
+  "failures": [
+    {
+      "testId": "tests/cashier-realtime-integration.test.ts",
+      "assertion": "Diamond trusted main may differ only by exact registrations and approved baseline fixes",
+      "expected": "historical exact main path allowlist",
+      "actual": "current unrelated main governance paths rejected in both checkouts",
+      "cause": "historical trusted-main admission whitelist; not a cashier transaction execution failure",
+      "riskExclusion": "candidate does not modify cashier/POS/H5/payment API source; rejected global-main path operand is independent of new control and ledger code"
+    },
+    {
+      "testId": "tests/es-tray-device-print-contract.test.ts",
+      "assertion": "Cashier exact frozen page digest",
+      "expected": "8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6",
+      "actual": "b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575",
+      "cause": "legacy full-page frozen hash is already different in Production",
+      "riskExclusion": "app/cashier/page.tsx identical to live Production baseline; no print/cashier business changes"
+    },
+    {
+      "testId": "tests/v3-reprint-recovery.test.ts",
+      "assertion": "Cashier exact frozen page digest",
+      "expected": "8cdf50c3ce9db38e0b160a367ab1e12b632ae4e86a0cbdb9e55b0fbeb24623e6",
+      "actual": "b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575",
+      "cause": "same incumbent Cashier digest assertion",
+      "riskExclusion": "exact unchanged cashier source, no reprint or recovery implementation edits"
+    },
+    {
+      "testId": "tests/customer-order-recovery.test.ts/recovery advances beyond ten pages and keeps renderer-blocked intents visible",
+      "assertion": "tests/customer-order-recovery.test.ts:83:12 strictEqual(first.status,200)",
+      "expected": "200",
+      "actual": "503",
+      "cause": "fixture omits eshopTrayPrintJob.findUnique; unchanged recovery service falls through to deliberately unavailable loopback DB",
+      "riskExclusion": "cron/fulfillment diagnostic path has no call/import of new sales-control or pos-request-ledger; original service/test bytes unchanged. Not proof of real production recovery health."
+    },
+    {
+      "testId": "tests/customer-order-recovery.test.ts/expired intent is visible and removed from the actionable set",
+      "assertion": "tests/customer-order-recovery.test.ts:109:12 strictEqual(response.status,200)",
+      "expected": "200",
+      "actual": "503",
+      "cause": "fixture omits eshopTrayPrintJob.findUnique; unchanged recovery service falls through to deliberately unavailable loopback DB",
+      "riskExclusion": "cron/fulfillment diagnostic path has no call/import of new sales-control or pos-request-ledger; original service/test bytes unchanged. Not proof of real production recovery health."
+    },
+    {
+      "testId": "tests/customer-order-recovery.test.ts/recovery persists a retry backoff for a bad row instead of leaving it at the queue head",
+      "assertion": "tests/customer-order-recovery.test.ts:127:12 strictEqual(firstBody.summary.failed,1)",
+      "expected": "1",
+      "actual": "999",
+      "cause": "fixture omits eshopTrayPrintJob.findUnique; unchanged recovery service falls through to deliberately unavailable loopback DB",
+      "riskExclusion": "cron/fulfillment diagnostic path has no call/import of new sales-control or pos-request-ledger; original service/test bytes unchanged. Not proof of real production recovery health."
+    },
+    {
+      "testId": "tests/customer-order-recovery.test.ts/V2_ACTIVE never creates an H5 job and recovery remains visible",
+      "assertion": "tests/customer-order-recovery.test.ts:152:12 strictEqual(response.status,200)",
+      "expected": "200",
+      "actual": "503",
+      "cause": "fixture omits eshopTrayPrintJob.findUnique; unchanged recovery service falls through to deliberately unavailable loopback DB",
+      "riskExclusion": "cron/fulfillment diagnostic path has no call/import of new sales-control or pos-request-ledger; original service/test bytes unchanged. Not proof of real production recovery health."
+    }
+  ],
+  "comparison": [
+    {
+      "file": "tests/cashier-realtime-integration.test.ts",
+      "baseline_exit": 1,
+      "candidate_exit": 1,
+      "normalized_output_equal": true,
+      "baseline_sha256": "fb5f316d338698a5de55317b5b5d16bcaecfde89b2620e6be31195a4a058f8d9",
+      "candidate_sha256": "d71b228865ff463df528b5350ca985b5e35af7f2610d064c248c42c360fa36a0"
+    },
+    {
+      "file": "tests/customer-order-recovery.test.ts",
+      "baseline_exit": 1,
+      "candidate_exit": 1,
+      "normalized_output_equal": false,
+      "baseline_sha256": "a7afbb7c1bd5a4628de63dfcdb4a5c234d4110cc717d6a0b6c491a7658b94578",
+      "candidate_sha256": "f03b1752777ad9a7c3473b9271f4c67434c51cfd99c6cc2ca853cbb74f58a2f7",
+      "identical_env_normalized_output_equal": true,
+      "baseline_identical_env_sha256": "001358fdeb26205e3473c0ad3f78bf815a0d840f18bc19028e5ed8423deea444",
+      "candidate_identical_env_sha256": "cebab3477c183237b3fdd0ffc9906f5b1202729c6a0a8fc313c9ff99724da444"
+    },
+    {
+      "file": "tests/es-tray-device-print-contract.test.ts",
+      "baseline_exit": 1,
+      "candidate_exit": 1,
+      "normalized_output_equal": true,
+      "baseline_sha256": "df6259f91df3c6d77616a1a5138400135966f4b47266892f8d24e59732c05abd",
+      "candidate_sha256": "abb94b4033da0d18059b4072c3b082fda5adbc1363d24b4c75883444cb275fd8"
+    },
+    {
+      "file": "tests/v3-reprint-recovery.test.ts",
+      "baseline_exit": 1,
+      "candidate_exit": 1,
+      "normalized_output_equal": true,
+      "baseline_sha256": "a370651ee2ed35e76ae92fafa2ec133d966fd3c4d9cbe3123e31531a2cdca5ee",
+      "candidate_sha256": "1e15553e74fb40dbda416f6192ee5d37156576c3a36911d279b693033094c4c8"
+    }
+  ],
+  "unchangedSafetyPathsSha256": {
+    "app/cashier/page.tsx": "b17504803ce6ab2c8c39dd79e247617c69ec45a9b45387db3a42b8bac54d3575",
+    "app/api/cron/customer-order-fulfillment-recovery/route.ts": "e8f9911c672af0a5ca18777d2ac1e66da400ea946fa3b5edf10d0077356868d9",
+    "lib/customer-order-fulfillment.ts": "7611a003ebbfba7a1dabf18fcd7c1b93ee025885ae645d91e6ae24409d1039e0",
+    "tests/cashier-realtime-integration.test.ts": "d10fd1cf16c1c9b142ca76742e31a5928ba514384c4a347fea5d7630bb0bc3b8",
+    "tests/customer-order-recovery.test.ts": "4cf808927f334f9480fb55e7baa41dcbf8c7451c3849d51bd4ce848ee3354142",
+    "tests/es-tray-device-print-contract.test.ts": "563b06d5f9cc8e325c6c9b98ade5178dca2197d5af0c8851e1a77a8b3e0cec33",
+    "tests/v3-reprint-recovery.test.ts": "d403c6200677499541b91c66db2ce8583b8cf942b45dada40df3600a75ae3a28",
+    "scripts/test/manifests/root-core-tests.json": "be7b3d97d93f63ff6a09ee807621614a43f78b810a2ca0270050bd1e78d8d4a2",
+    "docs/change-gates/ES-PRINT-RC7-KNOWN-TEST-FAILURES.md": "7276b7901c643299abda73e10c6d24465909a7a2790bad63edf40dfbce67ee99"
+  },
+  "environment": {
+    "node": "v24.14.0",
+    "platform": "darwin arm64 local CORE; NODE_ENV=test",
+    "fullRunDatabase": "isolated loopback fixture 127.0.0.1:55451",
+    "identicalRecoveryRunDatabase": "isolated unavailable loopback fixture 127.0.0.1:59998"
+  },
+  "invalidate_on": [
+    "candidate tree/path/hash or Production baseline change",
+    "changed failure identity/count/assertion/diagnostic/cause",
+    "new inventory/refund/concurrency/data-integrity risk",
+    "missing evidence",
+    "later baseline fix",
+    "expiry",
+    "revocation"
+  ],
+  "productionAuthorized": false,
+  "environment_toolchain_config_sha256": "3ecde8c8143121f4a1f1e91763dddf6569ad9c7b7a4d561a212ebff30abf65b3",
+  "failure_set_sha256": "195b4d99922951f4a544d75cbe11cd83b2802b517b64a43a4f68acc14a4ff56b"
+}
