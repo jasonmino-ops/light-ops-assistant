@@ -68,7 +68,7 @@
       "baseOriginMainSha": "ff1e8696860c2d9c2f3285d066d0cd56e1054691",
       "baseMeaning": "Scope ancestry anchor only; actual repair/development/release Lineage gates remain independently mandatory",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "createdAt": "2026-11-25T20:50:18Z",
       "approvedAt": "2026-11-25T20:50:18Z",
@@ -91,7 +91,9 @@
         "originalDispositionDeadline": "2026-11-26T12:51:20Z"
       },
       "expiresAt": "2026-11-26T12:51:20Z",
-      "noProductionDeploymentOrMigration": true
+      "noProductionDeploymentOrMigration": true,
+      "closedAt": "2026-11-25T21:03:53Z",
+      "featureMergeCommitSha": "00b000d82a4a43518b3640edf3f5e95ebbe1927a"
     },
     {
       "authorizationId": "ACCEPTED-SOURCE-MAIN-ADMISSION",
