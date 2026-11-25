@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "taskId": "ES-POS-CHECKOUT-LATENCY-01",
+  "featureBranch": "codex/es-pos-checkout-latency-01-stage3",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "31333098ad44bc3d5569d321c09ce2e56e32661a",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/api/cashier/sales/route.ts"
+  ],
+  "authorizedPathSha256": {
+    "app/api/cashier/sales/route.ts": "1a2ed22149bb6cd81d463d950fa8c8abe2e07cb309576e7ba0531761c966a6e9"
+  },
+  "reason": "Stage3 only: batched product resolution via existing unit resolver and validPrinting-gated Desktop binding lookup; preserve every other handler byte.",
+  "prohibitedChanges": [
+    "Production or Preview deploy",
+    "database schema/migration",
+    "main product integration",
+    "terminal install/restart",
+    "Local First/Owner/fence/admission changes",
+    "other performance changes"
+  ],
+  "closeAfter": "FEATURE_MERGE",
+  "createdAt": "2026-11-25T12:34:28Z",
+  "approvedBy": "Founder",
+  "approvedAt": "2026-11-25T12:39:06Z",
+  "approvalSource": {
+    "source": "Founder explicit ES-POS-CHECKOUT-LATENCY-01 / Founder Authorization in this task",
+    "statement": "批准方案①：精确例外登记及后续修复实施。批准 app/api/cashier/sales/route.ts，授权严格绑定已经封存的 COMBINED-PROPOSAL.patch、proposal-manifest.json 对应精确内容及 SHA-256，不授权任何额外修改。批准按现有流程正式登记 ACTIVE，允许仅将本任务必要治理记录提交、推送并合入可信 main；不包含业务代码、不触发生产部署。登记后自主继续 Stage3 实施、验证、独立审查及本地候选 commit。",
+    "sealedPatchSha256": "fdae02c173eb02bbc19bc8b62b5cb4c67c52965435f42196d5b521b51aa128a0",
+    "sealedManifestSha256": "4122ca9b5ca09fcf0429df505aab8e96694f0c33c1b979c2597760d7a530fdea",
+    "approvedAtMeaning": "Time registering the explicit Founder authorization already received; not a fabricated external signature or release approval.",
+    "boundPathSha256": {
+      "app/api/cashier/sales/route.ts": "1a2ed22149bb6cd81d463d950fa8c8abe2e07cb309576e7ba0531761c966a6e9"
+    },
+    "releaseBoundary": "No product main merge, Preview/Production deploy, migration or terminal modification."
+  }
+}
