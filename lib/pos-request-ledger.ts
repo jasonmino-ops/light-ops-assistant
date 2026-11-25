@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { ProductUnitError } from '@/lib/product-unit'
 
 type Actor = { tenantId: string; storeId: string; userId: string }
-type RequestIdentity = { key: string | null; fingerprint: string }
+type RequestIdentity = { key: string | null; fingerprint: string; refundSourceId: string | null }
 
 function canonicalPayload(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalPayload)
@@ -14,12 +14,19 @@ function canonicalPayload(value: unknown): unknown {
   return value
 }
 
+function bodyRefundSource(body: unknown): string | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null
+  const value = body as Record<string, unknown>
+  return value.saleType === 'REFUND' && typeof value.originalSaleRecordId === 'string' ? value.originalSaleRecordId : null
+}
+
 export function posRequestIdentity(request: Request, body: unknown): RequestIdentity {
   const key = request.headers.get('idempotency-key')
   if (key !== null && !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(key)) {
     throw new ProductUnitError('INVALID_IDEMPOTENCY_KEY', 400, 'Invalid request identifier')
   }
-  return { key: key?.toLowerCase() ?? null, fingerprint: key === null ? '' : createHash('sha256').update(JSON.stringify(canonicalPayload(body))).digest('hex') }
+  const refundSourceId = bodyRefundSource(body)
+  return { key: key?.toLowerCase() ?? null, refundSourceId, fingerprint: key === null ? '' : createHash('sha256').update(JSON.stringify(canonicalPayload(body))).digest('hex') }
 }
 
 function requestScope(actor: Actor, operation: string, key: string) {
@@ -52,7 +59,12 @@ export async function writePosRequest<T extends Prisma.InputJsonObject>(
   const { key, fingerprint } = request
   if (key === null) {
     const [row] = await tx.$queryRaw<{ active: boolean }[]>`
-      SELECT native_inventory.pin_sales_epoch(${actor.tenantId}, ${actor.storeId}) IS NOT NULL AS active
+      SELECT native_inventory.pin_sales_epoch(${actor.tenantId}, ${actor.storeId}) IS NOT NULL
+        OR (${operation} = 'POS_REFUND' AND EXISTS (
+          SELECT 1 FROM public."NativeInventoryMovement" m
+          WHERE m."tenantId"=${actor.tenantId} AND m."storeId"=${actor.storeId}
+            AND m.type='SALE' AND m."sourceId"=${request.refundSourceId}
+        )) AS active
     `
     if (row?.active) {
       throw new ProductUnitError('IDEMPOTENCY_KEY_REQUIRED', 409, '请刷新收银页面后重试')

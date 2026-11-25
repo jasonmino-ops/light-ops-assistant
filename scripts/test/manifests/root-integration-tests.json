@@ -1,8 +1,9 @@
 {
   "schemaVersion": 1,
   "lane": "INTEGRATION",
-  "expectedCount": 21,
+  "expectedCount": 22,
   "tests": [
+    { "file": "tests/native-inventory-control.test.ts", "lane": "INTEGRATION", "reason": "Runs complete isolated Prisma migrations, non-owner runtime SQL, signed HTTP and Chromium mobile/desktop sales-control checks with synthetic data.", "dependencyType": "POSTGRESQL", "evidence": "tests/native-inventory-control/run.py" },
     { "file": "tests/diamond-native-sales-phase2.test.ts", "lane": "INTEGRATION", "reason": "Requires a disposable PostgreSQL database and two loopback HTTP services exercising the current and legacy routes.", "dependencyType": "POSTGRESQL", "evidence": "tests/diamond-native-sales-phase2.test.ts:8-15" },
     { "file": "tests/cashier-large-cart-query.test.cjs", "lane": "INTEGRATION", "reason": "Includes checkout transactions against a disposable loopback PostgreSQL cluster with the Production-based cashier source fixture.", "dependencyType": "POSTGRESQL", "evidence": "tests/cashier-large-cart-query.test.cjs:115-147" },
     { "file": "tests/v3-legacy-seven-clean-start.test.ts", "lane": "INTEGRATION", "reason": "Tests the seven-ticket quarantine and new Owner cutoff in a disposable private PostgreSQL schema with two Ops actors and independent connections.", "dependencyType": "POSTGRESQL", "evidence": "tests/v3-legacy-seven-clean-start.test.ts" },
