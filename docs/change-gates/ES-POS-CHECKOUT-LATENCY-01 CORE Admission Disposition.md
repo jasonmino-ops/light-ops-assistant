@@ -111,3 +111,12 @@ Explicit frozen-surface Founder approval is recorded here only for the necessary
 User authorization verbatim operative scope: “按精确草案完成14路径 main 真实准入、必要治理登记及 STRICT 核验”；“完成基于 Production 1f4e3acb 的4路径独立发布投影”；“允许指定测试源提交，仅更新大购物车测试的基线引用，保留原测试意图及断言”；“允许上述精确范围内必要的提交、推送及 main 合并”。“本轮不授权生产部署、数据库迁移及营业终端变更”。
 
 RAW CORE failures/BLOCKED and seven-case scope remain unchanged; no automatic newtargetwaiver, no unexecuted assertion certified. Main admission checks/Acceptance, actual STRICT, protectedScope, exact ordered source fingerprints, finalBuild/regression/fresh review and Release Gate must be performed. Final deployment authorization remains a later Founder Gate. Existing expiry2026-11-26T12:51:20Z not extended. Implementation grants close at actual relevant feature merges; future release grant has its own exact branch/candidatephase, cannot be used for another feature or kept evergreen.
+
+
+### Stage A bounded main Acceptance and grant closure / 2026-11-25T21:03:53Z
+
+Exact business reconciliation commit `fc4f5e9f01952a37be5fa60ceb3e5ec6d71ca9f9` has genuine parents5bb08582 and actualProduction1f4; exactly10sealedpaths. PR54 merged `00b000d82a4a43518b3640edf3f5e95ebbe1927a` at `2026-11-25T21:02:48Z` after actualtwo cloud-ciSUCCESS, serializedBuildPASS, trustedScopePASS, original native-control18PASS0FAIL0SKIP, andfresh-contextboundedreviewPASS. First concurrent.next artifactBuildFAIL is preserved; no sourcechange in serializedrecheck. BaselinecanonicalCORE1f4 remains99PASS4FAIL0SKIP/rawBLOCKED, notsource/mainreleasePASS.
+
+Formal Acceptance is limited to these10mainadmissionpaths under exactf047. Maincurrency/client/rollout/frozenarchive preserved; mainNOTProduction-equivalent/notgenerallyreleasable. Localtestchains main80/Production-shaped81 migrations both0failed, privatePGremoved, SQL/HTTP/browseridentity/refundcontrols validated; noProductionSQL/FIELD. Actualpostmergescriptreports STRICT/SafeDevelopmentBaseYES/clean/PASS with originmain `00b000d82a4a43518b3640edf3f5e95ebbe1927a`, not inventedCONTENT_SUBSET mapping.
+
+The specific CURRENT-PRODUCTION-ADMISSION implementationgrant is CLOSED at this realmainfeaturemerge. Otherexactsource/releasegrants are unchanged and remain phase-limited/unexpired; no reopening, no evergreen generalwaiver. DeploymentEnabled(main/codex)=false remains unchanged; release-ref/Production/schema/data/terminals untouched. StageB/C sourceadmission and finalmappedAcceptance/ReleaseGate stillpending, originalsevenRAW failuresunchanged.
