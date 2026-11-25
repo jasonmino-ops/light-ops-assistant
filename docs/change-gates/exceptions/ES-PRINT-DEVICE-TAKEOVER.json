@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "taskId": "ES-PRINT-DEVICE-TAKEOVER",
+  "featureBranch": "codex/es-print-device-takeover-delivery",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "ba867972df1c0bbe71723c7a7d1169208d809d58",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/api/cashier/member-balance-pay/route.ts",
+    "app/api/cashier/sales/route.ts"
+  ],
+  "authorizedPathSha256": {
+    "app/api/cashier/member-balance-pay/route.ts": "96d7c400728550d65d0c36c34da8c2be7098186a00455f8680d1ac6d3402246b",
+    "app/api/cashier/sales/route.ts": "2744cf274bbda8039a7f071c679553d52133a24c6cd806dd817c4a64a94f104f"
+  },
+  "reason": "Exact previously reviewed response metadata for a device-bound POS sale or member-balance payment, supplying its committed business origin to the new native print execution boundary. No other protected path or content is admitted.",
+  "approvalSource": {
+    "recordedAt": "2026-11-25T19:11:17Z",
+    "decision": "Founder accepted the existing candidate and authorized necessary Scope registration and commit in this task on 2026-11-26 (Asia/Phnom_Penh).",
+    "candidatePatchSha256": "496066acba02a7ccf4409dd0f5759baefa8f01f648d858b6d97a7e9dee486171"
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "createdAt": "2026-11-25T19:11:17Z",
+  "approvedAt": "2026-11-25T19:11:17Z",
+  "approvedBy": "Founder"
+}
