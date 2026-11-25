@@ -6,7 +6,7 @@
   "baseOriginMainSha": "31333098ad44bc3d5569d321c09ce2e56e32661a",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "authorizedPaths": [
     "app/api/cashier/sales/route.ts"
   ],
@@ -44,7 +44,7 @@
       "baseOriginMainSha": "b0aa38a1d1bf4d1aa0f375f1c42da6e4436dc481",
       "baseMeaning": "Scope ancestry anchor only, not latest development baseline or STRICT proof",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "approvedAt": "2026-11-25T15:37:23Z",
       "createdAt": "2026-11-25T13:11:21Z",
@@ -60,7 +60,9 @@
       "latestTrustedMain": "c6e110904d94204d2671bb7c3369e4b3ab076b29",
       "actualProductionParent": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
       "sealedManifestSha256": "8527b8eed1c7dc4813823d13464632542f3c84e785afc740d5b84a7c88af5f0d",
-      "approvalSource": "Founder Release Readiness Authorization approves exact sealed projection; subsequent Founder Authorization expressly approves proposal SHA25651c101...f8d90 and necessary governance registration. Registration time only; no product merge/deploy approval."
+      "approvalSource": "Founder Release Readiness Authorization approves exact sealed projection; subsequent Founder Authorization expressly approves proposal SHA25651c101...f8d90 and necessary governance registration. Registration time only; no product merge/deploy approval.",
+      "closedAt": "2026-11-25T21:15:50Z",
+      "featureMergeCommitSha": "7d5a682794adb39e40f32aef8471b750a4595f7c"
     },
     {
       "authorizationId": "CURRENT-PRODUCTION-ADMISSION",
@@ -101,7 +103,7 @@
       "baseOriginMainSha": "ff1e8696860c2d9c2f3285d066d0cd56e1054691",
       "baseMeaning": "Scope ancestry anchor only; actual repair/development/release Lineage gates remain independently mandatory",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "createdAt": "2026-11-25T20:50:18Z",
       "approvedAt": "2026-11-25T20:50:18Z",
@@ -124,7 +126,9 @@
         "originalDispositionDeadline": "2026-11-26T12:51:20Z"
       },
       "expiresAt": "2026-11-26T12:51:20Z",
-      "noProductionDeploymentOrMigration": true
+      "noProductionDeploymentOrMigration": true,
+      "closedAt": "2026-11-25T21:15:50Z",
+      "featureMergeCommitSha": "7d5a682794adb39e40f32aef8471b750a4595f7c"
     },
     {
       "authorizationId": "FINAL-RELEASE-PROJECTION",
@@ -157,5 +161,7 @@
       "expiresAt": "2026-11-26T12:51:20Z",
       "noProductionDeploymentOrMigration": true
     }
-  ]
+  ],
+  "closedAt": "2026-11-25T21:15:50Z",
+  "featureMergeCommitSha": "7d5a682794adb39e40f32aef8471b750a4595f7c"
 }
