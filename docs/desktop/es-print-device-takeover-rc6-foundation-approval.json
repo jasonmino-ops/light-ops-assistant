@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-PRINT-DEVICE-TAKEOVER",
+  "version": "0.3.0-rc.6",
+  "status": "ACTIVE",
+  "payloadSha256": "a18f0603e0c08b66f6b2824619f6d1212503ac83227b3eec872451c3da0e2b19",
+  "frozenSnapshotSha256": "80a5000bbd6d229d6d878404615ecd241cfc09ad6b63d2202087f19b02eedb4a",
+  "formalApproval": {
+    "approvedBy": "Founder",
+    "signedAt": "2026-11-26",
+    "candidateCommit": "3746d5cdf2770bfcef06dc9d4636252bf1e58fbb",
+    "sourceReference": "Founder personal reply to call_f2c1b64fb98b4d38a39fc8c3afa7463c item 1: 本人正式签认并批准十路径登记. This explicitly binds native Product 0217be8cb6a9f60d01a3ba47f69492a6948c2f8d, candidate 3746d5cdf2770bfcef06dc9d4636252bf1e58fbb, payload a18f0603e0c08b66f6b2824619f6d1212503ac83227b3eec872451c3da0e2b19, snapshot 80a5000bbd6d229d6d878404615ecd241cfc09ad6b63d2202087f19b02eedb4a, ten exact paths, Windows x64 current-user unelevated INTERNAL TEST ONLY. Web release, V727 installation and field remain separately controlled. Local calendar date only; exact signing instant was not supplied."
+  },
+  "evidence": "Actual Founder signature; existing failures persist. No commercial release or FIELD approval."
+}

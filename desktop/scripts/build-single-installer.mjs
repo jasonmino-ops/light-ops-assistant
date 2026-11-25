@@ -55,7 +55,7 @@ export async function stageSingleInstallerInputs({ installerPath, manifestPath }
 
 export async function buildSingleInstaller(options) {
   let internalEnvironment
-  if (DESKTOP_VERSION === '0.3.0-rc.1' || DESKTOP_VERSION === '0.3.0-rc.2' || DESKTOP_VERSION === '0.3.0-rc.3' || DESKTOP_VERSION === '0.3.0-rc.4' || DESKTOP_VERSION === '0.3.0-rc.5') {
+  if (DESKTOP_VERSION === '0.3.0-rc.1' || DESKTOP_VERSION === '0.3.0-rc.2' || DESKTOP_VERSION === '0.3.0-rc.3' || DESKTOP_VERSION === '0.3.0-rc.4' || DESKTOP_VERSION === '0.3.0-rc.5' || DESKTOP_VERSION === '0.3.0-rc.6') {
     // Reject signing/loader/builder overrides before executing any build child.
     internalEnvironment = candidateEnvironment()
     run(process.execPath, ['scripts/release-foundation.mjs', 'policy',
