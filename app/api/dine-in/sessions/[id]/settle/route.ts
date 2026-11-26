@@ -9,8 +9,9 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { diningActor, diningScope, loadDiningStore, requireRecoveryGate } from '@/lib/dine-in/eligibility'
-import { settleMeal } from '@/lib/dine-in/commands'
+import { diningPaymentOrigin, settleMeal } from '@/lib/dine-in/commands'
 import { errorResponse, json, readBody, storeCodeFrom } from '@/lib/dine-in/http'
+import { withPrintOrigin } from '@/lib/v3-print-origin-response'
 import { findKhqrConfig } from '@/lib/merchant-config'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const input = await readBody(req)
     const { id } = await params
     const khqr = input.paymentMethod === 'KHQR' ? await findKhqrConfig(store.tenantId, store.id) : null
-    return json(await settleMeal(prisma, diningScope(store), diningActor(authorization), {
+    const result = await settleMeal(prisma, diningScope(store), diningActor(authorization), {
       store: { currencyCode: store.currencyCode },
       mealId: id,
       requestKey: input.requestKey,
@@ -31,6 +32,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       expectedVersion: input.expectedVersion,
       manualPaymentConfirmed: input.manualPaymentConfirmed,
       khqrConfig: khqr ? { provider: khqr.provider ?? null, merchantConfigId: khqr.id } : null,
-    }))
+    })
+    const response = json(result)
+    if (result.replayed || result.alreadySettled || !result.payment) return response
+    return withPrintOrigin(response, req, diningScope(store), result.payment.receiptPrint?.printOrderNo,
+      result.payment[diningPaymentOrigin], ['FRONT'])
   } catch (error) { return errorResponse(error, context) }
 }

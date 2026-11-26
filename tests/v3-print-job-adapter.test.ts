@@ -103,6 +103,7 @@ function database(options: { rejectDeviceIdInPersistenceScope?: boolean; beforeR
   }
   let transactionTail = Promise.resolve()
   const db: any = { jobs, batch, batches, controlPlane,
+    operationLog: { findFirst: async () => null },
     $transaction: async (operation: (tx: any) => Promise<any>) => {
       const previous = transactionTail
       let release!: () => void

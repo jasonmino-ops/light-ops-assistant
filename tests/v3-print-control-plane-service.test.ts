@@ -996,6 +996,16 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
       "effectBoundary" text, "physicalCompletionKnown" boolean DEFAULT false NOT NULL,
       "createdAt" timestamp(3) NOT NULL, "updatedAt" timestamp(3) NOT NULL, UNIQUE ("tenantId", "storeId", "idempotencyKey")
     );
+    CREATE TYPE "ComputerBindingIdentityKind" AS ENUM ('LEGACY_AGENT', 'DESKTOP_PRINT_CHILD');
+    CREATE TYPE "ComputerBindingStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'EXPIRED');
+    CREATE TYPE "ComputerCredentialStatus" AS ENUM ('PENDING', 'ACTIVE', 'VOID');
+    CREATE TABLE "ComputerBinding" (
+      id text PRIMARY KEY, "tenantId" text NOT NULL, "storeId" text NOT NULL, "parentDesktopDeviceId" text NOT NULL,
+      "identityKind" "ComputerBindingIdentityKind" DEFAULT 'DESKTOP_PRINT_CHILD', "childActiveSlot" text DEFAULT 'ACTIVE',
+      status "ComputerBindingStatus" DEFAULT 'APPROVED', "boundAt" timestamp DEFAULT now(), "disabledAt" timestamp,
+      "credentialActivatedAt" timestamp DEFAULT (now() AT TIME ZONE 'UTC'), "credentialStatus" "ComputerCredentialStatus" DEFAULT 'ACTIVE', "credentialExpiresAt" timestamp DEFAULT ((now() AT TIME ZONE 'UTC') + interval '1 day'),
+      "deviceSecretVersion" integer DEFAULT 1
+    );
     CREATE TABLE "OperationLog" (
       "id" text PRIMARY KEY, "tenantId" text NOT NULL, "storeId" text, "userId" text, "actionType" text NOT NULL,
       "targetType" text NOT NULL, "targetId" text, "requestId" text, "status" "LogStatus" NOT NULL,
@@ -1005,7 +1015,7 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
 
   async function reset() {
     await pool.query(`
-      TRUNCATE "Store", "OpsAdmin", "DesktopDevice", "SaleRecord", "V3PrintControlPlane", "V3PrintExecutionBatch", "EshopTrayPrintJob", "OperationLog";
+      TRUNCATE "ComputerBinding", "Store", "OpsAdmin", "DesktopDevice", "SaleRecord", "V3PrintControlPlane", "V3PrintExecutionBatch", "EshopTrayPrintJob", "OperationLog";
       INSERT INTO "Store" VALUES ('test-store','test-tenant','TEST','ACTIVE');
       INSERT INTO "OpsAdmin" VALUES ('test-ops-reviewer','ACTIVE','OPS_ADMIN'), ('test-ops-executor','ACTIVE','OPS_ADMIN');
     `)
@@ -2054,6 +2064,217 @@ test('queue recovery serializable guards and claim race in isolated PostgreSQL',
     assert.deepEqual(await runOpsV3QueueRecovery(prisma, compScope, compFounder, expiry,
       () => ++reads === 1 ? boundary : new Date(boundary.getTime() + 1)), { ok: false, code: 'DIAMOND_COMPENSATION_EXPIRED' })
     await assertCompensationUnchanged(1)
+  })
+
+  await t.test('explicit replacement alone creates one start under concurrent confirmation and leaves all old jobs intact', async () => {
+    await reset()
+    await pool.query(`ALTER TABLE "DesktopDevice" ADD COLUMN "activeSlot" text DEFAULT 'ACTIVE', ADD COLUMN "tokenExpiresAt" timestamp(3) DEFAULT ((now() AT TIME ZONE 'UTC') + interval '1 day'), ADD COLUMN "tokenVersion" integer DEFAULT 1`)
+    const target = 'takeover-target'
+    await pool.query('INSERT INTO "DesktopDevice" VALUES ($1,$2,$3,\'ACTIVE\',$4)', [target, scope.tenantId, scope.storeId, 'a'.repeat(64)])
+    const old = await prisma.v3PrintControlPlane.update({ where: { storeId: scope.storeId },
+      data: { mode: 'V3_ACTIVE', ownerDeviceId: 'test-device-01' } })
+    const jobs = await prisma.eshopTrayPrintJob.findMany({ orderBy: { id: 'asc' } })
+    const ops = { ...scope, actorUserId: 'store-owner-fixture', intendedOwnerDeviceId: target, confirmationId: 'confirm-fixture-replacement' }
+    const previous = { previousDeviceId: old.ownerDeviceId!, previousEpoch: old.ownerEpoch, previousDeviceStopped: true as const }
+    await pool.query(`UPDATE "DesktopDevice" SET "tokenExpiresAt" = (now() AT TIME ZONE 'UTC') - interval '1 minute' WHERE id = $1`, [target])
+    const expiry = await prisma.desktopDevice.findUniqueOrThrow({ where: { id: target }, select: { tokenExpiresAt: true } })
+    assert.ok(expiry.tokenExpiresAt && expiry.tokenExpiresAt.getTime() < Date.now() - 50_000)
+    const beginRequest = { ...ops, expectedStateVersion: old.stateVersion, replacement: { phase: 'BEGIN' as const, ...previous } }
+    assert.deepEqual(await controlledV3OwnerHandoff(prisma as any, beginRequest), { ok: false, code: 'HANDOFF_INTENDED_OWNER_INVALID' })
+    await pool.query(`UPDATE "DesktopDevice" SET "tokenExpiresAt" = (now() AT TIME ZONE 'UTC') + interval '1 day' WHERE id = $1`, [target])
+    assert.deepEqual(await controlledV3OwnerHandoff(prisma as any, { ...beginRequest, replacement: { ...beginRequest.replacement, previousDeviceStopped: false as any } }),
+      { ok: false, code: 'HANDOFF_OLD_DEVICE_STOP_REQUIRED' })
+    const before = await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { id: old.id } })
+    assert.deepEqual(await controlledV3OwnerHandoff(prisma as any, beginRequest), { ok: false, code: 'HANDOFF_TARGET_NOT_READY' })
+    assert.deepEqual(await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { id: old.id } }), before)
+    const { preparePrintReplacementTarget, listPrintReplacementTargets } = await import('../lib/v3-print-replacement-target')
+    await pool.query('INSERT INTO "ComputerBinding" (id,"tenantId","storeId","parentDesktopDeviceId") VALUES ($1,$2,$3,$4)',
+      ['fixture-child', scope.tenantId, scope.storeId, target])
+    const targetProof = await preparePrintReplacementTarget(prisma, { ...scope, deviceId: target, tokenVersion: 1 })
+    assert.ok(targetProof)
+    ops.confirmationId = targetProof.confirmationId
+    assert.deepEqual(await listPrintReplacementTargets(prisma, { ...scope, tenantId: 'other-tenant' }), [])
+    assert.deepEqual((await listPrintReplacementTargets(prisma, scope)).map(row => row.deviceId), [target])
+    const { confirmPrintReplacement } = await import('../lib/v3-print-control-plane')
+    const atomic = () => confirmPrintReplacement(prisma as any, { ...ops, expectedStateVersion: old.stateVersion }, previous)
+    await pool.query(`UPDATE "V3PrintExecutionBatch" SET "revokedAt"=NULL, "expiresAt" = (now() AT TIME ZONE 'UTC') + interval '10 minutes'`)
+    assert.deepEqual(await atomic(), { ok: false, code: 'HANDOFF_QUARANTINE_ACTIVE' })
+    assert.deepEqual(await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { id: old.id } }), before)
+    assert.equal(await prisma.operationLog.count({ where: { actionType: 'V3_PRINT_CONTROLLED_HANDOFF' } }), 0)
+    await pool.query('UPDATE "V3PrintExecutionBatch" SET "revokedAt"=now()')
+    await pool.query(`ALTER TABLE "OperationLog" ADD CONSTRAINT reject_atomic CHECK ("message" IS DISTINCT FROM 'HANDOFF_CONFIRMED')`)
+    try { await assert.rejects(atomic()) } finally { await pool.query('ALTER TABLE "OperationLog" DROP CONSTRAINT reject_atomic') }
+    assert.deepEqual(await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { id: old.id } }), before)
+    assert.equal(await prisma.operationLog.count({ where: { actionType: 'V3_PRINT_CONTROLLED_HANDOFF' } }), 0)
+    const begin = await controlledV3OwnerHandoff(prisma as any, { ...ops, expectedStateVersion: old.stateVersion, replacement: { phase: 'BEGIN', ...previous } })
+    assert.ok(begin.ok, JSON.stringify(begin))
+    const { readPrintExecutionStart } = await import('../lib/v3-print-execution-start')
+    assert.equal(await readPrintExecutionStart(prisma, scope), null)
+    const confirm = { ...ops, expectedStateVersion: old.stateVersion + 1, replacement: { phase: 'CONFIRM' as const, ...previous } }
+    await pool.query('UPDATE "DesktopDevice" SET "tokenVersion"=2 WHERE id=$1', [target])
+    assert.deepEqual(await controlledV3OwnerHandoff(prisma as any, confirm), { ok: false, code: 'HANDOFF_TARGET_NOT_READY' })
+    await pool.query('UPDATE "DesktopDevice" SET "tokenVersion"=1 WHERE id=$1', [target])
+    const mismatch = await controlledV3OwnerHandoff(prisma as any, { ...confirm, actorUserId: 'other-owner' })
+    assert.deepEqual(mismatch, { ok: false, code: 'REPLACEMENT_CONFIRMATION_MISMATCH' })
+    // Fail the final append-only audit. The epoch and activation must roll back with it.
+    await pool.query(`ALTER TABLE "OperationLog" ADD CONSTRAINT reject_replacement CHECK ("message" IS DISTINCT FROM 'HANDOFF_CONFIRMED')`)
+    try { await assert.rejects(controlledV3OwnerHandoff(prisma as any, confirm)) }
+    finally { await pool.query('ALTER TABLE "OperationLog" DROP CONSTRAINT reject_replacement') }
+    assert.equal((await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { id: old.id } })).ownerEpoch, old.ownerEpoch)
+    assert.equal(await readPrintExecutionStart(prisma, scope), null)
+    const results = await Promise.all([controlledV3OwnerHandoff(prisma as any, confirm), controlledV3OwnerHandoff(prisma as any, confirm)])
+    assert.equal(results.filter(result => result.ok).length, 1, JSON.stringify(results))
+    const boundary = await readPrintExecutionStart(prisma, scope)
+    assert.equal(boundary?.deviceId, target)
+    assert.equal(boundary?.ownerEpoch, old.ownerEpoch + 1)
+    const plane = await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { id: old.id } })
+    const acquiring = { ...scope, deviceId: target, ownerEpoch: plane.ownerEpoch, stateVersion: plane.stateVersion, leaseId: plane.leaseId! }
+    assert.equal((await issueV3ExecutionBatch(prisma as any, acquiring)).ok, false)
+    const allowed = await issueV3ExecutionBatch(prisma as any, acquiring, { printStartVersion: 1 })
+    assert.ok(allowed.ok, JSON.stringify(allowed))
+    assert.equal(allowed.value.batch.executionStartAt, boundary!.startedAt)
+    assert.deepEqual(await readPrintExecutionStart(prisma, scope), boundary)
+    assert.deepEqual(await prisma.eshopTrayPrintJob.findMany({ orderBy: { id: 'asc' } }), jobs)
+
+    // A reset store fixture exercises exactly the one-click route's atomic wrapper with competing requests.
+    await reset()
+    await pool.query('INSERT INTO "DesktopDevice" VALUES ($1,$2,$3,\'ACTIVE\',$4)', [target, scope.tenantId, scope.storeId, 'b'.repeat(64)])
+    await prisma.v3PrintControlPlane.update({ where: { id: old.id }, data: { mode: 'V3_ACTIVE', ownerDeviceId: 'test-device-01' } })
+    await pool.query('INSERT INTO "ComputerBinding" (id,"tenantId","storeId","parentDesktopDeviceId") VALUES ($1,$2,$3,$4)',
+      ['fixture-child', scope.tenantId, scope.storeId, target])
+    const second = await preparePrintReplacementTarget(prisma, { ...scope, deviceId: target, tokenVersion: 1 })
+    assert.ok(second)
+    ops.confirmationId = second.confirmationId
+    const rotation = await pool.connect()
+    try {
+      await rotation.query('BEGIN')
+      await rotation.query('UPDATE "DesktopDevice" SET "tokenVersion"=2 WHERE id=$1', [target])
+      const attempt = atomic()
+      try {
+        const deadline = Date.now() + 2500
+        let waiting = false
+        do {
+          const state = await pool.query(`SELECT 1 FROM pg_stat_activity WHERE datname=current_database()
+            AND pid<>pg_backend_pid() AND wait_event_type='Lock' AND query LIKE '%"DesktopDevice"%FOR SHARE%'`)
+          waiting = state.rowCount === 1
+          if (!waiting) await new Promise(resolve => setTimeout(resolve, 20))
+        } while (!waiting && Date.now() < deadline)
+        assert.ok(waiting, 'handoff must serialize with a concurrent credential rotation')
+        await rotation.query('COMMIT')
+      } finally { await rotation.query('ROLLBACK') }
+      assert.deepEqual(await attempt, { ok: false, code: 'HANDOFF_TARGET_NOT_READY' })
+    } finally { rotation.release() }
+    assert.equal((await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { id: old.id } })).ownerDeviceId, old.ownerDeviceId)
+    await pool.query('UPDATE "DesktopDevice" SET "tokenVersion"=1 WHERE id=$1', [target])
+    const atomicResults = await Promise.all([atomic(), atomic()])
+    assert.equal(atomicResults.filter(result => result.ok).length, 1, JSON.stringify(atomicResults))
+    assert.equal((await readPrintExecutionStart(prisma, scope))?.ownerEpoch, old.ownerEpoch + 1)
+    assert.equal(await prisma.operationLog.count({ where: { actionType: 'V3_PRINT_CONTROLLED_HANDOFF' } }), 2)
+    const beforeHandoff = await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { id: old.id } })
+    assert.deepEqual(await controlledV3OwnerHandoff(prisma as any, { ...scope, actorUserId: 'fixture-owner',
+      intendedOwnerDeviceId: old.ownerDeviceId!, expectedStateVersion: beforeHandoff.stateVersion,
+      confirmationId: 'later-legacy-handoff' }), { ok: false, code: 'PRINT_REPLACEMENT_CONFIRMATION_REQUIRED' })
+    assert.deepEqual(await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { id: old.id } }), beforeHandoff)
+    assert.equal(await prisma.operationLog.count({ where: { actionType: 'V3_PRINT_CONTROLLED_HANDOFF' } }), 2)
+    const vacant = await prisma.v3PrintControlPlane.update({ where: { id: old.id }, data: { ownerDeviceId: null } })
+    assert.deepEqual(await acquireV3Authority(prisma as any, { ...scope, deviceId: old.ownerDeviceId! }),
+      { ok: false, code: 'PRINT_REPLACEMENT_CONFIRMATION_REQUIRED' })
+    assert.deepEqual(await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { id: old.id } }), vacant)
+
+  })
+
+  await t.test('fenced normal exit preserves proof, waits for original batch expiry and permits one explicit replacement', async () => {
+    await reset()
+    const { preparePrintReplacementTarget, listPrintReplacementTargets } = await import('../lib/v3-print-replacement-target')
+    const { confirmPrintReplacement, releaseV3Authority } = await import('../lib/v3-print-control-plane')
+    const target = 'test-release-successor'
+    await pool.query(`INSERT INTO "DesktopDevice" VALUES ($1,$2,$3,'ACTIVE',$4)`, [target, scope.tenantId, scope.storeId, 'b'.repeat(64)])
+    await pool.query('INSERT INTO "ComputerBinding" (id,"tenantId","storeId","parentDesktopDeviceId") VALUES ($1,$2,$3,$4)',
+      ['fixture-child', scope.tenantId, scope.storeId, target])
+    const device = { ...scope, deviceId: target, tokenVersion: 1 }
+    assert.equal(await preparePrintReplacementTarget(prisma, device), null)
+    const old = await prisma.v3PrintControlPlane.update({ where: { storeId: scope.storeId }, data: { mode: 'V3_ACTIVE',
+      ownerDeviceId: 'test-device-01', leaseId: 'release-test-lease', leaseExpiresAt: new Date(Date.now()+60000), handoffRequestedAt: null } })
+    const until = new Date(Date.now()+3000)
+    await prisma.v3PrintExecutionBatch.updateMany({ where: { controlPlaneId: old.id }, data: { revokedAt: null, expiresAt: until } })
+    const fenced = { ...scope, deviceId: old.ownerDeviceId!, ownerEpoch: old.ownerEpoch, stateVersion: old.stateVersion, leaseId: old.leaseId! }
+    await pool.query(`ALTER TABLE "OperationLog" ADD CONSTRAINT reject_receipt CHECK ("actionType" <> 'V3_PRINT_OWNER_FENCED_RELEASE')`)
+    try { await assert.rejects(releaseV3Authority(prisma as any, fenced)) }
+    finally { await pool.query('ALTER TABLE "OperationLog" DROP CONSTRAINT reject_receipt') }
+    assert.deepEqual(await prisma.v3PrintControlPlane.findUniqueOrThrow({where:{id:old.id}}),old)
+    assert.equal(await prisma.v3PrintExecutionBatch.count({where:{controlPlaneId:old.id,revokedAt:null}}),1)
+    const beforeExit = await preparePrintReplacementTarget(prisma,device)
+    assert.ok(beforeExit)
+    assert.ok((await releaseV3Authority(prisma as any,fenced)).ok)
+    assert.equal((await releaseV3Authority(prisma as any,fenced)).ok,false)
+    assert.equal(await prisma.operationLog.count({where:{actionType:'V3_PRINT_OWNER_FENCED_RELEASE'}}),1)
+    const released = await prisma.v3PrintControlPlane.findUniqueOrThrow({where:{id:old.id}})
+    assert.equal(released.mode,'BLOCKED_UNKNOWN')
+    assert.equal(released.ownerDeviceId,null)
+    const preparedBeforeExit = await listPrintReplacementTargets(prisma, scope)
+    assert.deepEqual(preparedBeforeExit.map(row => row.confirmationId), [beforeExit.confirmationId])
+    assert.equal(preparedBeforeExit[0].expectedStateVersion, released.stateVersion)
+    assert.deepEqual(await listPrintReplacementTargets(prisma,{...scope,tenantId:'other'}),[])
+    const [listed] = preparedBeforeExit
+    const previous = {
+      previousEpoch: listed.previousEpoch, previousDeviceId: listed.previousDeviceId, previousDeviceStopped: true as const,
+    }
+    const confirm = () => confirmPrintReplacement(prisma as any, {
+      ...scope, actorUserId: 'fixture-real-owner', intendedOwnerDeviceId: listed.deviceId,
+      confirmationId: listed.confirmationId, expectedStateVersion: listed.expectedStateVersion,
+    }, previous)
+    assert.deepEqual(await confirm(),{ok:false,code:'HANDOFF_QUARANTINE_ACTIVE'})
+    await new Promise(resolve=>setTimeout(resolve,Math.max(0,until.getTime()-Date.now())+30))
+    const job=await prisma.eshopTrayPrintJob.findFirstOrThrow({where:scope})
+    await prisma.eshopTrayPrintJob.update({where:{id:job.id},data:{claimTokenHash:'d'.repeat(64),leaseExpiresAt:new Date(0)}})
+    assert.deepEqual(await confirm(),{ok:false,code:'V3_EXECUTION_IN_PROGRESS'})
+    assert.deepEqual(await prisma.v3PrintControlPlane.findUniqueOrThrow({where:{id:old.id}}),released)
+    await prisma.eshopTrayPrintJob.update({where:{id:job.id},data:{claimTokenHash:null,leaseExpiresAt:job.leaseExpiresAt}})
+    const history=await prisma.eshopTrayPrintJob.findMany({where:scope,orderBy:{id:'asc'}})
+    const result=await Promise.all([confirm(),confirm()])
+    assert.equal(result.filter(r=>r.ok).length,1,JSON.stringify(result))
+    const current=await prisma.v3PrintControlPlane.findUniqueOrThrow({where:{id:old.id}})
+    assert.equal(current.ownerEpoch,old.ownerEpoch+1)
+    assert.equal(current.ownerDeviceId,target)
+    assert.equal(current.mode,'V3_ACTIVE')
+    assert.deepEqual(await prisma.eshopTrayPrintJob.findMany({where:scope,orderBy:{id:'asc'}}),history)
+  })
+
+  await t.test('replacement blocks both V2 rollback phases and HELD conversion only in the marked store', async () => {
+    await reset()
+    const { printStartId } = await import('../lib/v3-print-execution-start')
+    const { materializeHeldV3PrintIntents } = await import('../lib/v3-print-job-adapter')
+    const plane = await prisma.v3PrintControlPlane.update({ where: { storeId: scope.storeId }, data: { mode: 'V3_ACTIVE' } })
+    const history = await prisma.eshopTrayPrintJob.findMany({ orderBy: { id: 'asc' } })
+    await prisma.operationLog.create({ data: { ...scope, id: printStartId(scope, plane.ownerEpoch),
+      actionType: 'V3_PRINT_CONTROLLED_HANDOFF', targetType: 'V3PrintControlPlane', targetId: plane.id,
+      status: 'SUCCESS', message: 'HANDOFF_CONFIRMED', payloadSnapshot: { replacement: true, intendedOwnerDeviceId: 'test-device-01',
+        ownerEpoch: plane.ownerEpoch, occurredAt: new Date().toISOString() } } })
+    for (const [mode, action, nextMode] of [
+      ['V3_ACTIVE', 'START_DEACTIVATION', 'V3_DRAINING'], ['BLOCKED_UNKNOWN', 'FINALIZE_V2_ACTIVE', 'V2_ACTIVE']
+    ] as const) {
+      const initial = await prisma.v3PrintControlPlane.update({ where: { id: plane.id }, data: { mode } })
+      const state = await readOpsPrintModeState(prisma as any, scope)
+      assert.equal(state.blocking.v2FallbackReplayRisk, true)
+      assert.equal(state.actions.startDeactivation, false)
+      assert.equal(state.actions.finalizeV2Active, false)
+      const ops = await runOpsPrintModeAction(prisma as any, { ...scope, expectedStateVersion: initial.stateVersion, action,
+        operatorAdminId: 'ops-fixture', operatorRole: 'OPS_ADMIN' })
+      assert.equal(ops.ok ? 'allowed' : ops.code, 'V2_FALLBACK_REPLAY_RISK')
+      assert.deepEqual(await transitionV3PrintMode(prisma as any, { ...scope, expectedStateVersion: initial.stateVersion, nextMode }),
+        { ok: false, code: 'V2_FALLBACK_REPLAY_RISK' })
+      assert.deepEqual(await prisma.v3PrintControlPlane.findUniqueOrThrow({ where: { id: plane.id } }), initial)
+    }
+    await assert.rejects(materializeHeldV3PrintIntents(prisma as any, scope, 'V2_ACTIVE', new Date()), /V2_FALLBACK_REPLAY_RISK/)
+    assert.deepEqual(await prisma.eshopTrayPrintJob.findMany({ orderBy: { id: 'asc' } }), history)
+    assert.equal(await prisma.operationLog.count({ where: { actionType: 'V3_PRINT_MODE_OPERATOR_CONFIRMATION' } }), 0)
+    const other = { tenantId: scope.tenantId, storeId: 'separate-test-store' }
+    const unmarked = await prisma.v3PrintControlPlane.create({ data: { ...other, id: 'other-plane', mode: 'V3_ACTIVE', ownerEpoch: 2,
+      stateVersion: 2, createdAt: now, updatedAt: now } })
+    const ordinary = await runOpsPrintModeAction(prisma as any, { ...other, expectedStateVersion: unmarked.stateVersion,
+      operatorAdminId: 'ops-fixture', operatorRole: 'OPS_ADMIN', action: 'START_DEACTIVATION' })
+    assert.ok(ordinary.ok, JSON.stringify(ordinary))
+    assert.equal(ordinary.controlPlane.mode, 'V3_DRAINING')
   })
 
   await t.test('compensation concurrent EXPIRE cannot consume one grant twice', async () => {

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { EshopTrayPrintJob, Prisma, PrismaClient } from '@prisma/client'
 import { canonicalV3PrintEffectKey, v3PrintIntentExpiresAt } from '@/lib/v3-print-identity'
 import { parseV3PrintIntent } from '@/lib/v3-print-job-adapter'
+import { readPrintExecutionStart } from '@/lib/v3-print-execution-start'
 import { hashInstallationId } from '@/lib/desktop-activation/crypto'
 import {
   readV3ControlPlane,
@@ -227,7 +228,7 @@ export async function readOpsPrintModeState(
   now = new Date(),
 ) {
   const controlPlane = await readV3ControlPlane(targetDb, scope)
-  const [activeBatch, registeredDeviceCount, ownerDevice, v2Queue, v3Queue] = await Promise.all([
+  const [activeBatch, registeredDeviceCount, ownerDevice, v2Queue, v3Queue, executionStart] = await Promise.all([
     findActiveBatch(targetDb, scope, now),
     targetDb.desktopDevice.count({
       where: { tenantId: scope.tenantId, storeId: scope.storeId, status: 'ACTIVE' },
@@ -246,6 +247,7 @@ export async function readOpsPrintModeState(
       : Promise.resolve(null),
     readV2QueueState(targetDb, scope),
     readV3QueueState(targetDb, scope),
+    readPrintExecutionStart(targetDb as unknown as Prisma.TransactionClient, scope),
   ])
   const handoffBlocked = controlPlane.handoffQuarantineUntil !== null
   const hasActiveBatch = activeBatch !== null
@@ -289,6 +291,7 @@ export async function readOpsPrintModeState(
     v2DrainReadyAt: v2DrainReadyAt?.toISOString() ?? null,
     registeredDeviceCount,
     blocking: {
+      ...(executionStart && { v2FallbackReplayRisk: true }),
       ownerActive: hasOwner,
       activeExecutionBatch: hasActiveBatch,
       handoffOrReconciliation: handoffBlocked,
@@ -306,8 +309,8 @@ export async function readOpsPrintModeState(
       ),
       finalizeV3Active: controlPlane.mode === 'BLOCKED_UNKNOWN' && (v3Released || finalizedHandoffAuthority) &&
         !v2DrainBlocked && !v3DrainBlocked,
-      startDeactivation: controlPlane.mode === 'V3_ACTIVE' && !handoffBlocked && !v3DrainBlocked,
-      finalizeV2Active: controlPlane.mode === 'BLOCKED_UNKNOWN' && v3Released && !v2ExecutionAmbiguous && !v3DrainBlocked,
+      startDeactivation: !executionStart && controlPlane.mode === 'V3_ACTIVE' && !handoffBlocked && !v3DrainBlocked,
+      finalizeV2Active: !executionStart && controlPlane.mode === 'BLOCKED_UNKNOWN' && v3Released && !v2ExecutionAmbiguous && !v3DrainBlocked,
     },
   }
 }
@@ -329,6 +332,11 @@ export async function runOpsPrintModeAction(
       const initial = await readV3ControlPlane(tx, scope)
       if (initial.stateVersion !== input.expectedStateVersion) {
         return { ok: false, code: 'CONCURRENT_STATE_CHANGE', controlPlane: initial }
+      }
+
+      if ((input.action === 'START_DEACTIVATION' || input.action === 'FINALIZE_V2_ACTIVE') &&
+          await readPrintExecutionStart(rawTx as Prisma.TransactionClient, scope)) {
+        return { ok: false, code: 'V2_FALLBACK_REPLAY_RISK', controlPlane: initial }
       }
 
       const [activeBatch, v2Queue, v3Queue] = await Promise.all([

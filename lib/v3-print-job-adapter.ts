@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { isPrintOriginAfterStart, readPrintExecutionStart, type PrintExecutionStart } from './v3-print-execution-start'
 import { cleanStartSelector, sealedEffect } from './v3-legacy-seven/clean-start'
 import { Prisma, type EshopTrayPrintJob } from '@prisma/client'
 import type { V3ControlPlaneDb } from './v3-print-control-plane'
@@ -108,9 +109,22 @@ export async function materializeHeldV3PrintIntents(
   now: Date,
 ) {
   const ownedScope = persistenceScope(scope)
-  const jobs = await (db.eshopTrayPrintJob as any).findMany({ where: {
+  const originDb = db as unknown as Prisma.TransactionClient
+  const start = await readPrintExecutionStart(originDb, ownedScope)
+  if (target === 'V2_ACTIVE' && start) throw new Error('V2_FALLBACK_REPLAY_RISK')
+  const snapshot = await db.eshopTrayPrintJob.findMany({ where: {
     ...ownedScope, schemaVersion: 3, status: 'PENDING', completedAt: null, resultMessage: HELD_MARKER,
-  } }) as EshopTrayPrintJob[]
+    ...(start && { createdAt: { gt: new Date(start.startedAt) } }),
+  } })
+  const jobs: EshopTrayPrintJob[] = []
+  for (const row of snapshot) {
+    if (start) {
+      const intent = parse(row.payload)
+      if (!intent || intent.printJobId !== row.idempotencyKey) throw new Error('V3_HELD_INTENT_CORRUPT')
+      if (!(await eligibleStoredEffect(originDb, ownedScope, start, row))) continue
+    }
+    jobs.push(row)
+  }
   if (target === 'V3_ACTIVE') {
     // Validate the entire snapshot before releasing anything. Exact ids exclude
     // later arrivals; every chunk keeps the original row CAS in the caller's
@@ -377,11 +391,35 @@ async function lockDeliveryControlPlane(db: Db, identity: { tenantId: string; st
     : { ok: false, code: 'V3_CLAIM_FENCE_UNAVAILABLE' }
 }
 
+async function eligibleStoredEffect(db: Prisma.TransactionClient, scope: { tenantId: string; storeId: string }, start: PrintExecutionStart, job: EshopTrayPrintJob) {
+  const intent = parse(job.payload)
+  if (!intent || intent.printJobId !== job.idempotencyKey) return false
+  const orderNo = intent.payloadKind === 'RAW_BYTES' ? intent.orderNo : intent.networkRequest.order.orderNo
+  return isPrintOriginAfterStart(db, scope, start, { orderNo, role: intent.role, printJobId: intent.printJobId })
+}
+
+export async function verifyLocalPrintOrigin(db: Db, identity: { tenantId: string; storeId: string; deviceId: string; batchId: string },
+  effect: { orderNo: string; role: V3PrintRole; printJobId: string }) {
+  return db.$transaction(async transaction => {
+    const tx = transaction as Db
+    if (!(await lockDeliveryControlPlane(tx, identity)).ok) return null
+    const batch = await validBatch(tx, identity, new Date())
+    if (!batch || !/^network:[0-9a-f]{64}$/.test(effect.printJobId)) return null
+    const originDb = tx as unknown as Prisma.TransactionClient
+    const start = await readPrintExecutionStart(originDb, identity)
+    if (!start || start.deviceId !== identity.deviceId || start.ownerEpoch > batch.ownerEpoch) return null
+    return isPrintOriginAfterStart(originDb, persistenceScope(identity), start, effect)
+  })
+}
+
 export async function deliverV3PrintIntent(db: Db, identity: {
   tenantId: string; storeId: string; deviceId: string; batchId: string; role: V3PrintRole
 }, now?: Date) {
   if (!parseV3PrintRole(identity.role)) return { ok: false as const, code: 'V3_ROLE_INVALID' }
-  return db.$transaction(async (transaction) => {
+  const scope = persistenceScope(identity)
+  type Search = { where: Prisma.EshopTrayPrintJobWhereInput; start: PrintExecutionStart }
+  let search: Search | undefined
+  const claim = (selected?: EshopTrayPrintJob) => db.$transaction(async (transaction) => {
     const tx = transaction as Db
     const locked = await lockDeliveryControlPlane(tx, identity)
     if (!locked.ok) return { ok: false as const, code: locked.code }
@@ -396,9 +434,24 @@ export async function deliverV3PrintIntent(db: Db, identity: {
     // independent effect. The claimed row remains fail-closed and is never picked
     // by the selector below; its lease/intent TTL and operator recovery path bound
     // its lifetime without treating expiry as proof that printing did not cross.
-    const job = await tx.eshopTrayPrintJob.findFirst({ where: { tenantId: identity.tenantId, storeId: identity.storeId,
-      ...cutover, schemaVersion: 3, status: 'PENDING', claimTokenHash: null, nextAttemptAt: { lte: claimNow },
-      expiresAt: { gt: claimNow }, payload: { path: ['role'], equals: identity.role } }, orderBy: { createdAt: 'asc' } })
+    const originDb = tx as unknown as Prisma.TransactionClient
+    const start = await readPrintExecutionStart(originDb, scope)
+    if (start && (start.deviceId !== identity.deviceId || start.ownerEpoch > batch.ownerEpoch)) return { ok: false as const, code: 'V3_PRINT_START_DEVICE_MISMATCH' }
+    const where: Prisma.EshopTrayPrintJobWhereInput = { ...scope, ...cutover, schemaVersion: 3, status: 'PENDING', claimTokenHash: null,
+      nextAttemptAt: { lte: claimNow }, expiresAt: { gt: claimNow }, payload: { path: ['role'], equals: identity.role } }
+    let job: EshopTrayPrintJob | null = null
+    if (start) {
+      const afterStart = { AND: [where, { createdAt: { gt: new Date(start.startedAt) } }] }
+      if (!selected) {
+        search = { where: afterStart, start }
+        return { ok: true as const, job: null }
+      }
+      job = await tx.eshopTrayPrintJob.findFirst({ where: { ...afterStart, id: selected.id, requestHash: selected.requestHash } })
+      if (job && !(await eligibleStoredEffect(originDb, scope, start, job))) return { ok: true as const, job: null }
+    } else {
+      if (selected) return { ok: true as const, job: null }
+      job = await tx.eshopTrayPrintJob.findFirst({ where, orderBy: { createdAt: 'asc' } })
+    }
     if (!job) return { ok: true as const, job: null }
     const intent = parse(job.payload)
     if (!intent || intent.role !== identity.role) return { ok: false as const, code: 'V3_ROLE_JOB_MISMATCH' }
@@ -409,7 +462,8 @@ export async function deliverV3PrintIntent(db: Db, identity: {
     // the V3-only claim provenance/token durably reserves delivery. This satisfies the
     // existing V2 active-claim constraint without inventing a ComputerBinding identity.
     const updated = await tx.eshopTrayPrintJob.updateMany({ where: {
-      ...cutover, id: job.id, schemaVersion: 3, status: 'PENDING', completedAt: null, claimTokenHash: null,
+      ...cutover, ...(start && { AND: [{ createdAt: { gt: new Date(start.startedAt) } }, { requestHash: job.requestHash }] }),
+      id: job.id, schemaVersion: 3, status: 'PENDING', completedAt: null, claimTokenHash: null,
       payload: { path: ['role'], equals: identity.role },
     }, data: {
       claimTokenHash: tokenHash, resultMessage: claimProvenance({ deviceId: identity.deviceId, ownerEpoch: batch.ownerEpoch, batchId: batch.id }),
@@ -418,6 +472,20 @@ export async function deliverV3PrintIntent(db: Db, identity: {
     return updated.count === 1 ? { ok: true as const, job: { id: job.id, printJobId: job.idempotencyKey, expiresAt: job.expiresAt, intent } }
       : { ok: false as const, code: 'V3_DELIVERY_RACE' }
   })
+  const first = await claim()
+  if (!search) return first
+  // A previous business event can enter the queue after the replacement. Scan without holding
+  // the authority lock, then revalidate the live batch, exact row and business origin at claim.
+  let cursor: string | undefined
+  do {
+    const page: EshopTrayPrintJob[] = await db.eshopTrayPrintJob.findMany({ where: search.where,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 64, ...(cursor && { cursor: { id: cursor }, skip: 1 }) })
+    for (const row of page) {
+      if (await eligibleStoredEffect(db as unknown as Prisma.TransactionClient, scope, search.start, row)) return claim(row)
+    }
+    cursor = page.length === 64 ? page[63].id : undefined
+  } while (cursor)
+  return first
 }
 
 export async function reportV3Execution(db: Db, identity: { tenantId: string; storeId: string; deviceId: string; batchId: string }, report: {

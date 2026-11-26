@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
+import { withPrintOrigin } from '@/lib/v3-print-origin-response'
 import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
 import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
 
   const store = await prisma.store.findUnique({
     where: { code: storeCode.trim() },
-    select: { id: true, code: true, tenantId: true, status: true, businessType: true },
+    select: { id: true, code: true, tenantId: true, status: true, businessType: true, printKitchenTicket: true },
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
@@ -206,11 +207,14 @@ export async function POST(req: NextRequest) {
         createdAt: firstCreatedAt!.toISOString(),
         paymentMethod: 'MEMBER_BALANCE',
         paymentIntentId: paymentIntent.id,
+        printOriginAt: paymentIntent.createdAt?.toISOString(),
         memberBalanceAfter: balanceAfter.toString(),
       }
     })
 
-    return NextResponse.json(result, { status: 201 })
+    const { printOriginAt, ...sale } = result
+    return withPrintOrigin(NextResponse.json(sale, { status: 201 }), req, { tenantId: store.tenantId, storeId: store.id },
+      sale.orderNo, printOriginAt, store.printKitchenTicket ? ['FRONT', 'KITCHEN'] : ['FRONT'])
   } catch (err) {
     if (err instanceof Error && err.message === 'INSUFFICIENT_BALANCE') {
       return NextResponse.json({ error: 'INSUFFICIENT_BALANCE' }, { status: 400 })

@@ -8,6 +8,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { diningActor, diningScope, loadDiningStore, requireRecoveryGate } from '@/lib/dine-in/eligibility'
+import { withPrintOrigin } from '@/lib/v3-print-origin-response'
 import { claimNotice } from '@/lib/dine-in/commands'
 import { errorResponse, json, readBody, storeCodeFrom } from '@/lib/dine-in/http'
 
@@ -17,6 +18,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const authorization = await requireRecoveryGate(req, store)
     const input = await readBody(req)
     const { id } = await params
-    return json(await claimNotice(prisma, diningScope(store), diningActor(authorization), { mealId: id, batchId: input.batchId }))
+    const result = await claimNotice(prisma, diningScope(store), diningActor(authorization), { mealId: id, batchId: input.batchId })
+    const response = json(result)
+    return result.claimed ? withPrintOrigin(response, req, diningScope(store), result.notice.printOrderNo,
+      result.notice.content.createdAt, ['KITCHEN']) : response
   } catch (error) { return errorResponse(error) }
 }
