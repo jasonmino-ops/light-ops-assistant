@@ -170,21 +170,30 @@ test('M1 exact successor admits only the sealed product on the registered develo
 })
 
 test('M1 mainline handoff preserves exact product and closed freeze authority', async t => {
-  if (!hasMainRecord(ROOT)) return
-  const registered = readNativeInventoryM1Successor(ROOT)
-  assert.ok(registered?.mainline || registered?.closedBaseline, 'trusted M1 history must verify its exact handoff')
-  const trusted = run(ROOT, ['rev-parse', 'refs/remotes/origin/main'])
-  const product = registered.productCommitSha
-  const handoff = registered.registrationSha
-  const [first, closure] = run(ROOT, ['rev-list', '--first-parent', '--reverse', product + '..' + trusted]).split('\n')
-  assert.equal(first, handoff)
-  assert.equal(registered.cashierHash, RUNTIME_CASHIER_HASH)
-
+  // Historical contract fixture, not a live grant for this task or checkout.
+  // Verify the original ACTIVE/CLOSED history before exercising its unchanged
+  // negative cases; a newer branch need not obtain an old task's live grant.
+  const fixtureHandoff = 'c87d23b9cc8ee60ba5a1d522a2ed81230dbe0cd9'
+  const fixtureClosure = '5dde594c980eb118fa9d87002d2fee720658fd3d'
+  run(ROOT, ['cat-file', '-e', fixtureClosure + '^{commit}'])
   const directory = mkdtempSync(join(tmpdir(), 'eshop-m1-main-successor-'))
   t.after(() => rmSync(directory, { recursive: true, force: true }))
   const root = join(directory, 'repo')
   run(directory, ['clone', '--shared', '--quiet', '--no-checkout', ROOT, root])
   const git = (args, options) => run(root, args, options)
+  git(['checkout', '--force', '--quiet', '-B', 'main', fixtureClosure])
+  git(['update-ref', 'refs/remotes/origin/main', fixtureClosure])
+  const registered = readNativeInventoryM1Successor(root)
+  assert.ok(registered?.mainline || registered?.closedBaseline, 'historical M1 fixture must verify its exact handoff')
+  const trusted = fixtureClosure
+  const product = registered.productCommitSha
+  const handoff = registered.registrationSha
+  const [first, closure] = run(root, ['rev-list', '--first-parent', '--reverse', product + '..' + trusted]).split('\n')
+  assert.equal(first, handoff)
+  assert.equal(handoff, fixtureHandoff)
+  assert.equal(closure, fixtureClosure)
+  assert.equal(registered.cashierHash, RUNTIME_CASHIER_HASH)
+
   git(['config', 'user.name', 'Isolated main freeze test'])
   git(['config', 'user.email', 'fixture@example.invalid'])
   const activate = (head, main = head, branch = 'main') => {

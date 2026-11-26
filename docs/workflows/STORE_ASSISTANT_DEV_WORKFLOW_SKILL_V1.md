@@ -1,6 +1,8 @@
 # 店小二开发工作流 Skill v1
 
 > 本文档是店小二项目内部开发工作流 SOP，用于规范后续需求从想法、审查、开发、验收、上线到冻结的完整路径。它不替代具体需求文档、架构文档、开发记录或冻结记录。
+>
+> 当前执行入口为 [Workflow V2](E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V2.md)、AGENTS 及适用的发布规则。本次仅替代已过时的串行分工、main 自动部署和仅 STRICT 开线说明；原文字保留在 Git 历史 `833aabe1`。以下能力回归、安全、迁移及真实验收要求继续适用，不形成第二条串行审批链。
 
 ## 1. 当前适用范围
 
@@ -42,14 +44,11 @@
 → Lineage Gate PASS
 → 检查 working tree CLEAN
 → 创建独立 feature branch / worktree
-→ Obsidian 记录范围
-→ Claude 架构/风险审查
-→ ChatGPT 收口为 Codex 小步任务
-→ Codex 小步开发
-→ npx prisma generate / npm run build / npm run test:smoke:prod
-→ commit
-→ push origin/main
-→ Vercel Production READY
+→ 按 Workflow V2 判级、核验适用授权和最终交付目标
+→ 授权内自主实施、相关测试及必要独立审查
+→ 本地 commit
+→ 按明确授权完成 main 准入及受保护发布准备
+→ 获准发布后读回实际 Production SHA / READY
 → production migration（如有）
 → Browser / Playwright 验收
 → 真机测试
@@ -57,7 +56,7 @@
 → Obsidian 冻结 / CLOSED
 ```
 
-不是所有任务都需要走完整链路。文档任务、纯 UI 小修、只读检查可按风险简化。但只要涉及数据库、主链路、支付、权限、会员余额、离线订单、Telegram 绑定，必须走完整链路。
+按 Workflow V2、Risk-Based Delivery 和 UI Fast Path 选择实际适用步骤。数据库、主链路、支付、权限、会员余额、离线订单及 Telegram 绑定保留全部适用高风险门禁；普通进度、证据整理和授权内审查交接不另交 Founder 或 ChatGPT 中转。
 
 ## 4. 阶段职责边界
 
@@ -74,17 +73,11 @@
    ./scripts/check-release-lineage.sh <production_sha>
    ```
 
-5. 仅当 `Production ancestor of origin/main: YES` 且 `Safe Development Base: YES` 时，才允许创建开发线路。
+5. 以当前脚本的 `RESULT: PASS` 和 `Safe Development Base: YES` 为准。`STRICT` 是默认；仅在其因祖先分叉失败且工作树干净时，按 [Selective Release §2](../governance/ES-RELEASE-SELECTIVE-LINEAGE-GOVERNANCE-01.md) 使用脚本验证的 `CONTENT_SUBSET`。
 
 脚本参数缺失、Production SHA 不存在、`origin/main` 不存在、血统无法判断或 working tree DIRTY 时，一律不得默认 PASS。
 
-当 Production 不是 `origin/main` 的 ancestor 时，必须停止并报告：
-
-```text
-BLOCKED — PRODUCTION MAINLINE DIVERGENCE
-```
-
-禁止继续创建 feature branch、开始开发，或使用“main 已更新”绕过该门禁。
+不能仅因祖先分叉否认已由现行脚本验证的开发来源证明；也不能把 `CONTENT_SUBSET` 当成语义等价、发布授权或 Closure 证明。脚本不能证明安全基线时仍停止，不得用“main 已更新”绕过门禁。
 
 新开发线路回报必须包含：
 
@@ -92,6 +85,7 @@ BLOCKED — PRODUCTION MAINLINE DIVERGENCE
 Production SHA:
 origin/main SHA:
 Production Is Ancestor Of origin/main: YES / NO
+Lineage Mode: STRICT / CONTENT_SUBSET
 Working Tree: CLEAN / DIRTY
 Safe Development Base: YES / NO
 ```
@@ -127,7 +121,7 @@ Claude 不直接大改代码。Claude 输出：
 
 ### 4.3 ChatGPT 收口
 
-用途：把 Claude 审查、用户目标和当前项目状态整理成 Codex 可执行任务。
+用途：CTO 提供目标、边界和必要决策建议。日常任务由执行者按 Workflow V2 自主收口、协调审查；本节是任务信息提示，不要求每轮等待 ChatGPT 转发。
 
 必须输出：
 
@@ -152,7 +146,7 @@ Codex 必须：
 - 发现需要大改时先停下汇报
 - 用 apply_patch 或合理工具改文件
 - build/test/smoke 通过后再 commit
-- push 后确认 Vercel READY
+- 发生获准部署后确认实际候选 SHA 和 Vercel READY；普通 push 或 main 合并不等于生产部署
 - 同步 Obsidian
 
 ### 4.5 build / smoke / 部署
@@ -175,12 +169,7 @@ Production Release 前必须先执行仓库中与本次影响范围及既有 FIE
 
 V1.0 只复用现有测试，不建设新测试平台。
 
-部署命令：
-
-```bash
-git push origin main
-npm run vercel:current
-```
+main 准入与生产部署是不同受控动作。按当前受保护发布分支、Selective Release validator 及 Founder 本次授权执行；`git push origin main` 不是部署命令，也不自动授权更新 release。部署后可用 `npm run vercel:current` 核对实际结果。
 
 ### 4.6 production migration
 
@@ -257,7 +246,7 @@ Browser smoke 不替代 Telegram 真机测试。
 ```text
 Production SHA:
 origin/main HEAD:
-Production Is Ancestor Of origin/main: YES
+Release Lineage / authorized selective mapping: <按当前发布规则核验；不能用开发 CONTENT_SUBSET 代替>
 Capability Field Verification: PASS
 Known Regression: NO
 Final Status: CLOSED
@@ -399,9 +388,9 @@ npm run test:smoke:prod
 
 测试前必须确认：
 
-- 本地 HEAD = origin/main
+- 固定待验 Product Candidate / tree 与实际部署一致，另记当前 Governance Head
 - Production commit = 目标 commit
-- Production commit 是 `origin/main` 的 ancestor
+- 满足当前 Release Lineage 或获准选择性发布的精确来源映射及正式 validator 要求
 - Deployment State = READY
 - production migration 完成（如有）
 
