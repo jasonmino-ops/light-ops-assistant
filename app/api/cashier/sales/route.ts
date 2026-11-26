@@ -9,6 +9,7 @@
  */
 import { setTimeout as delay } from 'node:timers/promises'
 import { NextRequest, NextResponse } from 'next/server'
+import { withPrintOrigin } from '@/lib/v3-print-origin-response'
 import { prisma } from '@/lib/prisma'
 import { resolveCashierProductsBatched } from '@/lib/cashier-product-batch'
 import { inventoryDisplayedCurrency, recordInventoryOrderCurrency } from '@/lib/native-inventory/order-currency'
@@ -300,6 +301,7 @@ export async function POST(req: NextRequest) {
         createdAt,
         paymentMethod,
         paymentIntentId: pi.id,
+        printOriginAt: pi.createdAt?.toISOString(),
         khqrFallback,
         ...(printing ? { printing } : {}),
       }
@@ -313,7 +315,9 @@ export async function POST(req: NextRequest) {
       result = await writeSale()
       if (result.lineTimesReadyAt !== undefined) throw new Error('SALE_RECORD_CLOCK_NOT_READY')
     }
-    return NextResponse.json(result, { status: 201 })
+    const { printOriginAt, ...sale } = result
+    return withPrintOrigin(NextResponse.json(sale, { status: 201 }), req, { tenantId: store.tenantId, storeId: store.id },
+      sale.orderNo, printOriginAt, store.printKitchenTicket ? ['FRONT', 'KITCHEN'] : ['FRONT'])
   } catch (err) {
     console.error('[POST /api/cashier/sales]', err)
     return NextResponse.json({ error: 'INTERNAL_ERROR' }, { status: 500 })

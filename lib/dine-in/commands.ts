@@ -88,7 +88,10 @@ export type DiningBatchView = {
   notice: DiningNoticeView
 }
 
+// Transport-only metadata for the normal HTTPS response. Symbols are omitted from JSON and operator views.
+export const diningPaymentOrigin = Symbol('diningPaymentOrigin')
 export type DiningPaymentView = {
+  [diningPaymentOrigin]?: string
   paymentIntentId: string
   billNo: string
   paymentMethod: string
@@ -414,6 +417,8 @@ async function paymentView(tx: Tx, meal: MealRow): Promise<DiningPaymentView | n
   const payment = await tx.paymentIntent.findUnique({ where: { id: meal.paymentIntentId } })
   if (!payment) return null
   return {
+    [diningPaymentOrigin]: payment.tenantId === meal.tenantId && payment.storeId === meal.storeId &&
+      payment.orderNo === meal.billNo && payment.status === 'PAID' && payment.paidAt ? payment.createdAt?.toISOString() : undefined,
     paymentIntentId: payment.id,
     billNo: meal.billNo,
     paymentMethod: payment.paymentMethod,

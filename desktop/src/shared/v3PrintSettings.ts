@@ -9,6 +9,7 @@ export type PrintRoleTestRequest = { action: 'test-role'; storeCode: string; rev
 
 export type PrintSettingsRequest =
   | { action: 'read'; storeCode: string }
+  | { action: 'prepare-replacement'; storeCode: string }
   | { action: 'queues'; storeCode: string }
   | { action: 'save'; storeCode: string; role: 'FRONT' | 'KITCHEN'; revision: number; target: Extract<PrintSettingsEndpoint, { kind: 'TCP' }> | ({ kind: 'USB' } & UsbQueueChoice) }
   | { action: 'test'; storeCode: string; revision: number }
@@ -17,6 +18,7 @@ export type PrintSettingsRequest =
 export type PrintSettingsState = {
   mode: 'V3' | 'LEGACY' | 'BLOCKED'
   revision: number
+  replacementAvailable?: boolean
   usbSupported: boolean
   front: PrintSettingsEndpoint | null
   kitchen: Extract<PrintSettingsEndpoint, { kind: 'TCP' }> | null
@@ -27,5 +29,6 @@ export type PrintSettingsState = {
 export type PrintSettingsReply =
   | { ok: false; code: string }
   | { ok: true; state: PrintSettingsState }
+  | { ok: true; replacementTarget: { deviceId: string; confirmationId: string } }
   | { ok: true; queues: UsbQueueChoice[] }
   | { ok: true; code: 'SETTINGS_SAVED' | 'USB_TEST_SPOOLED' | 'TCP_TEST_SENT' }

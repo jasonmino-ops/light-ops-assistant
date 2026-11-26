@@ -221,6 +221,13 @@ const en = {
     source: 'Source',
   },
   printSettings: {
+    currentComputer: 'Current print computer',
+    replaceButton: 'Confirm print computer replacement',
+    replaceWarning: 'Check both computer IDs. Shut down the old computer or quit its print runtime, then wait for its active batch to expire before confirming. Only new orders print automatically.',
+    replaceReadback: 'Reopen print settings to check the current print computer.',
+    replaceDone: 'New print computer enabled',
+    startOnThisComputer: 'Start automatic printing',
+    confirmFromOwner: 'Note this new computer’s ID. After safely exiting the old print computer, the store owner should reopen Settings → Printing in Telegram and confirm this ID within 30 minutes of starting the request.',
     frontTest: 'Print front test receipt',
     kitchenTest: 'Print kitchen test ticket',
     unsaved: 'Unsaved changes',

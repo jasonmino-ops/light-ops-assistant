@@ -65,6 +65,7 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
   const [state, setState] = useState<PrintSettingsState | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [preparedDevice, setPreparedDevice] = useState<{ storeCode: string; deviceId: string } | null>(null)
   const [frontKind, setFrontKind] = useState<'USB' | 'TCP'>('TCP')
   const [frontHost, setFrontHost] = useState('')
   const [frontPort, setFrontPort] = useState('9100')
@@ -153,6 +154,7 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
         setSaveFeedback({})
       }
       if ('queues' in reply) setQueues(reply.queues)
+      if ('replacementTarget' in reply) setPreparedDevice({ storeCode: request.storeCode, deviceId: reply.replacementTarget.deviceId })
       if (testRole && 'code' in reply && (reply.code === 'USB_TEST_SPOOLED' || reply.code === 'TCP_TEST_SENT')) {
         setStatus(reply.code)
         setTestLocked((previous) => ({ ...previous, [testRole]: true }))
@@ -261,6 +263,10 @@ export function PrintSettingsPanel({ storeCode, onLegacy, legacyBusy }: {
           {t('printSettings.refresh')}
         </button>}
       </div>
+      {storeCode && state?.replacementAvailable && <div>
+        <button type="button" style={button()} disabled={busy} onClick={() => void run({ action: 'prepare-replacement', storeCode })}>{t('printSettings.startOnThisComputer')}</button>
+        {preparedDevice?.storeCode === storeCode && <p role="status">{t('printSettings.confirmFromOwner')} <strong>{preparedDevice.deviceId}</strong></p>}
+      </div>}
       {!storeCode && <p role="status" style={styles.body}>{t('printSettings.store')}</p>}
       {storeCode && !state && !effectiveStatus && <p role="status" style={styles.body}>{t('printSettings.loading')}</p>}
       {state?.mode === 'LEGACY' && <div style={styles.notice}>

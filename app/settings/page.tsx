@@ -1,5 +1,6 @@
 'use client'
 
+import { PrintReplacementConfirmation } from './PrintReplacementConfirmation'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
@@ -275,6 +276,7 @@ export default function SettingsPage() {
                       <input type="checkbox" checked={autoPrint} onChange={(event) => handleAutoPrintChange(event.target.checked)} />
                     </label>
                   )}
+                  {!isDesktop && settings && <PrintReplacementConfirmation key={settings.storeId} storeId={settings.storeId} />}
                   {!isDesktop && <p style={styles.note}>{t('settings.browserPrintNote')}</p>}
                 </article>
 

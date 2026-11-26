@@ -221,6 +221,13 @@ const zh = {
     source: '来源',
   },
   printSettings: {
+    currentComputer: '当前打印电脑',
+    replaceButton: '确认更换打印电脑',
+    replaceWarning: '请核对旧机和新机编号。请先关闭旧打印电脑或退出其打印程序，等旧执行批次到期后确认。新机只自动打印换机后的新单。',
+    replaceReadback: '请重新打开打印设置核实当前打印电脑。',
+    replaceDone: '已启用新打印电脑',
+    startOnThisComputer: '开始自动打印',
+    confirmFromOwner: '请记下这台新电脑的编号。安全退出旧打印电脑后，请老板在 30 分钟内重新打开 Telegram 的本店「设置 → 打印」，核对编号并确认。',
     frontTest: '打印前台测试票',
     kitchenTest: '打印厨房测试票',
     unsaved: '有未保存的修改',
