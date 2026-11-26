@@ -1,0 +1,82 @@
+{
+  "taskId": "ES-POS-CHECKOUT-LATENCY-01",
+  "releaseId": "ES-POS-CHECKOUT-LATENCY-01-COMBINED",
+  "candidate": "49d336331af987dce76e4c098ab47be0274cae2f",
+  "tree": "73d1b373a886065558340a3f5e46c5a6f44d9639",
+  "base": "1f4e3acb8455a72b2aabd3885c3db161607aad25",
+  "mainBase": "27ffe3f09ce999597c0034a7b97738b28a40a081",
+  "previousControl": "2b31059ae949b0161edafffb3851ceb581a2c11e",
+  "productRef": "refs/heads/codex/es-pos-checkout-latency-01-release-projection",
+  "productionDeployment": "dpl_BcvBPrbEZYkiKSuyB2BS6UzGmD9M",
+  "projectId": "prj_Ld76p2KNULYeu7mcf40vTG0EprY1",
+  "teamId": "team_U1CeoLImuMCa2rhgBU9QCENW",
+  "domain": "elifekh.com",
+  "includedSourceCommits": [
+    "b465dba9f3e85441a1e7d6e7c06f9559b7d73680",
+    "93527d125baeb6c62559b7b9deb251c7960212da",
+    "36e49742662775d24cca98a5297c8d640d411516"
+  ],
+  "deadlineExclusive": "2026-11-26T12:51:20Z",
+  "signatureLifetimeSeconds": 7200,
+  "migrationCount": 0,
+  "defaultSelectiveValidatorChanged": false,
+  "sourceMainSha": "e241d886af16ab6be881fea2fa662552bd93fa49",
+  "paths": [
+    {
+      "path": "app/api/cashier/sales/route.ts",
+      "sha256": "a04f1bd365c56c1f73c0a648844a6d0468cf2690119b04acd826d1dab36b68c7"
+    },
+    {
+      "path": "lib/cashier-product-batch.ts",
+      "sha256": "a6fb512aa10b526da7394540d840dcfc276fa3fea73a65ce3d2a2e5c67453fe6"
+    },
+    {
+      "path": "tests/cashier-large-cart-query.test.cjs",
+      "sha256": "c06ffa7c40f6c01e09619eafd88e4b5148c0e8edf1b558db175cfcc01d9f6871"
+    },
+    {
+      "path": "tests/product-bulk-import-core.test.ts",
+      "sha256": "a4ee38daf67c6dc3b71d67d3881a9180d03ef45eaac2e373d7a63e9d3536438d"
+    }
+  ],
+  "trustedEngineering": {
+    "scripts/check-selective-release.sh": "21a2e097d8abee173abd4ca21304d5450a81429ce7ce54c4b31fcb5639d43b6d",
+    "scripts/check-release-lineage.sh": "67395e76aae10314eb83dddaf360e51566d7d9a3d740f727430edb14209536da",
+    "scripts/lib/release-provenance.mjs": "6e877689166d605d83c1b357783c06cad28353ff66ba632d39635fe675398e0b",
+    "scripts/guards/check-change-scope.js": "5081a836751f7bdcc0272e28e099e3a31ed9960b7a9254cb65c5108a1d502283",
+    "docs/change-gates/gate-config.json": "0410ac1629d87ea99d4089ef38184617a657e866282c0cc5c5048ce607fabd9f",
+    "docs/change-gates/ES-PRINT-RC7-KNOWN-TEST-FAILURES.md": "7276b7901c643299abda73e10c6d24465909a7a2790bad63edf40dfbce67ee99",
+    "docs/change-gates/ES-POS-CHECKOUT-LATENCY-01 CORE Admission Disposition.md": "c3445d0eb492d7e7280f7e68599ec09cc4e8a75d7f267dd77d0ee70b9fc07d13",
+    "docs/governance/ES-RELEASE-SELECTIVE-LINEAGE-GOVERNANCE-01.md": "25df18e898287db0f6553c54c890a099f3850e455789fe5c1f82799cb984dd24",
+    "vercel.json": "eb54ee01c62b86da2b1ac33d3f7126b0340b646abc9a553ee54c4470c2add7ba"
+  },
+  "trustedModes": {
+    "scripts/check-selective-release.sh": "100755",
+    "scripts/check-release-lineage.sh": "100755",
+    "scripts/lib/release-provenance.mjs": "100755",
+    "scripts/guards/check-change-scope.js": "100644",
+    "docs/change-gates/gate-config.json": "100644",
+    "docs/change-gates/ES-PRINT-RC7-KNOWN-TEST-FAILURES.md": "100644",
+    "docs/change-gates/ES-POS-CHECKOUT-LATENCY-01 CORE Admission Disposition.md": "100644",
+    "docs/governance/ES-RELEASE-SELECTIVE-LINEAGE-GOVERNANCE-01.md": "100644",
+    "vercel.json": "100644"
+  },
+  "evidenceBundleSha256": "923e78e02cfe9d5240c1aa0af8de83badb185327695f03e281141f7005048d23",
+  "evidenceHashes": {
+    "FINAL-QUALIFIED-ACCEPTANCE.json": "3ec00b3a7594b96d55365ecb3533c90af01a3f231918f78572a92dbe173fa22f",
+    "FINAL-PROVENANCE-INTEGRITY.json": "7f0fde59f8fb42ed87940dbc7b53499de4e1a1dcf20cdf0722c38ccbd43cece2",
+    "POST-REGISTRATION-REVALIDATION.json": "7e805eb7991e7ec9aed215e286add8c7d196bf78567b47a6e9e7031222cc907e",
+    "final-mapped-review.md": "f77ce7474b9e1348e3773fec00ba1d0fe818e89bc8bfa7774608b87b2ba7e31e",
+    "final-acceptance-review.md": "8465a9e15dbc0a26096ac6d6f85cec9040022e53e705d9c24ecc9b53a54ca2b8",
+    "post-registration-review.md": "9bb8300d59cd944472114e2e3b2e88f98c75b3af2d33eecb962e14158192760a",
+    "final-candidate-build.log": "a6ec7218b5761278ca72cba0d455dcb785703e2ca5174959d589fe5050804ec1",
+    "final-large-cart.log": "ad3d58ec92e1878248f1307093eb7bd754e3f29cea9fc374b0a6a14d79e82d19",
+    "final-network-print.log": "995f22492880b7f88f38be05a84be8c54486c9f8111eb4bca0527b9d355ec607",
+    "final-native-control.log": "fb452bb86bf6ead5143d8ad5e26539a411512a5802fc3701bacf0fd7db7eaf6f",
+    "core-final-mapped/core/summary.json": "fa26e394610f37d31f2c34caf33f9938754a18db26d19ac5a961fdc461ad7748",
+    "core-final-mapped/core/root-core-suite.log": "da9786526c3a7b4d917ec31369e5c251f1f149c916060a780dee37c3ddb92831",
+    "core-current-production-canonical/core/summary.json": "429cb72eb57aa687b2e6494654a523c6b1e0d4f5ec914179a68dce390fccbc5d",
+    "core-current-production-canonical/core/root-core-suite.log": "3cce97c416e6cc67b0dd80ad374ab22ab65064ba65125f30b15a124bdc7c83c2",
+    "final-cumulative-scope.log": "b04a436421269b1c0684c495d4ad5f1c61ae64986dc6a1f56b02803ee4e09eca"
+  }
+}
