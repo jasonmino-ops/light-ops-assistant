@@ -1,0 +1,17 @@
+{
+  "verdict": "PASS",
+  "candidate": "9e3b868622175bd5ddfa6cdcd26e066dc34aafce",
+  "tree": "241c83daa6777567f184c047872faf62c9aa5a04",
+  "manifestSha256": "22a0b48b2e45972240eba96a47218a655c450c959b87e0bc36ba9715b46f6876",
+  "controllerSha256": {
+    ".github/release-validator/print-device-takeover.json": "22a0b48b2e45972240eba96a47218a655c450c959b87e0bc36ba9715b46f6876",
+    ".github/release-validator/print-device-takeover.mjs": "e870579e7b86d52cbd7b5817dbd4980051ac4dfaec53880bb76a17311035499c",
+    ".github/release-validator/print-device-takeover.test.mjs": "572b675945093f0e316e25f7f55e1b407468f58f2c1c29b830d58456685325d0",
+    ".github/workflows/selective-release-validator.yml": "5f8e79af62af3ac5eb03e7f119478f8d5ca698d2b4e30f691d1e58afc09359c0"
+  },
+  "readOnly": true,
+  "freshContext": true,
+  "notFounderOrAppSigner": true,
+  "evidence": "独立、新上下文 Codex 以只读方式复核 83d6a3e754e91b0646d38501ca79540ccddd0cdb 的四个控制文件及同树 32 个发布路径。空凭据运行原验证流程 14/14；核对 23 个冻结附件及六份原始记录。固定期限、正式本人答复唯一 UTC 行、单次 App POST 与原响应 ID 读回均通过。正式店主授权在 HTTP 入口；父子设备和门店执行起点在同事务检查。OWNER 资格没有在该事务中锁定，不能断言与并发撤权串行化。原始发布 CORE 100/104、集成 19/22，保持 BLOCKED。未代 Founder 签认或 App 签发。无 Production 或现场验收。",
+  "evidenceSha256": "eb5da2eb76206209c1d3a95aba1ed592d004fba1bdcd83516be629dbdc483a28"
+}

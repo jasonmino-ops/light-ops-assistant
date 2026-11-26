@@ -1,0 +1,66 @@
+{
+  "releaseId": "ES-PRINT-DEVICE-TAKEOVER-WEB-COMPAT-POS49",
+  "taskIds": [
+    "ES-PRINT-DEVICE-TAKEOVER"
+  ],
+  "baseProductionSha": "49d336331af987dce76e4c098ab47be0274cae2f",
+  "sourceMainSha": "8ff33feb4ef27520237458af425b044cf05b7277",
+  "includedSourceCommits": [
+    "f87ed19bfa8ac1084761783596faeaf6b1dfdca1"
+  ],
+  "founderAuthorization": {
+    "authorizationId": "ES-PRINT-DEVICE-TAKEOVER-WEB-COMPAT-POS49-20261126",
+    "approvedBy": "Founder",
+    "status": "APPROVED",
+    "approvedAt": "2026-11-26T04:54:13.550Z",
+    "includedSourceCommits": [
+      "f87ed19bfa8ac1084761783596faeaf6b1dfdca1"
+    ]
+  },
+  "releaseSha": "9e3b868622175bd5ddfa6cdcd26e066dc34aafce",
+  "releaseTree": "241c83daa6777567f184c047872faf62c9aa5a04",
+  "deploymentId": "PENDING",
+  "productionSha": "PENDING",
+  "productionDeployment": "dpl_8ep978327V1v3Rk9qDArwLehmmDv",
+  "control": "83d6a3e754e91b0646d38501ca79540ccddd0cdb",
+  "manifestSha256": "22a0b48b2e45972240eba96a47218a655c450c959b87e0bc36ba9715b46f6876",
+  "expiresAt": "2026-11-26T05:10:00.000Z",
+  "frozenPayloadSha256": "5f54eea8b202b6d2b46c864ca875081baaae2a2573158e581510617e9f7e69ea",
+  "dispositionSha256": "7494370cb9f8751f61b7bacdf9901a3ca73e4d530275f643dbb3bcaf3ad1c738",
+  "rawIntegration": {
+    "status": "BLOCKED",
+    "expected": 22,
+    "executed": 22,
+    "pass": 19,
+    "fail": 3,
+    "skip": 0
+  },
+  "rawCORE": {
+    "status": "BLOCKED",
+    "expected": 104,
+    "executed": 104,
+    "pass": 100,
+    "fail": 4,
+    "skip": 0
+  },
+  "authorizationReceiptSha256": "4101325c35215b13251f6d253eb5c1a148f446c131884d20929035bf0e540d36",
+  "controllerSha256": {
+    ".github/release-validator/print-device-takeover.json": "22a0b48b2e45972240eba96a47218a655c450c959b87e0bc36ba9715b46f6876",
+    ".github/release-validator/print-device-takeover.mjs": "e870579e7b86d52cbd7b5817dbd4980051ac4dfaec53880bb76a17311035499c",
+    ".github/release-validator/print-device-takeover.test.mjs": "572b675945093f0e316e25f7f55e1b407468f58f2c1c29b830d58456685325d0",
+    ".github/workflows/selective-release-validator.yml": "5f8e79af62af3ac5eb03e7f119478f8d5ca698d2b4e30f691d1e58afc09359c0"
+  },
+  "controllerDigest": "7c07d107d98062a45948f19188d7902615ea85592d469bb7a47b8853d850f981",
+  "issuerInstallationAuthorized": true,
+  "statusPublicationAuthorized": true,
+  "releaseExecutionAuthorized": true,
+  "releaseExecutionRequiresUnexpiredAppStatus": true,
+  "migrationAuthorized": false,
+  "terminalMutationAuthorized": false,
+  "pilotOrFeedMutationAuthorized": false,
+  "defaultSelectiveValidatorChanged": false,
+  "migrationCount": 0,
+  "signatureLifetimeSeconds": 7200,
+  "acceptance": "ACCEPTED_WITH_EXACT_PRINT_COMPAT_CORE_AND_INTEGRATION_DISPOSITION",
+  "reviewReceiptSha256": "81e4e418f796c5347e71605d856094b0252706c7f8cb9657617d953b7632f93a"
+}
