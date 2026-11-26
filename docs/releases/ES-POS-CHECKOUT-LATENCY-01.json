@@ -1,0 +1,60 @@
+{
+  "releaseId": "ES-POS-CHECKOUT-LATENCY-01-COMBINED",
+  "taskIds": [
+    "ES-POS-CHECKOUT-LATENCY-01"
+  ],
+  "baseProductionSha": "1f4e3acb8455a72b2aabd3885c3db161607aad25",
+  "sourceMainSha": "e241d886af16ab6be881fea2fa662552bd93fa49",
+  "includedSourceCommits": [
+    "b465dba9f3e85441a1e7d6e7c06f9559b7d73680",
+    "93527d125baeb6c62559b7b9deb251c7960212da",
+    "36e49742662775d24cca98a5297c8d640d411516"
+  ],
+  "founderAuthorization": {
+    "authorizationId": "10cca88acff0044c77fedf06fbdd4c374a86be1d27da77724c63f186d57b514d",
+    "approvedBy": "Founder",
+    "status": "APPROVED",
+    "approvedAt": "2026-11-26T00:54:50.321718+00:00",
+    "includedSourceCommits": [
+      "b465dba9f3e85441a1e7d6e7c06f9559b7d73680",
+      "93527d125baeb6c62559b7b9deb251c7960212da",
+      "36e49742662775d24cca98a5297c8d640d411516"
+    ]
+  },
+  "releaseSha": "49d336331af987dce76e4c098ab47be0274cae2f",
+  "deploymentId": "PENDING",
+  "productionSha": "PENDING",
+  "releaseTree": "73d1b373a886065558340a3f5e46c5a6f44d9639",
+  "productionDeployment": "dpl_BcvBPrbEZYkiKSuyB2BS6UzGmD9M",
+  "control": "99c569cfffcd8c95021ab2329e30209124d28bf8",
+  "manifestSha256": "2d76c129ecdb9aba61d08656e559567b391ba33db621987c0306796a11186915",
+  "expiresAt": "2026-11-26T12:51:20Z",
+  "authorizationReceiptSha256": "4a31dd695ef2fa33707cb85e9a149ef6917600a57b36006e3d2fc445713266e2",
+  "reviewReceiptSha256": "4ba8b11af18fe6585c8e9dc5505aa353ef75a66a24aca5b578bc142920ee4c19",
+  "controllerSha256": {
+    ".github/release-validator/pos-checkout.json": "2d76c129ecdb9aba61d08656e559567b391ba33db621987c0306796a11186915",
+    ".github/release-validator/pos-checkout.mjs": "7a75550ad9031f985092ee7cd2af5b531dde7d69306e37088e3589da03e544c1",
+    ".github/release-validator/pos-checkout.test.mjs": "ec3a179b7572026fc3a43a82d516a9e5c52ad838caa096d7bf1a225b9a9f4ca0",
+    ".github/workflows/selective-release-validator.yml": "98e0380a9cdaa9631b0d7f43738227105389591fba77e87e93779e9477f11099"
+  },
+  "controllerDigest": "35170baafeb2652bb53d45385e3b161667139c0b5ef91b2811cce97696c75e19",
+  "issuerInstallationAuthorized": true,
+  "statusPublicationAuthorized": true,
+  "releaseExecutionAuthorized": true,
+  "releaseExecutionRequiresUnexpiredAppStatus": true,
+  "migrationAuthorized": false,
+  "terminalMutationAuthorized": false,
+  "pilotOrFeedMutationAuthorized": false,
+  "defaultSelectiveValidatorChanged": false,
+  "migrationCount": 0,
+  "signatureLifetimeSeconds": 7200,
+  "acceptance": "ACCEPTED_WITH_EXACT_SEVEN_CASE_CORE_DOCUMENTARY_DISPOSITION",
+  "rawCORE": {
+    "status": "BLOCKED",
+    "expected": 103,
+    "executed": 103,
+    "pass": 99,
+    "fail": 4,
+    "skip": 0
+  }
+}
