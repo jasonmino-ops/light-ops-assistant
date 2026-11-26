@@ -350,6 +350,8 @@ const en = {
     campaignDesc: 'Manage promotion links and campaigns',
     computerActivation: 'Computers & Desktop activation',
     computerActivationDesc: 'Approve cashier computers and create Desktop activation codes',
+    inventoryDesktopOperator: 'Authorize a desktop inventory operator',
+    inventoryDesktopOperatorDesc: 'Enter the pairing code shown on the activated computer',
     printJobs: 'Print job log',
     printJobsDesc: 'Read-only history of network print jobs',
     backToManagement: 'Back to Management Center',

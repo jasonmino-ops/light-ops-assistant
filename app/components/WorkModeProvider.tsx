@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useReducer, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLocale } from './LangProvider'
 import { apiFetch, STAFF_CTX } from '@/lib/api'
@@ -15,6 +15,7 @@ type Ctx = {
   tier: string
   storeName: string | null
   storeCode: string | null
+  refreshStoreContext: () => void
   tenantName: string | null
   checkoutMode: string
   currencyCode: string
@@ -29,6 +30,7 @@ const WorkModeContext = createContext<Ctx>({
   tier: 'LITE',
   storeName: null,
   storeCode: null,
+  refreshStoreContext() {},
   tenantName: null,
   checkoutMode: 'DIRECT_PAYMENT',
   currencyCode: 'USD',
@@ -46,7 +48,9 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
   const [workMode, setWorkMode] = useState<'owner' | 'staff'>('owner')
   const [tier, setTier] = useState('LITE')
   const [storeName, setStoreName] = useState<string | null>(null)
-  const [storeCode, setStoreCode] = useState<string | null>(null)
+  const [sessionRevision, refreshStoreContext] = useReducer((revision: number) => revision + 1, 0)
+  const [verifiedStore, setVerifiedStore] = useState<{ revision: number; code: string | null } | null>(null)
+  const storeCode = verifiedStore?.revision === sessionRevision ? verifiedStore.code : null
   const [tenantName, setTenantName] = useState<string | null>(null)
   const [checkoutMode, setCheckoutMode] = useState('DIRECT_PAYMENT')
   const [currencyCode, setCurrencyCode] = useState('USD')
@@ -58,18 +62,21 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
   }, [role])
 
   useEffect(() => {
-    apiFetch('/api/me', { cache: 'no-store' }, STAFF_CTX)
+    const request = new AbortController()
+    apiFetch('/api/me', { cache: 'no-store', signal: request.signal }, STAFF_CTX)
       .then((r) => (r.ok ? r.json() : { tier: 'LITE' }))
       .then((d) => {
+        if (request.signal.aborted) return
         setTier(d.tier ?? 'LITE')
         setStoreName(d.storeName ?? null)
-        setStoreCode(d.storeCode ?? null)
+        setVerifiedStore({ revision: sessionRevision, code: d.storeCode ?? null })
         setTenantName(d.tenantName ?? null)
         setCheckoutMode(d.checkoutMode ?? 'DIRECT_PAYMENT')
         setCurrencyCode(d.currencyCode ?? 'USD')
       })
       .catch(() => {})
-  }, [])
+    return () => request.abort()
+  }, [sessionRevision])
 
   const isOwnerInStaffMode = role === 'OWNER' && workMode === 'staff'
   const effectiveRole = isOwnerInStaffMode ? 'STAFF' : role
@@ -90,7 +97,7 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
     <WorkModeContext.Provider value={{
       realRole: role, effectiveRole, isOwnerInStaffMode, tier,
       storeName, storeCode, tenantName, checkoutMode, currencyCode,
-      enterStaffMode, exitStaffMode,
+      enterStaffMode, exitStaffMode, refreshStoreContext,
     }}>
       {isOwnerInStaffMode && (
         <>

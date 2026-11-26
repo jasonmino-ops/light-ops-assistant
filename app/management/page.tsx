@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
+import { path, useInventory, type Access } from '@/app/native-inventory/client'
 import { PrintSettingsPanel } from './PrintSettingsPanel'
 import { buildManagementHref, MANAGEMENT_PATH, withManagementReturn } from '@/lib/management-navigation'
 
@@ -188,6 +189,9 @@ export default function ManagementPage() {
   })
   const managedHref = (path: string) => withManagementReturn(path, currentManagementHref)
   const showHomeReturn = !isDesktopSurface && !navigationContext.fromDesktop
+  const inventoryAccess = useInventory<Access>(
+    showHomeReturn && !isOwner && storeCode ? path('access', { storeCode }) : null,
+  )
 
   const groups: Group[] = [
     {
@@ -232,6 +236,12 @@ export default function ManagementPage() {
         { href: '/invite', label: t('management.staffInvite'), description: t('management.staffInviteDesc'), icon: 'invite', ownerOnly: true },
         { href: '/table-qrcodes', label: t('management.tableQrcodes'), description: t('management.tableQrcodesDesc'), icon: 'qrcode', ownerOnly: true },
         { href: managedHref('/home/computer-client'), label: t('management.computerActivation'), description: t('management.computerActivationDesc'), icon: 'settings', ownerOnly: true },
+        ...(inventoryAccess?.data ? [{
+          href: '/desktop/inventory/authorize',
+          label: t('management.inventoryDesktopOperator'),
+          description: t('management.inventoryDesktopOperatorDesc'),
+          icon: 'settings' as const,
+        }] : []),
       ],
     },
     {
