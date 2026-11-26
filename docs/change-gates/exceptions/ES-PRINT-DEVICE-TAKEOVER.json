@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "taskId": "ES-PRINT-DEVICE-TAKEOVER",
+  "featureBranch": "codex/es-print-device-takeover-delivery",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "ba867972df1c0bbe71723c7a7d1169208d809d58",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/api/cashier/member-balance-pay/route.ts",
+    "app/api/cashier/sales/route.ts"
+  ],
+  "authorizedPathSha256": {
+    "app/api/cashier/member-balance-pay/route.ts": "96d7c400728550d65d0c36c34da8c2be7098186a00455f8680d1ac6d3402246b",
+    "app/api/cashier/sales/route.ts": "2744cf274bbda8039a7f071c679553d52133a24c6cd806dd817c4a64a94f104f"
+  },
+  "reason": "Exact previously reviewed response metadata for a device-bound POS sale or member-balance payment, supplying its committed business origin to the new native print execution boundary. No other protected path or content is admitted.",
+  "approvalSource": {
+    "recordedAt": "2026-11-25T19:11:17Z",
+    "decision": "Founder accepted the existing candidate and authorized necessary Scope registration and commit in this task on 2026-11-26 (Asia/Phnom_Penh).",
+    "candidatePatchSha256": "496066acba02a7ccf4409dd0f5759baefa8f01f648d858b6d97a7e9dee486171"
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "createdAt": "2026-11-25T19:11:17Z",
+  "approvedAt": "2026-11-25T19:11:17Z",
+  "approvedBy": "Founder",
+  "additionalAuthorizations": [
+    {
+      "authorizationId": "PRODUCTION-SOURCE-PROJECTION",
+      "featureBranch": "codex/es-print-device-takeover-web-projection",
+      "baseOriginMainSha": "da2b3fc7aaff04187e64c36399bdb941f8aecee7",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "approvedAt": "2026-11-25T19:21:33.210Z",
+      "createdAt": "2026-11-25T19:21:33.210Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Exact cashier response-origin additions projected on the current Production tree while preserving Diamond transaction idempotency. Scope entry only; protected release and frozen successor require their own evidence.",
+      "authorizedPaths": [
+        "app/api/cashier/member-balance-pay/route.ts",
+        "app/api/cashier/sales/route.ts"
+      ],
+      "authorizedPathSha256": {
+        "app/api/cashier/member-balance-pay/route.ts": "96d7c400728550d65d0c36c34da8c2be7098186a00455f8680d1ac6d3402246b",
+        "app/api/cashier/sales/route.ts": "7e8273cfeed01b04341abb3625bc04b5e7ee7709b26f6c80a4a6a565d867eebd"
+      },
+      "sourceCandidate": "ddbb815e0e55e7a021c0f08c18a1704268e643af",
+      "actualProductionParent": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
+      "latestTrustedMain": "9288844c6ada7ee17b87bd91c352d43c03129924",
+      "sealedManifestSha256": "0cd2b276b940458a6ce49a34619289175d4138c198ce668e326c69cb0b2e9d48",
+      "approvalSource": "Standing Founder decision authorizes necessary Scope registration and protected release preparation. Timestamp is registration time. No personal frozen signature is represented."
+    },
+    {
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "closeAfter": "FEATURE_MERGE",
+      "authorizedPaths": [
+        "app/api/cashier/member-balance-pay/route.ts",
+        "app/api/cashier/sales/route.ts"
+      ],
+      "authorizationId": "WEB-COMPAT-MAIN-POS49",
+      "featureBranch": "codex/es-print-device-takeover-web-compat",
+      "baseOriginMainSha": "1b9f7cdfbdb5b7f2f3ebd35e4de9cc99ce53606e",
+      "authorizedPathSha256": {
+        "app/api/cashier/member-balance-pay/route.ts": "96d7c400728550d65d0c36c34da8c2be7098186a00455f8680d1ac6d3402246b",
+        "app/api/cashier/sales/route.ts": "fefb5d89649072653a6c5fff511716582716b44498c813e6e39444d14d7b3b3c"
+      },
+      "createdAt": "2026-11-26T02:56:15Z",
+      "approvedAt": "2026-11-26T02:56:15Z",
+      "reason": "Existing cashier response-origin metadata integrated with the released POS and inventory code. Only the two exact route contents are admitted.",
+      "protectedDiffSha256": "8c7e525636f4dd8812ce0aa16cae4c2c476b6c733c2f87adfadb5ef3568beef5",
+      "sourceCandidate": "1065a60d114d363fb82a037af5bd58b731965c47",
+      "actualProductionParent": "49d336331af987dce76e4c098ab47be0274cae2f",
+      "latestTrustedMain": "1b9f7cdfbdb5b7f2f3ebd35e4de9cc99ce53606e",
+      "approvalSource": "Founder authorized necessary Scope registration, commit and protected release preparation for ES-PRINT-DEVICE-TAKEOVER, reaffirmed the final Web compatibility successor. Timestamp records registration; frozen successor personal signature remains separate."
+    },
+    {
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "closeAfter": "FEATURE_MERGE",
+      "authorizedPaths": [
+        "app/api/cashier/member-balance-pay/route.ts",
+        "app/api/cashier/sales/route.ts"
+      ],
+      "authorizationId": "WEB-COMPAT-PRODUCTION-POS49",
+      "featureBranch": "codex/es-print-device-takeover-st04-pos49",
+      "baseOriginMainSha": "1f4e3acb8455a72b2aabd3885c3db161607aad25",
+      "authorizedPathSha256": {
+        "app/api/cashier/member-balance-pay/route.ts": "96d7c400728550d65d0c36c34da8c2be7098186a00455f8680d1ac6d3402246b",
+        "app/api/cashier/sales/route.ts": "82c18a2da4a4f3ed8f8dc05e6248ff85a6452b361da30f5d9b86dd077bc8498a"
+      },
+      "createdAt": "2026-11-26T02:56:15Z",
+      "approvedAt": "2026-11-26T02:56:15Z",
+      "reason": "Existing cashier response-origin metadata integrated with the released POS and inventory code. Only the two exact route contents are admitted.",
+      "protectedDiffSha256": "220349ca6b732d49c020377da60691391cbccdb503101cbb495c45f2aef86bc4",
+      "sourceCandidate": "1065a60d114d363fb82a037af5bd58b731965c47",
+      "actualProductionParent": "49d336331af987dce76e4c098ab47be0274cae2f",
+      "latestTrustedMain": "1b9f7cdfbdb5b7f2f3ebd35e4de9cc99ce53606e",
+      "approvalSource": "Founder authorized necessary Scope registration, commit and protected release preparation for ES-PRINT-DEVICE-TAKEOVER, reaffirmed the final Web compatibility successor. Timestamp records registration; frozen successor personal signature remains separate."
+    }
+  ]
+}
