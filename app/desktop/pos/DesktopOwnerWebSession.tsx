@@ -8,6 +8,7 @@
  */
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { getPosDeviceToken } from '@/lib/desktop-pos-client'
 
 const EXCHANGE_PATH = '/api/pos-session/owner-web-session'
@@ -31,6 +32,7 @@ function readIssuedAt(key: string): number | null {
 
 export default function DesktopOwnerWebSession() {
   const router = useRouter()
+  const { refreshStoreContext } = useWorkMode()
 
   useEffect(() => {
     const runtime = window.eshopDesktopRuntime
@@ -84,6 +86,7 @@ export default function DesktopOwnerWebSession() {
           try {
             sessionStorage.setItem(key, String(Date.now()))
           } catch {}
+          refreshStoreContext()
           router.refresh()
           schedule(RENEW_AFTER_MS)
         })
@@ -100,7 +103,7 @@ export default function DesktopOwnerWebSession() {
       cancelled = true
       if (timer !== null) window.clearTimeout(timer)
     }
-  }, [router])
+  }, [router, refreshStoreContext])
 
   return null
 }

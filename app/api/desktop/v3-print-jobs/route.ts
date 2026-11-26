@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getDesktopDeviceContext } from '@/lib/desktop-activation/auth'
 import { noStoreJson, withDesktopApiError } from '@/lib/desktop-activation/http'
-import { deliverV3PrintIntent, enqueueHeldV3PrintIntent, materializeHeldV3PrintIntents, parseV3PrintRole, reportV3Execution } from '@/lib/v3-print-job-adapter'
+import { deliverV3PrintIntent, enqueueHeldV3PrintIntent, materializeHeldV3PrintIntents, parseV3PrintRole, reportV3Execution, verifyLocalPrintOrigin } from '@/lib/v3-print-job-adapter'
 import { issueV3OperatorRecoveryProofWithDb } from '@/lib/v3-print-operator-status'
 
 export const runtime = 'nodejs'
@@ -12,6 +12,17 @@ export async function GET(req: NextRequest) {
     const auth = await getDesktopDeviceContext(req, { updateLastSeen: true })
     if (!auth.ok) return noStoreJson({ ok: false, error: auth.error }, { status: auth.status })
     const searchParams = new URL(req.url).searchParams
+    if (searchParams.get('action') === 'CHECK_ORIGINAL') {
+      const orderNo = searchParams.get('orderNo') ?? ''
+      const printJobId = searchParams.get('printJobId') ?? ''
+      const batchId = searchParams.get('batchId') ?? ''
+      const role = parseV3PrintRole(searchParams.get('role'))
+      if ([...searchParams.keys()].sort().join(',') !== 'action,batchId,orderNo,printJobId,role' ||
+          !role || !batchId || batchId.length > 128 || !/^[A-Za-z0-9._:-]{1,128}$/.test(orderNo) ||
+          !/^network:[0-9a-f]{64}$/.test(printJobId)) return noStoreJson({ ok: false, error: 'INVALID_PRINT_ORIGIN' }, { status: 400 })
+      const eligible = await verifyLocalPrintOrigin(db, { ...auth.context, batchId }, { orderNo, role, printJobId })
+      return eligible === null ? noStoreJson({ ok: false, error: 'PRINT_ORIGIN_AUTHORITY_UNAVAILABLE' }, { status: 409 }) : noStoreJson({ ok: true, eligible })
+    }
     if (searchParams.get('action') === 'OPERATOR_RECOVERY_PROOF') {
       const keys = [...searchParams.keys()].sort().join(',')
       const orderNo = searchParams.get('orderNo') ?? ''

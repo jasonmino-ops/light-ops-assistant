@@ -2,8 +2,10 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import type { OperationLog, Prisma } from '@prisma/client'
 import { canonicalV3PrintEffectKey } from '../v3-print-identity'
 import plan from './admission.json'
+import { confirmedReplacementCutoff } from '../v3-print-replacement-target'
 
-export const activationReceiptId = 'st04:legacy-front-seven:activated'
+const auditIdPrefix = 'st04:legacy-front-seven:'
+export const activationReceiptId = auditIdPrefix + 'activated'
 export const sealedAdmissionSha = '5b53783cd4b979ad1370c54a57fad8540f854fe64dec64eb47cddc94afb5611c'
 const digest = (s: string) => createHash('sha256').update(s).digest('hex')
 const target = (s: { tenantId: string; storeId: string }) =>
@@ -65,7 +67,7 @@ export function completeDisposition(audit: AuditFact[], fact: Record<string, unk
   const beforeRows = []
   const afterHashes = []
   for (const suffix of ['review', 'apply', ...plan.jobs.map((j) => j.id)]) {
-    const a = audit.find((x) => x.id === 'st04:legacy-front-seven:' + suffix)
+    const a = audit.find((x) => x.id === auditIdPrefix + suffix)
     const v = a?.payloadSnapshot as Record<string, unknown> | null
     if (
       !v ||
@@ -196,6 +198,12 @@ export async function cleanStartSelector(
 ) {
   if (!target(identity) || identity.deviceId !== plan.newOwner) return {}
   if (epoch < plan.control.ownerEpoch + 1 || !log || typeof (log as Log).findUnique !== 'function') return null
-  const cutoff = await trustedCutoff(log as Log)
+  const audit = log as Log
+  // Once a disposition has started, only its original complete evidence can authorize it.
+  const existing = await audit.findFirst({ where: { OR: [
+    { id: { startsWith: auditIdPrefix } },
+    { ...scoped, targetType: plan.task, requestId: plan.operationRequestId },
+  ] }, select: { id: true } })
+  const cutoff = existing ? await trustedCutoff(audit) : await confirmedReplacementCutoff(audit, identity, epoch)
   return cutoff ? { createdAt: { gt: cutoff }, NOT: { id: { in: plan.jobs.map((j) => j.id) } } } : null
 }

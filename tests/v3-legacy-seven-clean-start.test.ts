@@ -332,6 +332,80 @@ for (const loseReadback of [false, true])
         JSON.stringify(beforeRows.map((r) => Object.entries(r).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))))
       )
       const asPlane = db as unknown as V3ControlPlaneDb
+      await t.test('a present store owner and ready device can start new work while sealed history stays unchanged', async () => {
+        const { preparePrintReplacementTarget } = await import('../lib/v3-print-replacement-target')
+        const { confirmPrintReplacement } = await import('../lib/v3-print-control-plane')
+        const { readPrintExecutionStart } = await import('../lib/v3-print-execution-start')
+        await pool.query('ALTER TABLE "DesktopDevice" ADD COLUMN "tokenVersion" integer DEFAULT 1, ADD COLUMN "activeSlot" text DEFAULT \'ACTIVE\'')
+        const device = { ...scope, deviceId: plan.newOwner }
+        const before = () => db.eshopTrayPrintJob.findMany({ where: scope, orderBy: { id: 'asc' } })
+        const originalJobs = await before()
+        const batches = await db.v3PrintExecutionBatch.findMany({ where: scope })
+        assert.equal(originalJobs.length, 7)
+        try {
+          assert.equal(await cleanStartSelector(db.operationLog, device, 2), null)
+          assert.equal(await preparePrintReplacementTarget(db, { ...device, tokenVersion: 1 }), null)
+          await pool.query('INSERT INTO "ComputerBinding" (id,"tenantId","storeId","parentDesktopDeviceId") VALUES ($1,$2,$3,$4)',
+            ['fixture-child', scope.tenantId, scope.storeId, device.deviceId])
+          const target = await preparePrintReplacementTarget(db, { ...device, tokenVersion: 1 })
+          assert.ok(target)
+          const request = { ...scope, expectedStateVersion: plane.stateVersion, actorUserId: 'fixture-store-owner',
+            intendedOwnerDeviceId: device.deviceId, confirmationId: target.confirmationId }
+          const previous = { previousDeviceId: plan.originalOwner, previousEpoch: plane.ownerEpoch, previousDeviceStopped: true as const }
+          const confirm = () => confirmPrintReplacement(asPlane, request, previous)
+
+          await pool.query(`UPDATE "ComputerBinding" SET "credentialStatus"='VOID' WHERE id='fixture-child'`)
+          assert.deepEqual(await confirm(), { ok: false, code: 'HANDOFF_TARGET_NOT_READY' })
+          await pool.query(`UPDATE "ComputerBinding" SET "credentialStatus"='ACTIVE', "deviceSecretVersion"=2 WHERE id='fixture-child'`)
+          assert.deepEqual(await confirm(), { ok: false, code: 'HANDOFF_TARGET_NOT_READY' })
+          await pool.query(`UPDATE "ComputerBinding" SET "deviceSecretVersion"=1 WHERE id='fixture-child'`)
+          // A partial case and an invalid original activation must each reject the atomic transition.
+          for (const suffix of ['review', 'activated']) {
+            const receipt = await db.operationLog.create({ data: { ...scope, id: prefix + suffix,
+              actionType: action, targetType: plan.task, targetId: plan.scope.code, status: 'SUCCESS' } })
+            assert.deepEqual(await confirm(), { ok: false, code: 'V3_CLEAN_START_UNVERIFIED' })
+            assert.deepEqual(await db.v3PrintControlPlane.findUniqueOrThrow({ where: { id: plane.id } }), plane)
+            assert.equal(await db.operationLog.count({ where: { actionType: 'V3_PRINT_CONTROLLED_HANDOFF' } }), 0)
+            await db.operationLog.delete({ where: { id: receipt.id } })
+          }
+          // Row locks prevent revocation; natural credential expiry must still roll back a delayed final write.
+          await pool.query(`CREATE FUNCTION delay_owner_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN PERFORM pg_sleep(1.4); RETURN NEW; END $$;
+            CREATE TRIGGER delay_owner_audit BEFORE INSERT ON "OperationLog" FOR EACH ROW
+            WHEN (NEW.message='HANDOFF_CONFIRMED') EXECUTE FUNCTION delay_owner_audit()`)
+          try {
+            await pool.query(`UPDATE "ComputerBinding" SET "credentialExpiresAt"=(clock_timestamp() AT TIME ZONE 'UTC') + interval '1 second'`)
+            assert.deepEqual(await confirm(), { ok: false, code: 'HANDOFF_TARGET_NOT_READY' })
+            assert.deepEqual(await db.v3PrintControlPlane.findUniqueOrThrow({ where: { id: plane.id } }), plane)
+            assert.equal(await db.operationLog.count({ where: { actionType: 'V3_PRINT_CONTROLLED_HANDOFF' } }), 0)
+          } finally {
+            await pool.query(`DROP TRIGGER delay_owner_audit ON "OperationLog"; DROP FUNCTION delay_owner_audit();
+              UPDATE "ComputerBinding" SET "credentialExpiresAt"=(clock_timestamp() AT TIME ZONE 'UTC') + interval '1 day'`)
+          }
+          const confirmations = await Promise.all([confirm(), confirm()])
+          assert.equal(confirmations.filter(result => result.ok).length, 1, JSON.stringify(confirmations))
+          const start = await readPrintExecutionStart(db, scope)
+          assert.ok(start && start.ownerEpoch === 2 && start.deviceId === device.deviceId)
+          const selection = await cleanStartSelector(db.operationLog, device, start.ownerEpoch)
+          assert.deepEqual(selection, { createdAt: { gt: new Date(start.startedAt) }, NOT: { id: { in: jobIds } } })
+          assert.equal(await cleanStartSelector(db.operationLog, device, 1), null)
+          assert.deepEqual(await before(), originalJobs)
+          assert.equal(await db.operationLog.count({ where: { targetType: plan.task } }), 0)
+
+          // The final marker alone cannot confer authority after loss of either link in its historical evidence.
+          const begin = await db.operationLog.findFirstOrThrow({ where: { ...scope, message: 'QUARANTINE_STARTED' } })
+          await db.operationLog.update({ where: { id: begin.id }, data: { userId: 'other-owner' } })
+          assert.equal(await cleanStartSelector(db.operationLog, device, 2), null)
+          await db.operationLog.update({ where: { id: begin.id }, data: { userId: request.actorUserId } })
+          await db.operationLog.delete({ where: { id: target.confirmationId } })
+          assert.equal(await cleanStartSelector(db.operationLog, device, 2), null)
+        } finally {
+          // Restore the synthetic starting fixture for the original, independent Ops lifecycle tests below.
+          await db.operationLog.deleteMany({ where: scope })
+          await db.v3PrintControlPlane.update({ where: { id: plane.id }, data: plane })
+          for (const batch of batches) await db.v3PrintExecutionBatch.update({ where: { id: batch.id }, data: batch })
+        }
+      })
       await t.test('missing admission or cross-store request cannot write even REVIEW', async () => {
         await assert.rejects(run('REVIEW'), /CASE_GRANT_MISSING/)
         await assert.rejects(

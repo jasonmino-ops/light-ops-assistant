@@ -117,6 +117,7 @@ type OpsPrintModeState = {
     ownerActive: boolean
     activeExecutionBatch: boolean
     handoffOrReconciliation: boolean
+    v2FallbackReplayRisk?: boolean
     v2Drain: boolean
     v2DrainWindowActive: boolean
     v2ExecutionAmbiguous: boolean
@@ -442,6 +443,7 @@ const PRINT_MODE_ERRORS: Record<string, string> = {
   V2_DRAIN_NOT_COMPLETE: '旧 V2 队列尚未排空，不能进入人工切换闸。',
   V2_DRAIN_WINDOW_ACTIVE: 'V2 安全排空窗口尚未结束，请等待页面允许继续。',
   V2_EXECUTION_AMBIGUOUS: '仍有 V2 claimed/executing/unknown 记录，不能完成切换。',
+  V2_FALLBACK_REPLAY_RISK: '本店已更换打印电脑。传统打印无法核验历史任务的执行起点，已停用回退。',
   V3_DRAIN_NOT_COMPLETE: '仍有可执行或状态不明的 V3 intent，不能恢复传统打印。',
   V3_EXECUTION_AMBIGUOUS: '仍有可执行或状态不明的 V3 intent，必须人工核对后才能激活。',
   HANDOFF_NOT_FINALIZED: '当前 handoff/reconciliation 尚未完成。',
@@ -589,6 +591,7 @@ function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store })
         {state && <>
           {(error || loading) && <p style={{ color: '#854d0e' }}>以下为上次收到的快照，当前状态待核对。</p>}
           <p>{presentation?.next}</p>
+          {state.blocking.v2FallbackReplayRisk && <p>{PRINT_MODE_ERRORS.V2_FALLBACK_REPLAY_RISK}</p>}
           <p><strong>Owner 接管：</strong>{presentation?.owner}</p>
           <p><strong>Windows / Provider：</strong>云端当前无法验证；进程存活或最近联系不等于 Provider READY。</p>
           <p><strong>FRONT 配置：</strong>云端未知，需在门店电脑确认；历史健康记录不代表当前本地状态。</p>

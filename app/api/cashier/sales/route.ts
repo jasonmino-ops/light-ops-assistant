@@ -9,6 +9,7 @@
  */
 import { setTimeout as delay } from 'node:timers/promises'
 import { NextRequest, NextResponse } from 'next/server'
+import { withPrintOrigin } from '@/lib/v3-print-origin-response'
 import { prisma } from '@/lib/prisma'
 import { resolveCashierProductsBatched } from '@/lib/cashier-product-batch'
 import { posRequestIdentity, replayPosRequest, writePosRequest } from '@/lib/pos-request-ledger'
@@ -199,6 +200,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const printOrigin: { orderNo?: string; at?: string } = {}
     const writeSale = async () => {
       const recordClock = new Date()
       // Preserve receipt order without backdating a line into a prior numbering or reporting day.
@@ -309,6 +311,9 @@ export async function POST(req: NextRequest) {
         totalAmount, lang: effectivePrinting!.lang, items: snapshotItems,
       }, effectivePrinting!.mode, store.printKitchenTicket ? kitchenItems : []) : undefined
 
+      // This metadata lives outside the persisted idempotent response. A replay cannot mint a fresh origin.
+      printOrigin.orderNo = orderNo
+      printOrigin.at = pi.createdAt?.toISOString()
       return {
         orderNo,
         totalAmount,
@@ -330,7 +335,10 @@ export async function POST(req: NextRequest) {
       result = await writeSale()
       if ('lineTimesReadyAt' in result && result.lineTimesReadyAt !== undefined) throw new Error('SALE_RECORD_CLOCK_NOT_READY')
     }
-    return NextResponse.json(result, { status: 201 })
+    const saleResponse = NextResponse.json(result, { status: 201 })
+    if (!('orderNo' in result) || result.orderNo !== printOrigin.orderNo) return saleResponse
+    return withPrintOrigin(saleResponse, req, { tenantId: store.tenantId, storeId: store.id },
+      result.orderNo, printOrigin.at, store.printKitchenTicket ? ['FRONT', 'KITCHEN'] : ['FRONT'])
   } catch (err) {
     if (err instanceof ProductUnitError) return NextResponse.json({ error: err.code, message: err.message }, { status: err.status })
     console.error('[POST /api/cashier/sales]', err)
