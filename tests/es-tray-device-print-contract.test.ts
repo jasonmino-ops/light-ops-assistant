@@ -1,3 +1,4 @@
+import { readUnchangedProductBaseline } from './support/unchanged-product-baseline.cjs'
 import { readDirectShiftSuccessor } from '../scripts/governance/es-shift-report-direct-print-01.cjs'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
@@ -459,7 +460,7 @@ async function main() {
     assert.doesNotMatch(component.slice(catchStart, catchEnd), /openExistingBrowserPrint|window\.print|qz/i)
   })
 
-  await test('the cashier page remains byte-identical to its merged exact governance approval', () => {
+  await test('the cashier page matches the unchanged merged baseline or exact successor', () => {
     // ES-PRINT-SOURCE-ROUTING-NORMALIZATION-01 approved the historical bytes, merged in
     // 7d4892b0aee5e2f3b203e7d11ec4c356ec137b15; its CLOSED record is provenance,
     // not permission for new Cashier edits. Historical SHA-256:
@@ -472,7 +473,8 @@ async function main() {
     // Successor candidate: ES-PRODUCT-COUNT-LIMIT-01 (catalogue-only).
     const { readNativeInventoryM1Successor } = createRequire(resolve(process.cwd(), 'package.json'))('./scripts/governance/es-native-inventory-m1-successor.cjs')
     const nativeInventoryM1 = readNativeInventoryM1Successor(process.cwd())
-    const successor = nativeInventoryM1 ?? (readDirectShiftSuccessor(process.cwd()) ?? readShiftReportSuccessor(process.cwd()))
+    const unchangedProduct = readUnchangedProductBaseline(process.cwd())
+    const successor = unchangedProduct ?? nativeInventoryM1 ?? (readDirectShiftSuccessor(process.cwd()) ?? readShiftReportSuccessor(process.cwd()))
     assert.notEqual(successor?.blocked, true, 'merged shift report freeze successor does not match the checkout')
     assert.equal(
       createHash('sha256').update(cashier).digest('hex'),

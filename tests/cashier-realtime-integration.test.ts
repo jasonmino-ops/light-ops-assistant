@@ -1,3 +1,4 @@
+import { readUnchangedProductBaseline } from './support/unchanged-product-baseline.cjs'
 import { readDirectShiftSuccessor } from '../scripts/governance/es-shift-report-direct-print-01.cjs'
 import assert from 'node:assert/strict'
 import { readShiftReportSuccessor } from '../scripts/governance/es-shift-report-follow-front-print-01.cjs'
@@ -18,6 +19,8 @@ const read = (path: string) => readFileSync(resolve(root, path), 'utf8')
 
 async function main() {
   const nativeInventoryM1 = readNativeInventoryM1Successor(root)
+  const unchangedProduct = readUnchangedProductBaseline(root)
+  const currentPaymentContract = nativeInventoryM1 || unchangedProduct
   const cashier = read('app/cashier/page.tsx')
   const ticket = read('app/api/cashier-realtime/ticket/route.ts')
   const notify = read('lib/cashier-realtime-notify.ts')
@@ -155,14 +158,14 @@ async function main() {
     ['app/api/sales/route.ts', 'pending_orders_changed', 'const result = await prisma.$transaction'],
     ['app/api/orders/[orderNo]/checkout/route.ts', 'pending_orders_changed', 'const pi = await prisma.$transaction'],
     ['app/api/orders/[orderNo]/cancel/route.ts', 'pending_orders_changed', 'await prisma.$transaction'],
-    ['app/api/payments/[paymentId]/confirm/route.ts', 'pending_orders_changed', nativeInventoryM1 ? 'const result = await prisma.$transaction' : 'const [updated, pendingTransition] = await prisma.$transaction'],
+    ['app/api/payments/[paymentId]/confirm/route.ts', 'pending_orders_changed', currentPaymentContract ? 'const result = await prisma.$transaction' : 'const [updated, pendingTransition] = await prisma.$transaction'],
     ['app/api/payments/[paymentId]/cancel/route.ts', 'pending_orders_changed', 'await prisma.$transaction'],
   ] as const
   for (const [path, wakeType, successMarker] of routeCases) {
     const source = read(path)
     assert.equal((source.match(/after\(\(\) => notifyCashierGateway\(\{/g) ?? []).length, 1, `${path}: one notify`)
     assert.match(source, new RegExp(`type: '${wakeType}'`))
-    const effectiveMarker = nativeInventoryM1 && path === 'app/api/orders/[orderNo]/checkout/route.ts'
+    const effectiveMarker = currentPaymentContract && path === 'app/api/orders/[orderNo]/checkout/route.ts'
       ? 'const result = await prisma.$transaction' : successMarker
     assert.ok(source.indexOf(effectiveMarker) !== -1 &&
       source.indexOf('after(() => notifyCashierGateway') > source.indexOf(effectiveMarker), `${path}: notify after success`)
@@ -177,7 +180,7 @@ async function main() {
   assert.match(read('app/api/orders/[orderNo]/checkout/route.ts'), /if \(paymentMethod === 'CASH'\)[\s\S]*after\(\(\) => notifyCashierGateway/)
 
   // Payment wakes are conditional on a real pending-list transition, not merely a PaymentIntent mutation.
-  if (nativeInventoryM1) {
+  if (currentPaymentContract) {
     await assertNativeInventoryPaymentContract(root)
   } else {
     const paymentConfirmRoute = read('app/api/payments/[paymentId]/confirm/route.ts')
@@ -479,7 +482,14 @@ async function main() {
   const catalogueBranch = 'codex/es-product-count-limit-01'
   const registrationBranch = `${catalogueBranch}-registration`
   const currentBranch = gitPaths('branch', '--show-current')[0]
-  if (currentBranch === registrationBranch || currentBranch === catalogueBranch) {
+  if (unchangedProduct) {
+    // The fixed merged product is unchanged. Historical task-specific branch
+    // checks remain below for changed products; current scope is still checked
+    // by the real Guard, without applying another task's exception.
+    if (changed.length) execFileSync(process.execPath, [
+      'scripts/guards/check-change-scope.js', '--files', changed.join(','),
+    ], { cwd: root, stdio: 'inherit' })
+  } else if (currentBranch === registrationBranch || currentBranch === catalogueBranch) {
     const catalogueTest = 'tests/cashier-realtime-integration.test.ts'
     const paths = [
       'app/api/cashier/store/route.ts',

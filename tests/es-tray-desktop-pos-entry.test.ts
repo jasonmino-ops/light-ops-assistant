@@ -1,14 +1,10 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { createRequire } from 'node:module'
-import { resolve } from 'node:path'
 import behavior from 'node:test'
 import ts from 'typescript'
 
-const { readNativeInventoryM1Successor } = createRequire(resolve(process.cwd(), 'package.json'))('./scripts/governance/es-native-inventory-m1-successor.cjs')
-const nativeInventoryM1 = readNativeInventoryM1Successor(process.cwd())
 const paymentBody = (paymentMethod: 'CASH' | 'QR', currencyCode = 'USD') =>
-  ({ paymentMethod, ...(nativeInventoryM1 ? { displayedCurrency: currencyCode } : {}) })
+  ({ paymentMethod, displayedCurrency: currencyCode })
 
 const desktopEntry = fs.readFileSync('app/desktop/pos/page.tsx', 'utf8')
 const cashier = fs.readFileSync('app/cashier/page.tsx', 'utf8')

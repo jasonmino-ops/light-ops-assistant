@@ -1171,6 +1171,21 @@ export function detectEnvironmentFailure(file, output, baselineFingerprints) {
     return { code: 'MISSING_LOCAL_TEST_DATABASE', fingerprint: explicitLocalDatabase[0] }
   }
 
+  // Reuse the IPC_DENIED signal from ES-DELIVERY-EFFICIENCY-01 P0 replay
+  // (3f39aa20), narrowed to the fatal tsx IPC startup trace. An application
+  // EPERM/EACCES or an assertion mentioning permissions remains a TEST failure.
+  const tsxIpc = output.match(
+    /^Error: listen (EPERM|EACCES): [^\r\n]* (\/[^\r\n]*\/tsx-\d+\/\d+\.pipe)\r?\n((?:[^\r\n]*\r?\n){0,14})/m,
+  )
+  if (tsxIpc) {
+    const [, code, address, trace] = tsxIpc
+    if (/at createIpcServer \((?:file:\/\/)?[^)\r\n]*\/node_modules\/tsx\/dist\/cli\.mjs:\d+:\d+\)/.test(trace) &&
+        trace.includes(`code: '${code}'`) && trace.includes("syscall: 'listen'") &&
+        trace.includes(`address: '${address}'`)) {
+      return { code: 'TSX_IPC_PERMISSION_DENIED', fingerprint: tsxIpc[0].split(/\r?\n/, 1)[0] }
+    }
+  }
+
   return null
 }
 
