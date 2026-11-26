@@ -22,8 +22,8 @@
     ]
   },
   "releaseSha": "49d336331af987dce76e4c098ab47be0274cae2f",
-  "deploymentId": "PENDING",
-  "productionSha": "PENDING",
+  "deploymentId": "dpl_8ep978327V1v3Rk9qDArwLehmmDv",
+  "productionSha": "49d336331af987dce76e4c098ab47be0274cae2f",
   "releaseTree": "73d1b373a886065558340a3f5e46c5a6f44d9639",
   "productionDeployment": "dpl_BcvBPrbEZYkiKSuyB2BS6UzGmD9M",
   "control": "99c569cfffcd8c95021ab2329e30209124d28bf8",
