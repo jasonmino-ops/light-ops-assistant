@@ -7,6 +7,8 @@ const { existsSync, lstatSync, readFileSync } = require('node:fs')
 const { resolve } = require('node:path')
 
 const BASELINE = 'a693491afb5987a9d013e8098e24371664bf3e8e'
+const INTEGRATION_MANIFEST = 'scripts/test/manifests/root-integration-tests.json'
+const CORRECTED_MANIFEST_SHA256 = '2f4d467a0853524301ad1535543710235e8935f625398f4737018ca1f43e9011'
 const CHANGES = new Set([
   'scripts/test/run-root-full-suite.mjs',
   'scripts/test/run-root-full-suite.test.mjs',
@@ -75,6 +77,22 @@ function readUnchangedProductBaseline(root) {
     // Its policy, authority, runtime and integration compatibility are NOT
     // assessed here. Latest-main drift cannot rewrite the local snapshot fact.
 
+    // One exact declaration correction, not a general manifest allowance.
+    // Keep HEAD/index/worktree truth separate: an old or corrected known input
+    // is supported; restoring a working file cannot hide a bad staged/HEAD blob.
+    const originalManifestHash = sha256(git('show', `${BASELINE}:${INTEGRATION_MANIFEST}`))
+    const manifestFile = resolve(root, INTEGRATION_MANIFEST)
+    const manifestStat = lstatSync(manifestFile)
+    if (!text('ls-tree', 'HEAD', '--', INTEGRATION_MANIFEST).startsWith('100644 blob ') ||
+      !/^100644 [a-f0-9]{40} 0\t/.test(text('ls-files', '--stage', '--', INTEGRATION_MANIFEST)) ||
+      !manifestStat.isFile() || (manifestStat.mode & 0o111)) return null
+    const manifestHashes = [
+      sha256(git('show', `HEAD:${INTEGRATION_MANIFEST}`)),
+      sha256(git('show', `:${INTEGRATION_MANIFEST}`)),
+      sha256(readFileSync(manifestFile)),
+    ]
+    if (manifestHashes.some(hash => hash !== originalManifestHash && hash !== CORRECTED_MANIFEST_SHA256)) return null
+
     // Check committed, staged, working and new paths independently. Restoring
     // a working file cannot hide a staged or committed runtime modification.
     const paths = [...new Set([
@@ -87,7 +105,7 @@ function readUnchangedProductBaseline(root) {
         ':(top,exclude,literal)node_modules', ':(top,exclude,literal).next',
         ':(top,exclude,literal).task-state')),
     ])]
-    if (paths.some(path => !CHANGES.has(path) && !documentary(path))) return null
+    if (paths.some(path => !CHANGES.has(path) && !documentary(path) && path !== INTEGRATION_MANIFEST)) return null
     for (const path of paths) {
       const file = resolve(root, path)
       if (!existsSync(file) || !lstatSync(file).isFile()) return null
@@ -109,7 +127,7 @@ function readUnchangedProductBaseline(root) {
       const match = /^(100644|100755) blob ([a-f0-9]{40})\t(.+)$/.exec(entry)
       if (!match) return null
       const [, mode, objectId, path] = match
-      if (CHANGES.has(path) || documentary(path)) continue
+      if (CHANGES.has(path) || documentary(path) || path === INTEGRATION_MANIFEST) continue
       const file = resolve(root, path)
       const stat = lstatSync(file)
       if (!stat.isFile() || Boolean(stat.mode & 0o111) !== (mode === '100755')) return null
@@ -124,6 +142,10 @@ function readUnchangedProductBaseline(root) {
       governanceStatus: 'NOT_ASSESSED',
       authorizationStatus: 'NOT_ASSESSED',
       productInputStatus: 'UNCHANGED_PINNED_SNAPSHOT',
+      integrationManifestInput: manifestHashes.every(hash => hash === originalManifestHash)
+        ? 'ORIGINAL_PINNED_INPUT'
+        : manifestHashes.every(hash => hash === CORRECTED_MANIFEST_SHA256)
+          ? 'EXACT_CORRECTION_INPUT' : 'MIXED_KNOWN_INPUTS',
       cashierHash: sha256(blob('app/cashier/page.tsx')),
       recordsHash: sha256(blob('app/records/page.tsx')),
       candidatePaths: paths,

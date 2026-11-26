@@ -241,3 +241,70 @@ check('a changed latest-main runtime cannot grant integration or alter the old l
   assert.equal(Object.hasOwn(proof,'integrationReady'),false)
   assert.equal(Object.hasOwn(proof,'approved'),false)
 })
+
+const INTEGRATION_MANIFEST='scripts/test/manifests/root-integration-tests.json'
+function exactManifestCorrection(f) {
+  const original=f.git('show',BASELINE+':'+INTEGRATION_MANIFEST)+'\n'
+  const before=JSON.parse(original)
+  assert.equal(before.expectedCount,28)
+  const corrected=original.replace('"expectedCount": 28','"expectedCount": 27')
+    .split('\n').filter(line=>!line.includes('"file": "tests/diamond-native-sales-phase2.test.ts"')).join('\n')
+  const after=JSON.parse(corrected)
+  assert.equal(after.expectedCount,27)
+  assert.deepEqual(after.tests,before.tests.filter(entry=>entry.file!=='tests/diamond-native-sales-phase2.test.ts'))
+  return corrected
+}
+check('original manifest fact and the exact correction remain distinct from runner/authorization success', f => {
+  const original=readUnchangedProductBaseline(f.dir)
+  assert.ok(original)
+  assert.equal(original.integrationManifestInput,'ORIGINAL_PINNED_INPUT')
+  assert.equal(require('node:fs').existsSync(join(f.dir,'tests/diamond-native-sales-phase2.test.ts')),false)
+  const corrected=exactManifestCorrection(f)
+  f.write(INTEGRATION_MANIFEST,corrected)
+  const working=readUnchangedProductBaseline(f.dir)
+  assert.ok(working)
+  assert.equal(working.integrationManifestInput,'MIXED_KNOWN_INPUTS')
+  f.git('add',INTEGRATION_MANIFEST)
+  assert.equal(readUnchangedProductBaseline(f.dir).integrationManifestInput,'MIXED_KNOWN_INPUTS')
+  f.git('commit','--quiet','-m','exact fixture declaration correction')
+  const final=readUnchangedProductBaseline(f.dir)
+  assert.equal(final.integrationManifestInput,'EXACT_CORRECTION_INPUT')
+  assert.equal(final.authorizationStatus,'NOT_ASSESSED')
+  assert.equal(final.governanceStatus,'NOT_ASSESSED')
+})
+check('arbitrary manifest, other member/count changes and byte-different corrections are denied', f => {
+  const corrected=exactManifestCorrection(f);const record=JSON.parse(corrected)
+  const variants=[
+    JSON.stringify({...record,expectedCount:26}),
+    JSON.stringify({...record,tests:record.tests.slice(1),expectedCount:26}),
+    JSON.stringify({...record,tests:[...record.tests,record.tests[0]],expectedCount:28}),
+    corrected+'\n',
+    '{}\n',
+  ]
+  for(const value of variants){f.write(INTEGRATION_MANIFEST,value);assert.equal(readUnchangedProductBaseline(f.dir),null)}
+})
+check('restored working manifest cannot hide a bad staged declaration', f => {
+  const original=f.git('show',BASELINE+':'+INTEGRATION_MANIFEST)+'\n'
+  f.write(INTEGRATION_MANIFEST,'{"expectedCount":999}\n')
+  f.git('add',INTEGRATION_MANIFEST)
+  f.write(INTEGRATION_MANIFEST,original)
+  assert.equal(readUnchangedProductBaseline(f.dir),null)
+  f.write(INTEGRATION_MANIFEST,exactManifestCorrection(f))
+  assert.equal(readUnchangedProductBaseline(f.dir),null)
+})
+check('restored working manifest cannot hide a bad committed declaration', f => {
+  f.write(INTEGRATION_MANIFEST,'{"expectedCount":999}\n')
+  f.git('add',INTEGRATION_MANIFEST);f.git('commit','--quiet','-m','bad fixture declaration')
+  f.write(INTEGRATION_MANIFEST,exactManifestCorrection(f))
+  assert.equal(readUnchangedProductBaseline(f.dir),null)
+})
+check('manifest correction cannot hide staged executable mode or a working symlink', f => {
+  const fs=require('node:fs')
+  f.write(INTEGRATION_MANIFEST,exactManifestCorrection(f));f.git('add',INTEGRATION_MANIFEST)
+  f.git('update-index','--chmod=+x',INTEGRATION_MANIFEST)
+  assert.equal(readUnchangedProductBaseline(f.dir),null)
+  f.git('reset','--hard',BASELINE)
+  fs.rmSync(join(f.dir,INTEGRATION_MANIFEST))
+  symlinkSync(join(f.dir,'package.json'),join(f.dir,INTEGRATION_MANIFEST))
+  assert.equal(readUnchangedProductBaseline(f.dir),null)
+})
