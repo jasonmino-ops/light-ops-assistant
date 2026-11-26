@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify exact POS checkout release and live trusted refs
+      - name: Verify exact print takeover release and live trusted refs
         id: pos
         env:
           GH_TOKEN: ${{ github.token }}
@@ -27,11 +27,11 @@ jobs:
             "$canonical"|"${canonical%.git}") git remote set-url origin "$canonical" ;;
             *) echo 'Unexpected checkout origin'; exit 1 ;;
           esac
-          node .github/release-validator/pos-checkout.mjs preflight
+          node .github/release-validator/print-device-takeover.mjs preflight
       - name: Publish once and verify the original App response ID
         env:
           ADMISSION_MAIN: ${{ steps.pos.outputs.main }}
           ADMISSION_DIGEST: ${{ steps.pos.outputs.digest }}
           GH_TOKEN: ${{ github.token }}
           ESHOP_RELEASE_VALIDATOR_PEM: ${{ secrets.ESHOP_RELEASE_VALIDATOR_PEM }}
-        run: node .github/release-validator/pos-checkout.mjs publish
+        run: node .github/release-validator/print-device-takeover.mjs publish
