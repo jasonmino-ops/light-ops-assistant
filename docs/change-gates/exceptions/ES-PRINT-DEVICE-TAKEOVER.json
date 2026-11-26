@@ -6,7 +6,7 @@
   "baseOriginMainSha": "ba867972df1c0bbe71723c7a7d1169208d809d58",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "authorizedPaths": [
     "app/api/cashier/member-balance-pay/route.ts",
     "app/api/cashier/sales/route.ts"
@@ -31,7 +31,7 @@
       "featureBranch": "codex/es-print-device-takeover-web-projection",
       "baseOriginMainSha": "da2b3fc7aaff04187e64c36399bdb941f8aecee7",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "approvedAt": "2026-11-25T19:21:33.210Z",
       "createdAt": "2026-11-25T19:21:33.210Z",
@@ -49,11 +49,14 @@
       "actualProductionParent": "d1ffbaea3d01c219bfb45a99ea360c511f27cf36",
       "latestTrustedMain": "9288844c6ada7ee17b87bd91c352d43c03129924",
       "sealedManifestSha256": "0cd2b276b940458a6ce49a34619289175d4138c198ce668e326c69cb0b2e9d48",
-      "approvalSource": "Standing Founder decision authorizes necessary Scope registration and protected release preparation. Timestamp is registration time. No personal frozen signature is represented."
+      "approvalSource": "Standing Founder decision authorizes necessary Scope registration and protected release preparation. Timestamp is registration time. No personal frozen signature is represented.",
+      "closedAt": "2026-11-26T05:06:48.972Z",
+      "closedBy": "Codex under Founder authorization",
+      "featureMergeCommitSha": "8ff33feb4ef27520237458af425b044cf05b7277"
     },
     {
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "closeAfter": "FEATURE_MERGE",
       "authorizedPaths": [
@@ -74,11 +77,14 @@
       "sourceCandidate": "1065a60d114d363fb82a037af5bd58b731965c47",
       "actualProductionParent": "49d336331af987dce76e4c098ab47be0274cae2f",
       "latestTrustedMain": "1b9f7cdfbdb5b7f2f3ebd35e4de9cc99ce53606e",
-      "approvalSource": "Founder authorized necessary Scope registration, commit and protected release preparation for ES-PRINT-DEVICE-TAKEOVER, reaffirmed the final Web compatibility successor. Timestamp records registration; frozen successor personal signature remains separate."
+      "approvalSource": "Founder authorized necessary Scope registration, commit and protected release preparation for ES-PRINT-DEVICE-TAKEOVER, reaffirmed the final Web compatibility successor. Timestamp records registration; frozen successor personal signature remains separate.",
+      "closedAt": "2026-11-26T05:06:48.972Z",
+      "closedBy": "Codex under Founder authorization",
+      "featureMergeCommitSha": "8ff33feb4ef27520237458af425b044cf05b7277"
     },
     {
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "closeAfter": "FEATURE_MERGE",
       "authorizedPaths": [
@@ -99,7 +105,14 @@
       "sourceCandidate": "1065a60d114d363fb82a037af5bd58b731965c47",
       "actualProductionParent": "49d336331af987dce76e4c098ab47be0274cae2f",
       "latestTrustedMain": "1b9f7cdfbdb5b7f2f3ebd35e4de9cc99ce53606e",
-      "approvalSource": "Founder authorized necessary Scope registration, commit and protected release preparation for ES-PRINT-DEVICE-TAKEOVER, reaffirmed the final Web compatibility successor. Timestamp records registration; frozen successor personal signature remains separate."
+      "approvalSource": "Founder authorized necessary Scope registration, commit and protected release preparation for ES-PRINT-DEVICE-TAKEOVER, reaffirmed the final Web compatibility successor. Timestamp records registration; frozen successor personal signature remains separate.",
+      "closedAt": "2026-11-26T05:06:48.972Z",
+      "closedBy": "Codex under Founder authorization",
+      "featureMergeCommitSha": "8ff33feb4ef27520237458af425b044cf05b7277"
     }
-  ]
+  ],
+  "closedAt": "2026-11-26T05:06:48.972Z",
+  "closedBy": "Codex under Founder authorization",
+  "featureMergeCommitSha": "8ff33feb4ef27520237458af425b044cf05b7277",
+  "closureReason": "The accepted compatibility successor entered main. Superseded branch-specific permissions are retired with this feature integration. All original path digests are retained."
 }

@@ -19,8 +19,8 @@
   },
   "releaseSha": "9e3b868622175bd5ddfa6cdcd26e066dc34aafce",
   "releaseTree": "241c83daa6777567f184c047872faf62c9aa5a04",
-  "deploymentId": "PENDING",
-  "productionSha": "PENDING",
+  "deploymentId": "dpl_7PCgwGH8ria3pvXnRYhvrona7P39",
+  "productionSha": "9e3b868622175bd5ddfa6cdcd26e066dc34aafce",
   "productionDeployment": "dpl_8ep978327V1v3Rk9qDArwLehmmDv",
   "control": "83d6a3e754e91b0646d38501ca79540ccddd0cdb",
   "manifestSha256": "22a0b48b2e45972240eba96a47218a655c450c959b87e0bc36ba9715b46f6876",
@@ -62,5 +62,13 @@
   "migrationCount": 0,
   "signatureLifetimeSeconds": 7200,
   "acceptance": "ACCEPTED_WITH_EXACT_PRINT_COMPAT_CORE_AND_INTEGRATION_DISPOSITION",
-  "reviewReceiptSha256": "81e4e418f796c5347e71605d856094b0252706c7f8cb9657617d953b7632f93a"
+  "reviewReceiptSha256": "81e4e418f796c5347e71605d856094b0252706c7f8cb9657617d953b7632f93a",
+  "deploymentObservedAtUtc": "2026-11-26T05:00:11.958482+00:00",
+  "signedPendingRecordSha256": "c885aea657c50d05f8f6d71ad73dfce155f823405d3c8230a324e86dac9d6791",
+  "protectedAppStatusId": 59939387910,
+  "protectedWorkflowRunId": 45758393779,
+  "productionReleaseStatus": "RELEASED_HEALTH_VERIFIED",
+  "fieldVerified": false,
+  "physicalPaperVerified": false,
+  "incidentClosed": false
 }
