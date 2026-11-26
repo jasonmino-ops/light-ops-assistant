@@ -326,7 +326,7 @@ const zh = {
     storeListDesc: '管理门店信息',
     tableQrcodes: '桌码管理',
     tableQrcodesDesc: '管理桌码',
-    printConfig: '打印设置',
+    printConfig: '打印配置',
     printConfigDesc: '设置前台小票和厨房打印机',
     printingTitle: '打印配置',
     printingDescription: '门店小票由 E-Shop 打印服务管理。',
