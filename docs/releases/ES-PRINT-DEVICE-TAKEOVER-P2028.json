@@ -1,0 +1,66 @@
+{
+  "releaseId": "ES-PRINT-DEVICE-TAKEOVER-P2028",
+  "taskIds": [
+    "ES-PRINT-DEVICE-TAKEOVER"
+  ],
+  "baseProductionSha": "9e3b868622175bd5ddfa6cdcd26e066dc34aafce",
+  "sourceMainSha": "45ab9917fed7d097a88b5f6060ad45fe303ea6fe",
+  "includedSourceCommits": [
+    "45ab9917fed7d097a88b5f6060ad45fe303ea6fe"
+  ],
+  "releaseSha": "eeb1c6a5b5e44dcc3ed2c3cebd12c04994b9ec06",
+  "releaseTree": "5e751f9a2e1b9358a78fa2541e96b64cd8b18e70",
+  "founderAuthorization": {
+    "authorizationId": "ES-PRINT-OWNER-P2028-20261127",
+    "approvedBy": "Founder",
+    "status": "APPROVED",
+    "approvedAt": "2026-11-27T12:09:16.983Z",
+    "includedSourceCommits": [
+      "45ab9917fed7d097a88b5f6060ad45fe303ea6fe"
+    ]
+  },
+  "productionDeployment": "dpl_7PCgwGH8ria3pvXnRYhvrona7P39",
+  "deploymentId": "PENDING",
+  "productionSha": "PENDING",
+  "control": "f7b9fa16bed84415e46d02e96844e3deb57de2fe",
+  "manifestSha256": "79a514edee0f977a6e69d60e76bdd4a973dd92392422a26fcfc66c53cd61be24",
+  "controllerDigest": "7364928997dad57cbe97110b07bc4922827ffe46f0d7fcf472bf8a56df966d36",
+  "controllerSha256": {
+    ".github/release-validator/print-device-takeover.json": "79a514edee0f977a6e69d60e76bdd4a973dd92392422a26fcfc66c53cd61be24",
+    ".github/release-validator/print-device-takeover.mjs": "fd8f7c0308bdb77240ac7e2172eec51dc5d518da7d169afabe39988ee7c3780c",
+    ".github/release-validator/print-device-takeover.test.mjs": "6acd7b20e2dd493714032c17ba1d565218a540c8a8eda8f5b75c3b7078abf6c4",
+    ".github/workflows/selective-release-validator.yml": "367d6bde79621b49bf2427756bb26cd13ae72e3085cda4a866d8a4414dc54d32"
+  },
+  "expiresAt": "2026-11-27T13:30:00.000Z",
+  "signatureLifetimeSeconds": 7200,
+  "frozenPayloadSha256": "7154539a3710a6b9f7be1bdb7cbd6d18637d9e8ac62566d2971cc6127c68c594",
+  "dispositionSha256": "3c790fc20ab2cafdf7e3ee27af8cd268b1f5e247091f1f5d47711555bd674999",
+  "rawCORE": {
+    "status": "BLOCKED",
+    "expected": 104,
+    "executed": 104,
+    "fail": 4,
+    "skip": 0,
+    "pass": 100
+  },
+  "rawIntegration": {
+    "status": "BLOCKED",
+    "expected": 22,
+    "executed": 22,
+    "fail": 3,
+    "skip": 0,
+    "pass": 19
+  },
+  "authorizationReceiptSha256": "d82dbfae094d2f1dc8fd2f508395aefaa20157ac607ed201a19e77966ff3b688",
+  "reviewReceiptSha256": "3dba2b62de49357af9895ef78212600b24225587b28ff79931aefee4131d0bd4",
+  "issuerInstallationAuthorized": true,
+  "statusPublicationAuthorized": true,
+  "releaseExecutionAuthorized": true,
+  "releaseExecutionRequiresUnexpiredAppStatus": true,
+  "migrationAuthorized": false,
+  "terminalMutationAuthorized": false,
+  "pilotOrFeedMutationAuthorized": false,
+  "defaultSelectiveValidatorChanged": false,
+  "migrationCount": 0,
+  "acceptance": "ACCEPTED_WITH_EXACT_PRINT_COMPAT_CORE_AND_INTEGRATION_DISPOSITION"
+}
