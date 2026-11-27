@@ -3,7 +3,7 @@
   "taskId": "ES-PRINT-DEVICE-TAKEOVER",
   "purpose": "pre-build-input-manifest",
   "version": "0.3.0-rc.6",
-  "productCommit": "0217be8cb6a9f60d01a3ba47f69492a6948c2f8d",
+  "productCommit": "030286022c1b14018421396525d06888ede1ad8e",
   "installerGenerated": false,
   "build": {
     "mode": "INTERNAL TEST ONLY",
@@ -146,5 +146,7 @@
     "desktop/package-lock.json": "334e56a56341c36227d705942f6bb642e327dfee01c323c9bfd4e29d063e1399",
     "e-shop-tray/package-lock.json": "68e8bc816774d9b26a699bf04d7d915dc35d5c7315e797705e7b29114c41807b"
   },
-  "evidence": "Pre-build recipe/input provenance only. No Desktop installer, signature, Windows acceptance or commercial readiness is represented."
+  "evidence": "Pre-build recipe/input provenance only. No Desktop installer, signature, Windows acceptance or commercial readiness is represented.",
+  "buildRevision": "rebuild.1",
+  "parentInstallerSha256": "6553563e1f8571a19bd0be805a8e1e56c37a9e86a7e44033cf38c14354393fc5"
 }

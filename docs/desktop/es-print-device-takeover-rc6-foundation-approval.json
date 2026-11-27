@@ -3,13 +3,13 @@
   "taskId": "ES-PRINT-DEVICE-TAKEOVER",
   "version": "0.3.0-rc.6",
   "status": "ACTIVE",
-  "payloadSha256": "a18f0603e0c08b66f6b2824619f6d1212503ac83227b3eec872451c3da0e2b19",
+  "payloadSha256": "ebeb654904e2626896ce564c96ac42cc68eb7bdbf64532627981737efc4f7b6e",
   "frozenSnapshotSha256": "80a5000bbd6d229d6d878404615ecd241cfc09ad6b63d2202087f19b02eedb4a",
   "formalApproval": {
     "approvedBy": "Founder",
-    "signedAt": "2026-11-26",
-    "candidateCommit": "3746d5cdf2770bfcef06dc9d4636252bf1e58fbb",
-    "sourceReference": "Founder personal reply to call_f2c1b64fb98b4d38a39fc8c3afa7463c item 1: 本人正式签认并批准十路径登记. This explicitly binds native Product 0217be8cb6a9f60d01a3ba47f69492a6948c2f8d, candidate 3746d5cdf2770bfcef06dc9d4636252bf1e58fbb, payload a18f0603e0c08b66f6b2824619f6d1212503ac83227b3eec872451c3da0e2b19, snapshot 80a5000bbd6d229d6d878404615ecd241cfc09ad6b63d2202087f19b02eedb4a, ten exact paths, Windows x64 current-user unelevated INTERNAL TEST ONLY. Web release, V727 installation and field remain separately controlled. Local calendar date only; exact signing instant was not supplied."
+    "signedAt": "2026-11-27",
+    "candidateCommit": "5a71de8e3901c637e6353e2cbecce76c9d6c1eb0",
+    "sourceReference": "Founder personal reply to call_2a25c9a60066421bb84afb8a36d26d68 item 0: 正式签认并批准五处精确登记. Product 030286022c1b14018421396525d06888ede1ad8e; frozen successor 5a71de8e3901c637e6353e2cbecce76c9d6c1eb0; payload ebeb654904e2626896ce564c96ac42cc68eb7bdbf64532627981737efc4f7b6e; snapshot 80a5000bbd6d229d6d878404615ecd241cfc09ad6b63d2202087f19b02eedb4a. Exactly five changed registration paths under the existing ten-path policy. Windows x64 unelevated current-user RC6 rebuild.1 INTERNAL TEST ONLY. Internal packaging/archive only. V727 same-device recovery remains unresolved. No new paper, Production or commercial authorization. Local calendar date; no signing time asserted."
   },
-  "evidence": "Actual Founder signature; existing failures persist. No commercial release or FIELD approval."
+  "evidence": "Actual Founder signature for the exact diagnostic rebuild. Baseline failures retained. Internal packaging and archive only."
 }

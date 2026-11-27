@@ -8,8 +8,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 // Local Git/byte fixtures only. Synthetic approval never touches real refs.
 const actual = resolve(__dirname, '../..')
 const branch = 'codex/es-print-device-takeover-rc6'
-const base = 'b5883ae8e0acccd26e0d7b27f3ac2c7518b4d643'
-const mainBase = '2311e9eeb24e7af911ba07274a347fa9048f8489'
+const base = 'ab9ba5534ec7b90942e02a752f600ea83566f8dc'
+const mainBase = 'fd339ee18025b587caec555e39f108c7c0560799'
 const prefix = 'docs/desktop/es-print-device-takeover-rc6-foundation'
 const recordPath = `${prefix}.json`, approvalPath = `${prefix}-approval.json`, inputsPath = `${prefix}-build-inputs.json`
 const code = [
@@ -115,13 +115,25 @@ describe('exact RC6 internal Foundation successor (synthetic trusted activation)
     git('update-ref', 'refs/remotes/origin/main', '2f75d95abbb14cb2657bd3ecb9ecbc1359cfbf8e')
     reject(run(), /RC6_TRUSTED_RECORD_NOT_REGISTERED/)
   })
-  it('rejects a working repair draft against the predecessor trusted RC6 receipt', () => {
-    git('update-ref', 'refs/remotes/origin/main', mainBase)
+  it('rejects RC6 against the historical main before its first registration', () => {
+    git('update-ref', 'refs/remotes/origin/main', '2311e9eeb24e7af911ba07274a347fa9048f8489')
     reject(run(), /RC6_TRUSTED_RECORD_NOT_REGISTERED/)
   })
   it('does not inherit the first-build RC6 candidate for corrected Product bytes', () => {
     const a = read(approvalPath); a.formalApproval.candidateCommit = '686a51be51bbcaee10abdba256f415d5fd4008e5'
     write(approvalPath, a); signFixture(); reject(run(), /RC6_LINEAGE_MISMATCH/)
+  })
+  it('rejects the prior active RC6 registration for rebuild.1', () => {
+    git('update-ref', 'refs/remotes/origin/main', mainBase)
+    reject(run(), /RC6_TRUSTED_RECORD_MISMATCH/)
+  })
+  it('rejects the original RC6 signing candidate for this runtime source', () => {
+    const a = read(approvalPath); a.formalApproval.candidateCommit = '3746d5cdf2770bfcef06dc9d4636252bf1e58fbb'
+    write(approvalPath, a); signFixture(); reject(run(), /RC6_LINEAGE_MISMATCH/)
+  })
+  it.each([recordPath, inputsPath])('rejects a substituted parent installer in %s', file => {
+    const m = read(file); m.parentInstallerSha256 = 'f'.repeat(64); write(file, m); signFixture()
+    reject(run(), /RC6_REBUILD_IDENTITY_MISMATCH/)
   })
   for (const status of ['PENDING_FOUNDER_SIGNATURE', 'CLOSED', 'UNKNOWN']) it(`rejects ${status} approval`, () => {
     const a = read(approvalPath); a.status = status; write(approvalPath, a); commit(); trustCurrent()

@@ -9,9 +9,9 @@ import { candidateEnvironment, CANDIDATE_BUILD } from '../../e-shop-tray/scripts
 
 export const TASK = 'ES-PRINT-DEVICE-TAKEOVER'
 export const VERSION = '0.3.0-rc.6'
-export const PRODUCT = '0217be8cb6a9f60d01a3ba47f69492a6948c2f8d'
-export const SOURCE_BASE = 'b5883ae8e0acccd26e0d7b27f3ac2c7518b4d643'
-export const MAIN_BASE = '2311e9eeb24e7af911ba07274a347fa9048f8489'
+export const PRODUCT = '030286022c1b14018421396525d06888ede1ad8e'
+export const SOURCE_BASE = 'ab9ba5534ec7b90942e02a752f600ea83566f8dc'
+export const MAIN_BASE = 'fd339ee18025b587caec555e39f108c7c0560799'
 export const PROVIDER = '7785be145d5259991038d17839d322e2694e338c'
 export const ADDON_BUILD = 'b5883ae8e0acccd26e0d7b27f3ac2c7518b4d643'
 export const BRANCH = 'codex/es-print-device-takeover-rc6'
@@ -160,6 +160,10 @@ export function runRc6FoundationPolicy(root, options) {
   equal(keys, ['addon-installer', 'addon-manifest'], 'INPUT_ARGUMENTS_REQUIRED')
   if (keys.some(key => typeof options[key] !== 'string' || !options[key])) fail('INPUT_ARGUMENTS_REQUIRED')
   const record = trusted(root, RECORD), approval = trusted(root, APPROVAL), inputs = trusted(root, INPUTS)
+  const rebuild = { buildRevision: 'rebuild.1', parentInstallerSha256: '6553563e1f8571a19bd0be805a8e1e56c37a9e86a7e44033cf38c14354393fc5' }
+  for (const doc of [record, inputs]) {
+    equal({ buildRevision: doc.buildRevision, parentInstallerSha256: doc.parentInstallerSha256 }, rebuild, 'REBUILD_IDENTITY_MISMATCH')
+  }
   if (record.schemaVersion !== 1 || approval.schemaVersion !== 1 || inputs.schemaVersion !== 1) fail('SCHEMA')
   equal({ taskId: record.taskId, version: record.version, productCommit: record.productCommit,
     sourceBase: record.sourceBase, mainBase: record.mainBase, branch: record.branch },

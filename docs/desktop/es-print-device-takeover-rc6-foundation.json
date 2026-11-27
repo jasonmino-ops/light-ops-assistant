@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "taskId": "ES-PRINT-DEVICE-TAKEOVER",
   "version": "0.3.0-rc.6",
-  "productCommit": "0217be8cb6a9f60d01a3ba47f69492a6948c2f8d",
-  "sourceBase": "b5883ae8e0acccd26e0d7b27f3ac2c7518b4d643",
-  "mainBase": "2311e9eeb24e7af911ba07274a347fa9048f8489",
+  "productCommit": "030286022c1b14018421396525d06888ede1ad8e",
+  "sourceBase": "ab9ba5534ec7b90942e02a752f600ea83566f8dc",
+  "mainBase": "fd339ee18025b587caec555e39f108c7c0560799",
   "branch": "codex/es-print-device-takeover-rc6",
   "build": {
     "mode": "INTERNAL TEST ONLY",
@@ -17,12 +17,12 @@
   },
   "candidateSourceSha256": {
     "desktop/scripts/build-single-installer.mjs": "2d7b75dd636a3f64a07be7f5920ac5dec20a8b1df28ca7eb45f9d3fafc23cd7a",
-    "desktop/scripts/rc6-foundation-policy.mjs": "8f981aea69fde955eb094019e86e1d5770ae366d67c9307d59cd14298fa0a18e",
+    "desktop/scripts/rc6-foundation-policy.mjs": "b5381203bd6b95e1e7c0b3788d96d591bba9d07cfd3900008a7e3f4ea84b30e7",
     "desktop/scripts/release-foundation.mjs": "2038a855509ea68ca8c519a26ceeb1ce6a53f1062f5be306abfa7dab54fec5ed",
     "desktop/tests/rc3-foundation-policy.test.ts": "814b8fa3f9c0efe7cc6287cc16a80e16f8bfbf8ef1ccd546d6fbf6c19c016a81",
     "desktop/tests/rc4-foundation-policy.test.ts": "22712b118d833c4096658665b7748ad9f20d24cf12f084101c590d0d268b36a6",
     "desktop/tests/rc5-foundation-policy.test.ts": "49e417aa89373b72b8585f1835e2531eea2408140942d10096232b9d16b50b8a",
-    "desktop/tests/rc6-foundation-policy.test.ts": "7488f17844ed3ae036b2b1eb2c79e3759e26bc45a47c851d771411ba548793e1"
+    "desktop/tests/rc6-foundation-policy.test.ts": "edee3a8ee7cc366868cf1c8a76eafce9b1ef6a80f7f0df3970ee19ccedcb9dbc"
   },
   "productSourceSha256": {
     "desktop/build/current-user-mode.nsh": "1942e4871bf2984ea1ed773fdf6329edda341b4415f4dc8bb0436ecdd2ab84f9",
@@ -32,9 +32,9 @@
     "desktop/package.json": "6a43192782eb32c3597de0245d2cfaa05cc3c566854e4b95545915cfbb2a3493",
     "desktop/scripts/build-single-installer.mjs": "2d7b75dd636a3f64a07be7f5920ac5dec20a8b1df28ca7eb45f9d3fafc23cd7a",
     "desktop/scripts/desktop-nsis-profile.mjs": "ebae08fb482b96ac7b0a49372c2d610c0b0bdbab4f2d86b40175569dddca9a62",
-    "desktop/scripts/single-installer-contract.mjs": "31366d9c5b25233abe72720a467ca1d51064bba1d14cd407ef160bd3cc2fc853",
+    "desktop/scripts/single-installer-contract.mjs": "330ce454a2f996f1e24acb50135590d6e91837947866f38740eea7de3b045080",
     "desktop/scripts/verify-single-installer.mjs": "9c9d088b3ba83191121a7b9a3d2f6d39eb1ffd79d88a7241d305ede6b8b84315",
-    "desktop/src/main/ipcRouter.ts": "570be173a07546eecdb9dca3900f5d919da562748e78b9ce3f61a2043e7d54c4",
+    "desktop/src/main/ipcRouter.ts": "ef8033654821aaeb7670e95e3b7fda3d20a4aed0f51145ce507e0caaa38e02fe",
     "desktop/src/main/managedPrintChildHandoff.ts": "9e620bdb9e82eee65baa3a3b57561fefe124be26e8addcf85f3558b21b00426d",
     "desktop/src/main/posSessionBridge.ts": "2544774a86029f7df51ca62fcaae9596d32f6c666121e23693f40c4ef282b3d6",
     "desktop/src/main/printing/controlPlaneClient.ts": "dc3d4e60c6af1fa6bcb11e9a01e3eee335a2141bfa39e53eae9c7ddd21bad39b",
@@ -45,7 +45,7 @@
     "desktop/src/main/printing/sharedPrintingCore.ts": "a81987d60c5989b5ea3d86180876bbcc62bff41380520847561a98e4bde24e39",
     "desktop/src/main/printing/trustedPrintOrigins.ts": "bff16a0903596384e4f7b2015a29a969e902e0c580cc729c818281c4c1b2f521",
     "desktop/src/main/printing/v3PrintJobClient.ts": "85c5ea1b20afc85f9148fd43196f8e5ea2c27c1768a06e54b22c77f9ab7a42f1",
-    "desktop/src/main/printing/v3PrintingRuntime.ts": "cca688d607048d521a0519215199d170a16c90cff2be759aec7123b0b718c96c",
+    "desktop/src/main/printing/v3PrintingRuntime.ts": "cbcb51c4ee5e9b7f613db1862f5c4d50520dbb899fb2bc74874de3cff47f8fba",
     "desktop/src/main/printing/windowsUsbIdentityScript.ts": "d0c2a63dbf79d2824a51b6364abfd2b61e88613a626cdf7d027a3af947322780",
     "desktop/src/main/printing/windowsUsbPrintBoundary.ts": "b665eec3df732eb060e6c2249e62cfff0a3776c00445f17d71e99f0973e1a13f",
     "desktop/src/main/printing/windowsUsbQueueDiscovery.ts": "2c110763b00dccb50dc338d204e47ae9032386211036e2866a80a3c7baf0500f",
@@ -66,7 +66,7 @@
     "desktop/tests/print-start-origin.test.ts": "ed52d2e04a2ca118239b6b86e55171448153f00183d283cc433f6f66314f7e41",
     "desktop/tests/rc1-foundation-policy.test.ts": "25a1af7f7d043382519b73ca6a5f76d54f34bade24f130a31302786b29e207d8",
     "desktop/tests/single-installer-packaging.test.ts": "89c58f2829a6bd19b45d9619d95d3c444a7da37660338854303cceb5646c0f21",
-    "desktop/tests/v3-print-settings.test.ts": "2802f9067d887dc09274e990f88d6f99d9dcff38e92733a5073b442d4619f7ba",
+    "desktop/tests/v3-print-settings.test.ts": "b1c4a23e9c0019ff8e8c9c02f91b8d5261a6210c161a9e622f4d0f0cc2950ad8",
     "desktop/tests/v3-printing-runtime.test.ts": "6e14846073f127cae31e60d9f395d50ee25f1e7e169126d46e1f439b2069ce77",
     "desktop/tests/windows-installer-user-recovery.test.ts": "ae33c40c858f50c26f99e6ff3a0e1997fe670b21bc50d3151f106a23152a8c95",
     "desktop/tests/windows-print-child-protection.test.ts": "21b49c5a3d7b8e3f7ff4b8d20b3453c56d04fdab18dba2930efeb6112e7cccd3",
@@ -86,7 +86,7 @@
     "e-shop-tray/tests/network-addon-shortcuts.test.ts": "e573a65ba78964abfa277d78eede5142badd7cdf1e039cd62ff0ae5c8aeecf79",
     "e-shop-tray/tests/network-addon.test.ts": "55659eeb2a0df7ec72029a1b78e5633b9ad5b523888adb2476cf7d01c1b99551"
   },
-  "buildInputManifestSha256": "6fff58f7548f352c2764471948e74789d2b502528967269c18b47079c9a84a12",
+  "buildInputManifestSha256": "2c61ce22df998012a11ecc4633a8d9a9fb28049c555fcd97459ec138c36d8f53",
   "frozenSnapshot": [
     {
       "label": "06A Cloud Activation Contract",
@@ -395,5 +395,7 @@
         "app/table-qrcodes/page.tsx": "e4a4c886c4be197b25e40885a2f8c0ba25d1ffbded7a7e3a1902e4571db5f8c6"
       }
     }
-  ]
+  ],
+  "buildRevision": "rebuild.1",
+  "parentInstallerSha256": "6553563e1f8571a19bd0be805a8e1e56c37a9e86a7e44033cf38c14354393fc5"
 }
