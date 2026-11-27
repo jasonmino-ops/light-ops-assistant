@@ -13,17 +13,17 @@ const appId = 5590705, installationId = 178077967, creatorId = 351820557
 const context = 'eshop/selective-release-validator'
 const prefix = 'Print takeover '
 const manifestPath = '.github/release-validator/print-device-takeover.json'
-const manifestSha = '22a0b48b2e45972240eba96a47218a655c450c959b87e0bc36ba9715b46f6876'
+const manifestSha = '79a514edee0f977a6e69d60e76bdd4a973dd92392422a26fcfc66c53cd61be24'
 const rawManifest = readFileSync(new URL('./print-device-takeover.json', import.meta.url))
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 assert.equal(sha(rawManifest), manifestSha)
 export const manifest = JSON.parse(rawManifest)
 export const controlPaths = [manifestPath, '.github/release-validator/print-device-takeover.mjs',
   '.github/release-validator/print-device-takeover.test.mjs', '.github/workflows/selective-release-validator.yml'].sort()
-const admissionPath = 'docs/releases/ES-PRINT-DEVICE-TAKEOVER.json'
-const receiptPath = 'docs/releases/evidence/ES-PRINT-DEVICE-TAKEOVER/founder-release.md'
-const reviewPath = 'docs/releases/evidence/ES-PRINT-DEVICE-TAKEOVER/controller-review.json'
-const evidencePath = 'docs/releases/evidence/ES-PRINT-DEVICE-TAKEOVER/validation-evidence.json'
+const admissionPath = 'docs/releases/ES-PRINT-DEVICE-TAKEOVER-P2028.json'
+const receiptPath = 'docs/releases/evidence/ES-PRINT-DEVICE-TAKEOVER-P2028/founder-release.md'
+const reviewPath = 'docs/releases/evidence/ES-PRINT-DEVICE-TAKEOVER-P2028/controller-review.json'
+const evidencePath = 'docs/releases/evidence/ES-PRINT-DEVICE-TAKEOVER-P2028/validation-evidence.json'
 export const registrationPaths = [admissionPath, receiptPath, reviewPath, evidencePath].sort()
 const cleanEnv = { PATH: process.env.PATH, HOME: process.env.HOME, LC_ALL: 'C',
   GIT_NO_REPLACE_OBJECTS: '1', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' }

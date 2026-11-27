@@ -1,152 +1,32 @@
 {
   "taskId": "ES-PRINT-DEVICE-TAKEOVER",
-  "releaseId": "ES-PRINT-DEVICE-TAKEOVER-WEB-COMPAT-POS49",
-  "candidate": "9e3b868622175bd5ddfa6cdcd26e066dc34aafce",
-  "tree": "241c83daa6777567f184c047872faf62c9aa5a04",
-  "base": "49d336331af987dce76e4c098ab47be0274cae2f",
-  "mainBase": "8ff33feb4ef27520237458af425b044cf05b7277",
-  "previousControl": "99c569cfffcd8c95021ab2329e30209124d28bf8",
-  "productRef": "refs/heads/codex/es-print-device-takeover-web-compat-release",
-  "productionDeployment": "dpl_8ep978327V1v3Rk9qDArwLehmmDv",
+  "releaseId": "ES-PRINT-DEVICE-TAKEOVER-P2028",
+  "candidate": "eeb1c6a5b5e44dcc3ed2c3cebd12c04994b9ec06",
+  "tree": "5e751f9a2e1b9358a78fa2541e96b64cd8b18e70",
+  "base": "9e3b868622175bd5ddfa6cdcd26e066dc34aafce",
+  "mainBase": "45ab9917fed7d097a88b5f6060ad45fe303ea6fe",
+  "previousControl": "83d6a3e754e91b0646d38501ca79540ccddd0cdb",
+  "productRef": "refs/heads/codex/es-print-owner-p2028-final-release",
+  "productionDeployment": "dpl_7PCgwGH8ria3pvXnRYhvrona7P39",
   "projectId": "prj_Ld76p2KNULYeu7mcf40vTG0EprY1",
   "teamId": "team_U1CeoLImuMCa2rhgBU9QCENW",
   "domain": "elifekh.com",
   "includedSourceCommits": [
-    "f87ed19bfa8ac1084761783596faeaf6b1dfdca1"
+    "45ab9917fed7d097a88b5f6060ad45fe303ea6fe"
   ],
-  "deadlineExclusive": "2026-11-26T05:10:00.000Z",
+  "deadlineExclusive": "2026-11-27T13:30:00.000Z",
   "signatureLifetimeSeconds": 7200,
   "migrationCount": 0,
   "defaultSelectiveValidatorChanged": false,
-  "sourceMainSha": "8ff33feb4ef27520237458af425b044cf05b7277",
+  "sourceMainSha": "45ab9917fed7d097a88b5f6060ad45fe303ea6fe",
   "paths": [
     {
-      "path": "app/api/cashier/member-balance-pay/route.ts",
-      "sha256": "96d7c400728550d65d0c36c34da8c2be7098186a00455f8680d1ac6d3402246b"
+      "path": "tests/network-release-deployment-policy.test.cjs",
+      "sha256": "c260af36141438a33a7e31e1afb1ce844c562e824dacdd45c5ce2fc5efc1f2f2"
     },
     {
-      "path": "app/api/cashier/sales/route.ts",
-      "sha256": "82c18a2da4a4f3ed8f8dc05e6248ff85a6452b361da30f5d9b86dd077bc8498a"
-    },
-    {
-      "path": "app/api/desktop/v3-print-control-plane/route.ts",
-      "sha256": "b85ba5f5b01d6a8a7722140bce110f3214ce483c040dbec6a9516e60344a47fa"
-    },
-    {
-      "path": "app/api/desktop/v3-print-jobs/route.ts",
-      "sha256": "76af52368ccd10fac0b94c4c1e37ccd1bf7316f535ff65a2dc73bc3d001da847"
-    },
-    {
-      "path": "app/api/dine-in/sessions/[id]/kitchen/claim/route.ts",
-      "sha256": "ab4d63cbfe83dd202323343ad2ee9e42f2f48a05fa6bf38225049f04fdabcae7"
-    },
-    {
-      "path": "app/api/dine-in/sessions/[id]/settle/route.ts",
-      "sha256": "35701ce2feb9aba2f39545a3c02d1c80567d61d74728c262790242935cf626bd"
-    },
-    {
-      "path": "app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts",
-      "sha256": "938ac16d780833100707e608216b7f5307b6e87ba903ee18dbb827ad26fa6726"
-    },
-    {
-      "path": "app/api/owner/v3-print-control-plane/route.ts",
-      "sha256": "3b931a423b5b774998b4267f64ed80a2252d71559eaf04fb408a47f238484b78"
-    },
-    {
-      "path": "app/components/WorkModeProvider.tsx",
-      "sha256": "6d676d5daec428cca08b4caac2651e57e5438d5f5e4b6b1f2ecc2dbea315de5b"
-    },
-    {
-      "path": "app/desktop/pos/DesktopOwnerWebSession.tsx",
-      "sha256": "1e21cddf6a5b4b618d30ca7f20996a5702364c924d1670e8ab64dc182a9ddbd9"
-    },
-    {
-      "path": "app/management/PrintSettingsPanel.tsx",
-      "sha256": "2f3a0d24e773566babe7e148c24cb8d5d5b4562b59a2f4e41be51282e72197c6"
-    },
-    {
-      "path": "app/management/page.tsx",
-      "sha256": "6fe166a123c6695703152fa430ff7abae805675fb9d38d6363d488aae0c4b0c0"
-    },
-    {
-      "path": "app/ops/[tenantId]/page.tsx",
-      "sha256": "7fd3345132b92d25004ede12240f266292f4c1aa8982ea683cc808f35b8220d4"
-    },
-    {
-      "path": "app/settings/PrintReplacementConfirmation.tsx",
-      "sha256": "82df9369e950b6c71ff472b63900c3389e22a872ebbae833722c9878b2f5fad0"
-    },
-    {
-      "path": "app/settings/page.tsx",
-      "sha256": "26f4c319677f53d0bd5bbd0f6b946cfdade3a9513332d5082c883c4056b7e94c"
-    },
-    {
-      "path": "desktop/src/shared/v3PrintSettings.ts",
-      "sha256": "60cd02e6b6f6f3165ab58434144a53dc6c5bdd9d673ec2e141af8c53f36de6b4"
-    },
-    {
-      "path": "lib/dine-in/commands.ts",
-      "sha256": "5dfeb78fa2a70d991de6fd62dc6375593615ec055256725da0b0b0554cb58e82"
-    },
-    {
-      "path": "lib/i18n/en.ts",
-      "sha256": "ce2eb744498348c4f0a5aec43d3e2f9ef3acb2d766a2c1570c1ba562f7ca58f5"
-    },
-    {
-      "path": "lib/i18n/km.ts",
-      "sha256": "3537e7fd9f09acecb5d39c55bbc1492f760ca63145fc89860728974e778efefb"
-    },
-    {
-      "path": "lib/i18n/zh.ts",
-      "sha256": "9993a1eeafeeb653033276014f188bda12c946a34428f6429349441406f3a64a"
-    },
-    {
-      "path": "lib/v3-legacy-seven/clean-start.ts",
-      "sha256": "ee28dda73c588189e0a597e302478c092bc4a6a7aff4bf3e856dea7e47c02662"
-    },
-    {
-      "path": "lib/v3-print-control-plane.ts",
-      "sha256": "9764742472f8ed4d40d9635f3531145cdab81ca93608e065fc11914b535d1cf4"
-    },
-    {
-      "path": "lib/v3-print-execution-start.ts",
-      "sha256": "ab5c3b46e596059085e9a5c372bd68ccc617ea050731db17e6deabc02354e276"
-    },
-    {
-      "path": "lib/v3-print-job-adapter.ts",
-      "sha256": "9469d253ebc938d6f6f568f25d553a62c908d63c3229cc0f5a5a3dde3ddfbc76"
-    },
-    {
-      "path": "lib/v3-print-origin-response.ts",
-      "sha256": "8f849b7871d8bd5e6d2d9924ea1f7de65be87fc87c6041791c442d14ba287564"
-    },
-    {
-      "path": "lib/v3-print-replacement-owner.ts",
-      "sha256": "29b1b779112a11b148cbd1c001b73e1993ca3489385f27b7069414a67c1d0ce4"
-    },
-    {
-      "path": "lib/v3-print-replacement-target.ts",
-      "sha256": "3d7709bc0cbae50c36e8d1580cf5f700ceef12064052ce1c956910e7bf9316e8"
-    },
-    {
-      "path": "scripts/test/manifests/root-core-tests.json",
-      "sha256": "f71c4dc6bfb0f161ae0dd03442725df81eaa7c2fa43a22cf0f87d40634feb19e"
-    },
-    {
-      "path": "tests/v3-legacy-seven-clean-start.test.ts",
-      "sha256": "4c307908b8794b588e04bdd039ac0c31ecde48faa5dd33cc8638797caa34b5ff"
-    },
-    {
-      "path": "tests/v3-print-control-plane-service.test.ts",
-      "sha256": "e6032703a5277bb2ef860a2a0de5a1e93f1d2dd3f060ffb64dc6f8072a8a9484"
-    },
-    {
-      "path": "tests/v3-print-execution-start.test.ts",
-      "sha256": "a86cade8924e8754a17802199abdb65048b6430d905ace2fd58df07ca3b03bec"
-    },
-    {
-      "path": "tests/v3-print-job-adapter.test.ts",
-      "sha256": "201f549885c3279c03f8eba4757ffd8c71effaeaf3271628888befcafeec4934"
+      "path": "vercel.json",
+      "sha256": "93b6592d7215f05d7162991f0efcfd3cbd83610070356be91d73c13052427b8c"
     }
   ],
   "trustedEngineering": {
@@ -158,8 +38,8 @@
     "docs/change-gates/ES-PRINT-RC7-KNOWN-TEST-FAILURES.md": "7276b7901c643299abda73e10c6d24465909a7a2790bad63edf40dfbce67ee99",
     "docs/change-gates/ES-POS-CHECKOUT-LATENCY-01 CORE Admission Disposition.md": "c3445d0eb492d7e7280f7e68599ec09cc4e8a75d7f267dd77d0ee70b9fc07d13",
     "docs/governance/ES-RELEASE-SELECTIVE-LINEAGE-GOVERNANCE-01.md": "25df18e898287db0f6553c54c890a099f3850e455789fe5c1f82799cb984dd24",
-    "vercel.json": "eb54ee01c62b86da2b1ac33d3f7126b0340b646abc9a553ee54c4470c2add7ba",
-    "docs/change-gates/exceptions/ES-PRINT-DEVICE-TAKEOVER.json": "e30602aeb5e3f8a9c29a832a83563ec8348a559508f5f7586c537b8ea757861f",
+    "vercel.json": "93b6592d7215f05d7162991f0efcfd3cbd83610070356be91d73c13052427b8c",
+    "docs/change-gates/exceptions/ES-PRINT-DEVICE-TAKEOVER.json": "863aac1acba5987bd3b28c735b2a8988bd8162e55286ffe57908e986555d8eb7",
     "docs/workflows/E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V2.md": "98484279de8770d4d75417dd422f3bcc5eb3864a4cff472dd6f4bcb04ccc78ee"
   },
   "trustedModes": {
@@ -175,22 +55,18 @@
     "docs/change-gates/exceptions/ES-PRINT-DEVICE-TAKEOVER.json": "100644",
     "docs/workflows/E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V2.md": "100644"
   },
-  "evidenceBundleSha256": "f74dc4d4afe5993ab2f1a8e6be9a1e6177afaacab6851bfdb59b68e127245cbb",
+  "evidenceBundleSha256": "2ce5a95b0f4870bf935dec7547aaf242182587f4d9f1adc53a0729fedceae5cc",
   "evidenceHashes": {
-    "frozen-payload.json": "5f54eea8b202b6d2b46c864ca875081baaae2a2573158e581510617e9f7e69ea",
-    "failure-disposition.json": "7494370cb9f8751f61b7bacdf9901a3ca73e4d530275f643dbb3bcaf3ad1c738",
-    "cashier-fingerprint-result.json": "71835e0c6294f384d996089cd08c913e1a605c00680a076cd285f4b6ddd77f27",
-    "source-review.md": "ff433b0886b9976a7e1860a3750cfd8e38ab16ee34266bc9b1ae8f3b232235cb",
-    "independent/managed-child/result.json": "39093961cbcacd4af5f9028f4a47871c6183852f2d4eec2f9a0046bbb1059029",
-    "independent/restart/result.json": "8646081b81d2acb29e277c4f8f3ad260c404a1d05b6ec6d40a4aef9327056d43",
-    "phase2-fixture.json": "30ce3eda031278c959c400ce9d0f27bf4a16289d1506f96f54ffc76263eb2f4e",
-    "integration-with-build.json": "4771142ebba665f48f6c485246612a1883fa2c1ab496ccb3b0d908ad4ddab9a5",
-    "baseline49/integration-with-build.json": "7b2468af7d671120268119c3ce16541e2fcc0e37f9ee8fcbba9289348bc07764",
-    "scope-full-main.log": "a7113d561b5952b4f270fe5931ed73912e0adaafd401cd6d623d34ff68728094",
-    "scope-full-projection.log": "946e9af580e96ac4f099173ddb8305ca3d772caa743ebdab7b8e1501f188cc5a",
-    "scope-full-product.log": "246bfda9a95d627eea1438991afce14c9e9a8e54ac142bcaf649ee82071a7b96",
-    "latest-strict.log": "345c5b946ee5ffb5bfa0f211e1a39e7ef3793b0a15c5660765d3aaabbeca9349",
-    "native-reuse.sha256": "b013574e1c4a29314ab4e4299803e0b9bc766c438b5c9b7cd85135dfa14bd13e"
+    "frozen-payload.json": "7154539a3710a6b9f7be1bdb7cbd6d18637d9e8ac62566d2971cc6127c68c594",
+    "failure-disposition.json": "3c790fc20ab2cafdf7e3ee27af8cd268b1f5e247091f1f5d47711555bd674999",
+    "predecessor-evidence.json": "f74dc4d4afe5993ab2f1a8e6be9a1e6177afaacab6851bfdb59b68e127245cbb",
+    "independent-review.json": "8b8e43d3db34d511e76d2161d750fa93f761bf729b8296b6de130af90f5d3d30",
+    "independent-latency.json": "09425dfbfc97ee3cf9d6a9d59cbf3dd8082cc6d30d4a10d6c5e2447a42e25508",
+    "independent-full-readback.json": "ad13b30a4b6bb0c96307cf7fbda60e29d468da2df5b02cf037bcca4f27f5757d",
+    "deployment-policy-negative.json": "9ffd7563063a48500bdb36381634e855f028684d0098627c7fe0a3c3b0eb0568",
+    "actual-vercel-output.json": "b6be8654e211c87113f7b64364e6be85a79decd68af8c5a69315b80ace647338",
+    "independent-builder.json": "86ebff25a1bb53ac3660862b69947a0fa64d812482f8f037886bed1f15dcfe5e",
+    "release-build-evidence.json": "db494959024fffa4cd9c07ce9da51374e3be036025b24b0ca58ffac31bd0df34"
   },
-  "authorizationWindowStart": "2026-11-26T03:10:00.000Z"
+  "authorizationWindowStart": "2026-11-27T11:30:00.000Z"
 }

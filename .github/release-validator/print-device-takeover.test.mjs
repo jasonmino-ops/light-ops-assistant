@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs'
 import {manifest,controlPaths,controllerDigest,candidateShape,verifyAuthorization,verifyEvidence,verifySource,contextEntries,readIssuedStatus,issueOnce} from './print-device-takeover.mjs'
 const sha=x=>createHash('sha256').update(x).digest('hex')
 const control='a'.repeat(40),digest='b'.repeat(64)
-const at=Date.parse('2026-11-26T03:15:00Z')
+const at=Date.parse('2026-11-27T11:35:00Z')
 export function fixture() {
   const hashes=Object.fromEntries(controlPaths.map(p=>[p,'c'.repeat(64)]))
   const review={verdict:'PASS',candidate:manifest.candidate,tree:manifest.tree,
@@ -14,12 +14,12 @@ export function fixture() {
     evidence:'ISOLATED SYNTHETIC FIXTURE ONLY. Not Founder approval, formal Acceptance or App status. '.repeat(3)}
   review.evidenceSha256=sha(review.evidence)
   const receipt=['ISOLATED SYNTHETIC FIXTURE NOT ACTUAL AUTHORITY','fixture-only',manifest.candidate,manifest.tree,manifest.base,
-    review.manifestSha256,controllerDigest(hashes),...manifest.includedSourceCommits,manifest.authorizationWindowStart,'FOUNDER_DECISION_UTC=2026-11-26T03:12:00.000Z',manifest.evidenceHashes['frozen-payload.json'],manifest.evidenceHashes['failure-disposition.json'],
+    review.manifestSha256,controllerDigest(hashes),...manifest.includedSourceCommits,manifest.authorizationWindowStart,'FOUNDER_DECISION_UTC=2026-11-27T11:32:00.000Z',manifest.evidenceHashes['frozen-payload.json'],manifest.evidenceHashes['failure-disposition.json'],
     '批准精确换机签发器接入、一次App签发及受保护release快进部署',manifest.deadlineExclusive].join('\n')
   const record={releaseId:manifest.releaseId,taskIds:[manifest.taskId],releaseSha:manifest.candidate,releaseTree:manifest.tree,
     baseProductionSha:manifest.base,sourceMainSha:manifest.sourceMainSha,productionDeployment:manifest.productionDeployment,
     control,manifestSha256:review.manifestSha256,includedSourceCommits:manifest.includedSourceCommits,
-    founderAuthorization:{approvedBy:'Founder',status:'APPROVED',authorizationId:'fixture-only',approvedAt:'2026-11-26T03:12:00.000Z',includedSourceCommits:manifest.includedSourceCommits},
+    founderAuthorization:{approvedBy:'Founder',status:'APPROVED',authorizationId:'fixture-only',approvedAt:'2026-11-27T11:32:00.000Z',includedSourceCommits:manifest.includedSourceCommits},
     expiresAt:manifest.deadlineExclusive,frozenPayloadSha256:manifest.evidenceHashes['frozen-payload.json'],dispositionSha256:manifest.evidenceHashes['failure-disposition.json'],rawIntegration:{status:'BLOCKED',expected:22,executed:22,pass:19,fail:3,skip:0},authorizationReceiptSha256:sha(receipt),controllerSha256:hashes,controllerDigest:controllerDigest(hashes),
     issuerInstallationAuthorized:true,statusPublicationAuthorized:true,releaseExecutionAuthorized:true,releaseExecutionRequiresUnexpiredAppStatus:true,
     migrationAuthorized:false,terminalMutationAuthorized:false,pilotOrFeedMutationAuthorized:false,defaultSelectiveValidatorChanged:false,
@@ -28,7 +28,7 @@ export function fixture() {
     reviewReceiptSha256:sha(JSON.stringify(review,null,2)+'\n'),deploymentId:'PENDING',productionSha:'PENDING'}
   return {record,review,receipt}
 }
-test('actual immutable one-commit/32-file candidate source verifies',()=>verifySource())
+test('actual immutable one-commit/single-function-and-exact-policy candidate source verifies',()=>verifySource())
 test('candidate shape rejects other candidate/tree/path/count',()=>{
   const good={candidate:manifest.candidate,tree:manifest.tree,changedPaths:manifest.paths.map(p=>p.path),deltaCount:1}
   candidateShape(good)
@@ -62,7 +62,7 @@ test('unknown, full status pages fail closed',()=>{
   assert.throws(()=>contextEntries(null));assert.throws(()=>contextEntries(Array(100).fill({})))
   assert.deepEqual(contextEntries([{context:'other'}]),[])
 })
-const issuedAt='2026-11-26T03:15:00.000Z',expiresAt='2026-11-26T05:10:00.000Z',target='https://github.com/example/run'
+const issuedAt='2026-11-27T11:35:00.000Z',expiresAt='2026-11-27T13:30:00.000Z',target='https://github.com/example/run'
 const entry={id:123,state:'success',context:'eshop/selective-release-validator',description:'Print takeover '+digest,
   creator:{id:351820557,login:'e-shop-release-validator[bot]'},target_url:target,created_at:issuedAt}
 const args={candidate:manifest.candidate,digest,issuedAt,expiresAt,target,now:()=>at,wait:async()=>{},log:()=>{}}
@@ -99,7 +99,7 @@ test('wrong App/ID/state/digest/target/time, duplicates and absent readback neve
   }
 })
 test('expired, evidence-boundary and excessive status lifetime reject before POST',async()=>{
-  for(const bad of [{now:()=>Date.parse(expiresAt)},{expiresAt:'2026-11-26T06:15:01Z'},
+  for(const bad of [{now:()=>Date.parse(expiresAt)},{expiresAt:'2026-11-27T14:35:01Z'},
     {issuedAt:'2026-11-26T12:00:00Z',expiresAt:'2026-11-26T13:00:00Z',now:()=>Date.parse('2026-11-26T12:00:00Z')}]) {
     let posts=0
     await assert.rejects(issueOnce({...args,...bad,readStatuses:async()=>[],revalidate:async()=>{},postStatus:async()=>{posts++;return {id:123}}}))
@@ -121,11 +121,11 @@ test('actual pinned evidence verifies and altered RAW status/content rejects',()
 
 test('identical receipt cannot shift start and expiry as a pair, or move the personal decision timestamp',()=>{
   const {record,receipt,review}=fixture()
-  const later={...record.founderAuthorization,approvedAt:'2026-11-26T03:13:00.000Z'}
+  const later={...record.founderAuthorization,approvedAt:'2026-11-27T11:33:00.000Z'}
   for(const changed of [
     {...record,founderAuthorization:{...record.founderAuthorization,approvedAt:manifest.authorizationWindowStart}},
     {...record,founderAuthorization:later},
-    {...record,founderAuthorization:later,expiresAt:'2026-11-26T05:11:00.000Z'},
-    {...record,expiresAt:'2026-11-26T05:10:00.001Z'}
+    {...record,founderAuthorization:later,expiresAt:'2026-11-27T13:31:00.000Z'},
+    {...record,expiresAt:'2026-11-27T13:30:00.001Z'}
   ]) assert.throws(()=>verifyAuthorization(changed,receipt,review,control,at))
 })

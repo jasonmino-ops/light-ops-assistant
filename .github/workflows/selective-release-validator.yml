@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify exact print takeover release and live trusted refs
+      - name: Verify exact owner-route P2028 release and live trusted refs
         id: pos
         env:
           GH_TOKEN: ${{ github.token }}
