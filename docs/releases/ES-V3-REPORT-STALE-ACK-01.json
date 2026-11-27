@@ -1,0 +1,66 @@
+{
+  "releaseId": "ES-V3-REPORT-STALE-ACK-01",
+  "taskIds": [
+    "ES-V3-REPORT-STALE-ACK-01"
+  ],
+  "baseProductionSha": "eeb1c6a5b5e44dcc3ed2c3cebd12c04994b9ec06",
+  "sourceMainSha": "746ead6adb1f01784d7353e73de45cdd79400efb",
+  "includedSourceCommits": [
+    "746ead6adb1f01784d7353e73de45cdd79400efb"
+  ],
+  "releaseSha": "65a23a780d16d607a0f8f818289e96c886eb1a60",
+  "releaseTree": "019f923f90298e96971b0650232c21e50d71d77d",
+  "founderAuthorization": {
+    "authorizationId": "ST04-REPORT-ACK-505-20261128",
+    "approvedBy": "Founder",
+    "status": "APPROVED",
+    "approvedAt": "2026-11-27T18:30:15.968Z",
+    "includedSourceCommits": [
+      "746ead6adb1f01784d7353e73de45cdd79400efb"
+    ]
+  },
+  "productionDeployment": "dpl_BcBDLHU7RrHEfQyL56yzSQu6unYM",
+  "deploymentId": "PENDING",
+  "productionSha": "PENDING",
+  "control": "1f86f6eeb951397307d3490583b36ce96555d4ef",
+  "manifestSha256": "906318a2adf896085e516afcfb021f017db5c499ec7899eeb0b26f3dbfac8c0a",
+  "controllerDigest": "d7f8f38c9117cb1f1d58a0b957b8349a7c191ee6e132747eeafe868a11ad01eb",
+  "controllerSha256": {
+    ".github/release-validator/print-device-takeover.json": "906318a2adf896085e516afcfb021f017db5c499ec7899eeb0b26f3dbfac8c0a",
+    ".github/release-validator/print-device-takeover.mjs": "fbc17619f09f4e4d01bffbcdbf0078e3e4fc6fc9686abc28c7624b32f5a8d770",
+    ".github/release-validator/print-device-takeover.test.mjs": "739770c2b0a42a0d8eac5ce4f203aa025d64806acecbd708cf55b0d94f0d01b8",
+    ".github/workflows/selective-release-validator.yml": "2d06cc2819ea6b37f0da0226c87ee021860776dd35dc781248f771b48a24dbb1"
+  },
+  "expiresAt": "2026-11-27T19:45:00.000Z",
+  "signatureLifetimeSeconds": 7200,
+  "frozenPayloadSha256": "e595406217ff4db1cb1389a8658d2db37afcd4e81bc34de07cfea94622bb5a9b",
+  "dispositionSha256": "83077e9ac276f0f5802bfa5a3ccab53222d4145399f0830b5a750da685943c4a",
+  "rawCORE": {
+    "status": "BLOCKED",
+    "expected": 104,
+    "executed": 104,
+    "fail": 4,
+    "skip": 0,
+    "pass": 100
+  },
+  "rawIntegration": {
+    "status": "BLOCKED",
+    "expected": 22,
+    "executed": 22,
+    "fail": 3,
+    "skip": 0,
+    "pass": 19
+  },
+  "authorizationReceiptSha256": "b0dd2928e9fa7ac0cf65723d79cd567335fb79d07de445ff56e30076f251e4eb",
+  "reviewReceiptSha256": "5ea2c8d642df55b5cfd279b7f1800df808dfe753a429da4f1f2b1fe9f164e7ba",
+  "issuerInstallationAuthorized": true,
+  "statusPublicationAuthorized": true,
+  "releaseExecutionAuthorized": true,
+  "releaseExecutionRequiresUnexpiredAppStatus": true,
+  "migrationAuthorized": false,
+  "terminalMutationAuthorized": false,
+  "pilotOrFeedMutationAuthorized": false,
+  "defaultSelectiveValidatorChanged": false,
+  "migrationCount": 0,
+  "acceptance": "ACCEPTED_WITH_EXACT_REPORT_ACK_CORE_AND_INTEGRATION_DISPOSITION"
+}

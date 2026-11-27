@@ -1,0 +1,19 @@
+{
+  "reviewer": "independent Codex /root/report_governance_final",
+  "verdict": "PASS",
+  "readOnly": true,
+  "freshContext": true,
+  "notFounderOrAppSigner": true,
+  "control": "1f86f6eeb951397307d3490583b36ce96555d4ef",
+  "candidate": "65a23a780d16d607a0f8f818289e96c886eb1a60",
+  "tree": "019f923f90298e96971b0650232c21e50d71d77d",
+  "controllerSha256": {
+    ".github/release-validator/print-device-takeover.json": "906318a2adf896085e516afcfb021f017db5c499ec7899eeb0b26f3dbfac8c0a",
+    ".github/release-validator/print-device-takeover.mjs": "fbc17619f09f4e4d01bffbcdbf0078e3e4fc6fc9686abc28c7624b32f5a8d770",
+    ".github/release-validator/print-device-takeover.test.mjs": "739770c2b0a42a0d8eac5ce4f203aa025d64806acecbd708cf55b0d94f0d01b8",
+    ".github/workflows/selective-release-validator.yml": "2d06cc2819ea6b37f0da0226c87ee021860776dd35dc781248f771b48a24dbb1"
+  },
+  "manifestSha256": "906318a2adf896085e516afcfb021f017db5c499ec7899eeb0b26f3dbfac8c0a",
+  "evidence": "独立技术复核 PASS，控制 1f86f6eeb951397307d3490583b36ce96555d4ef 可交 Founder 正式精确签认，范围限该次证据修订。无远端夹具中两 checkout 的前/后共4份原始断言均在 :736:12 exit 1；验证 501→505 只增已列四文档、无删改，505 SHA d4cc4943148d47b22e791f214cecf91acf38d2ccb36acf75933f30251c396e67，原期望5 SHA ec8949b0ef9880ef457e577022a4e92948581865e7766b899207b266addb00ba。新断言指纹 9531606b66e8c6b0c814608fb829c3abf10a889d67b97681025871e855b8d03e。7项复合只替换1项，旧处置原字节保留；14/14、旧包和两个伪PASS拒绝。相对 e9a5dd58 仅 manifest 和其哈希字面量变动。controlDigest d7f8f38c9117cb1f1d58a0b957b8349a7c191ee6e132747eeafe868a11ad01eb，manifest 906318a2…，处置 83077e9a…，bundle 68e2fbff…。本人独立只读，未改文件、未触及远端/设备，非 Founder、非 App。真实登记后的父链/四份签认字节与线上实际 main 的定向断言实读仍待；App、发布、FIELD均待，三组RAW BLOCKED。",
+  "evidenceSha256": "2f186ea19075e494f6ce306b509218565f2f480bfa3ac0c206fccd8bc1b9f3e9"
+}
