@@ -1,32 +1,32 @@
 {
-  "taskId": "ES-PRINT-DEVICE-TAKEOVER",
-  "releaseId": "ES-PRINT-DEVICE-TAKEOVER-P2028",
-  "candidate": "eeb1c6a5b5e44dcc3ed2c3cebd12c04994b9ec06",
-  "tree": "5e751f9a2e1b9358a78fa2541e96b64cd8b18e70",
-  "base": "9e3b868622175bd5ddfa6cdcd26e066dc34aafce",
-  "mainBase": "45ab9917fed7d097a88b5f6060ad45fe303ea6fe",
-  "previousControl": "83d6a3e754e91b0646d38501ca79540ccddd0cdb",
-  "productRef": "refs/heads/codex/es-print-owner-p2028-final-release",
-  "productionDeployment": "dpl_7PCgwGH8ria3pvXnRYhvrona7P39",
+  "taskId": "ES-V3-REPORT-STALE-ACK-01",
+  "releaseId": "ES-V3-REPORT-STALE-ACK-01",
+  "candidate": "65a23a780d16d607a0f8f818289e96c886eb1a60",
+  "tree": "019f923f90298e96971b0650232c21e50d71d77d",
+  "base": "eeb1c6a5b5e44dcc3ed2c3cebd12c04994b9ec06",
+  "mainBase": "746ead6adb1f01784d7353e73de45cdd79400efb",
+  "previousControl": "f7b9fa16bed84415e46d02e96844e3deb57de2fe",
+  "productRef": "refs/heads/codex/es-v3-report-stale-ack-release",
+  "productionDeployment": "dpl_BcBDLHU7RrHEfQyL56yzSQu6unYM",
   "projectId": "prj_Ld76p2KNULYeu7mcf40vTG0EprY1",
   "teamId": "team_U1CeoLImuMCa2rhgBU9QCENW",
   "domain": "elifekh.com",
   "includedSourceCommits": [
-    "45ab9917fed7d097a88b5f6060ad45fe303ea6fe"
+    "746ead6adb1f01784d7353e73de45cdd79400efb"
   ],
-  "deadlineExclusive": "2026-11-27T13:30:00.000Z",
+  "deadlineExclusive": "2026-11-27T19:45:00.000Z",
   "signatureLifetimeSeconds": 7200,
   "migrationCount": 0,
   "defaultSelectiveValidatorChanged": false,
-  "sourceMainSha": "45ab9917fed7d097a88b5f6060ad45fe303ea6fe",
+  "sourceMainSha": "746ead6adb1f01784d7353e73de45cdd79400efb",
   "paths": [
     {
-      "path": "tests/network-release-deployment-policy.test.cjs",
-      "sha256": "c260af36141438a33a7e31e1afb1ce844c562e824dacdd45c5ce2fc5efc1f2f2"
+      "path": "lib/v3-print-job-adapter.ts",
+      "sha256": "d5eb71f5c770370380aeb8ef5a1b1d8765d4a80964be1981141edc04b51dc9c2"
     },
     {
-      "path": "vercel.json",
-      "sha256": "93b6592d7215f05d7162991f0efcfd3cbd83610070356be91d73c13052427b8c"
+      "path": "tests/customer-order-fulfillment-db.test.ts",
+      "sha256": "1c828ad9674764721a6159bf83f940ed6e1ef1a661d3ac4c6a8e10e5ccb0e80f"
     }
   ],
   "trustedEngineering": {
@@ -55,18 +55,26 @@
     "docs/change-gates/exceptions/ES-PRINT-DEVICE-TAKEOVER.json": "100644",
     "docs/workflows/E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V2.md": "100644"
   },
-  "evidenceBundleSha256": "2ce5a95b0f4870bf935dec7547aaf242182587f4d9f1adc53a0729fedceae5cc",
+  "evidenceBundleSha256": "68e2fbff0980d6bdd83cdd104f3fb2977c0fa4ed44de836b0e5e3519880b3c4b",
   "evidenceHashes": {
-    "frozen-payload.json": "7154539a3710a6b9f7be1bdb7cbd6d18637d9e8ac62566d2971cc6127c68c594",
-    "failure-disposition.json": "3c790fc20ab2cafdf7e3ee27af8cd268b1f5e247091f1f5d47711555bd674999",
-    "predecessor-evidence.json": "f74dc4d4afe5993ab2f1a8e6be9a1e6177afaacab6851bfdb59b68e127245cbb",
-    "independent-review.json": "8b8e43d3db34d511e76d2161d750fa93f761bf729b8296b6de130af90f5d3d30",
-    "independent-latency.json": "09425dfbfc97ee3cf9d6a9d59cbf3dd8082cc6d30d4a10d6c5e2447a42e25508",
-    "independent-full-readback.json": "ad13b30a4b6bb0c96307cf7fbda60e29d468da2df5b02cf037bcca4f27f5757d",
-    "deployment-policy-negative.json": "9ffd7563063a48500bdb36381634e855f028684d0098627c7fe0a3c3b0eb0568",
-    "actual-vercel-output.json": "b6be8654e211c87113f7b64364e6be85a79decd68af8c5a69315b80ace647338",
-    "independent-builder.json": "86ebff25a1bb53ac3660862b69947a0fa64d812482f8f037886bed1f15dcfe5e",
-    "release-build-evidence.json": "db494959024fffa4cd9c07ce9da51374e3be036025b24b0ca58ffac31bd0df34"
+    "frozen-payload.json": "e595406217ff4db1cb1389a8658d2db37afcd4e81bc34de07cfea94622bb5a9b",
+    "failure-disposition.json": "83077e9ac276f0f5802bfa5a3ccab53222d4145399f0830b5a750da685943c4a",
+    "release-build-evidence.json": "d666327fcc1c1cf2917108d7c18c825abea0df18f36f7c276d2acf787b832e1f",
+    "claude-final.txt": "8ffc14ce2c7fbb59051c3b474be7311fddbbb8070dcf0d76a20883d8a5b76e9f",
+    "production-predicate.json": "c32b6b2de70c203079299db4be550b79fabcca1da63e2448af8ec72a9973fad3",
+    "known-product-core.json": "24bfcca63319f02c595dc481a26808fa84895bd7f38797871606a33eeb814ecc",
+    "known-release-core.json": "50cca093c9b53b7b82b996e8675410c23fcf4d8e43ea1ab73305d8b06ac09dc8",
+    "known-release-integration.json": "f7175303f2b1dd3bd490e4e6efffb3299127ae43dd484b8973457ada7dd05c64",
+    "toolchain-inputs.json": "b1723333d4e5d538f7982b79da2868dcc697dd5b34164115bd2b94ee9aed0443",
+    "failure-set-product-core.json": "88a0ca133ab05242aa556b896ff659c8e08b67783437759e8eaf0ce0766f553f",
+    "failure-set-release-core.json": "1a89d636871b1c2522e8263a02a44f20cbc456ae4d3bcc961b991f33361a06a6",
+    "failure-set-release-integration.json": "f3eb722ffae9500283582a78e59c716ff27d3e1414c6264a86bcb38d1932ce25",
+    "failure-disposition-before-registration.json": "680d43c8008a91a171af1e0eeca4f623ec7d497f3c1d08fbc85d9bf6d0dca6dd",
+    "reproduction.json": "fafcd89896454afcdfd9e45a3b3a395927a93907f4c0641b58c703dd3363d2bb",
+    "environment-505.json": "d5e498c39d8f1b6c1a6029104acda833bf34f74329990384df9eb805556922c0",
+    "known-505-targeted.json": "10decc2bf4e7be4b1e66359ae86fcb358d363ccb4bed698b339c6641d2239a3f",
+    "failure-set-505-targeted.json": "b610be717fc48e460fcfec6542d67ccf5522625703a1354aefd74079149d6590",
+    "failure-set-release-core-505.json": "8fbaaa347ea63fd87a428cb1c2bafdd0d351063272d7aeec3c9cadc10d713d46"
   },
-  "authorizationWindowStart": "2026-11-27T11:30:00.000Z"
+  "authorizationWindowStart": "2026-11-27T17:45:00.000Z"
 }

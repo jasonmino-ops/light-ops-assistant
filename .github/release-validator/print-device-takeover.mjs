@@ -13,17 +13,17 @@ const appId = 5590705, installationId = 178077967, creatorId = 351820557
 const context = 'eshop/selective-release-validator'
 const prefix = 'Print takeover '
 const manifestPath = '.github/release-validator/print-device-takeover.json'
-const manifestSha = '79a514edee0f977a6e69d60e76bdd4a973dd92392422a26fcfc66c53cd61be24'
+const manifestSha = '906318a2adf896085e516afcfb021f017db5c499ec7899eeb0b26f3dbfac8c0a'
 const rawManifest = readFileSync(new URL('./print-device-takeover.json', import.meta.url))
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 assert.equal(sha(rawManifest), manifestSha)
 export const manifest = JSON.parse(rawManifest)
 export const controlPaths = [manifestPath, '.github/release-validator/print-device-takeover.mjs',
   '.github/release-validator/print-device-takeover.test.mjs', '.github/workflows/selective-release-validator.yml'].sort()
-const admissionPath = 'docs/releases/ES-PRINT-DEVICE-TAKEOVER-P2028.json'
-const receiptPath = 'docs/releases/evidence/ES-PRINT-DEVICE-TAKEOVER-P2028/founder-release.md'
-const reviewPath = 'docs/releases/evidence/ES-PRINT-DEVICE-TAKEOVER-P2028/controller-review.json'
-const evidencePath = 'docs/releases/evidence/ES-PRINT-DEVICE-TAKEOVER-P2028/validation-evidence.json'
+const admissionPath = 'docs/releases/ES-V3-REPORT-STALE-ACK-01.json'
+const receiptPath = 'docs/releases/evidence/ES-V3-REPORT-STALE-ACK-01/founder-release.md'
+const reviewPath = 'docs/releases/evidence/ES-V3-REPORT-STALE-ACK-01/controller-review.json'
+const evidencePath = 'docs/releases/evidence/ES-V3-REPORT-STALE-ACK-01/validation-evidence.json'
 export const registrationPaths = [admissionPath, receiptPath, reviewPath, evidencePath].sort()
 const cleanEnv = { PATH: process.env.PATH, HOME: process.env.HOME, LC_ALL: 'C',
   GIT_NO_REPLACE_OBJECTS: '1', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' }
@@ -75,7 +75,7 @@ export function verifyAuthorization(record, receipt, review, control, now=Date.n
   assert.equal(record.controllerDigest,controllerDigest(record.controllerSha256))
   for(const term of [record.frozenPayloadSha256,record.dispositionSha256,auth.authorizationId,manifest.candidate,manifest.tree,manifest.base,manifestSha,
     record.controllerDigest,...manifest.includedSourceCommits,
-    '批准精确换机签发器接入、一次App签发及受保护release快进部署',manifest.deadlineExclusive])
+    '批准精确回报兼容登记、一次App签发及受保护release快进部署',manifest.deadlineExclusive])
     assert(receipt.includes(term),'Missing exact final Founder authority: '+term)
   for(const flag of ['issuerInstallationAuthorized','statusPublicationAuthorized','releaseExecutionAuthorized',
     'releaseExecutionRequiresUnexpiredAppStatus']) assert.equal(record[flag],true)
@@ -83,7 +83,7 @@ export function verifyAuthorization(record, receipt, review, control, now=Date.n
     'defaultSelectiveValidatorChanged']) assert.equal(record[flag],false)
   assert.equal(record.migrationCount,0)
   assert.equal(record.signatureLifetimeSeconds,manifest.signatureLifetimeSeconds)
-  assert.equal(record.acceptance,'ACCEPTED_WITH_EXACT_PRINT_COMPAT_CORE_AND_INTEGRATION_DISPOSITION')
+  assert.equal(record.acceptance,'ACCEPTED_WITH_EXACT_REPORT_ACK_CORE_AND_INTEGRATION_DISPOSITION')
   assert.deepEqual(record.rawCORE,{status:'BLOCKED',expected:104,executed:104,pass:100,fail:4,skip:0})
   assert.equal(review.verdict,'PASS');assert.equal(review.readOnly,true);assert.equal(review.freshContext,true)
   assert.equal(review.notFounderOrAppSigner,true)
