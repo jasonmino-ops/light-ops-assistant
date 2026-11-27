@@ -1,13 +1,17 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { mkdir, open, readFile, rename } from 'node:fs/promises'
+import { lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { safeStorage } from 'electron'
+import { sealPrintChildHandoff } from './windowsPrintChildProtection'
 
 const CHILD_AUDIENCE = 'eshop-managed-print-child' as const
 const CHILD_SCHEMA_VERSION = 1 as const
 const CHILD_DIRECTORY = 'E-Shop-Network-Print-Addon'
 const CHILD_IDENTITY_FILENAME = 'managed-print-child.bin'
 const CHILD_HANDOFF_FILENAME = 'managed-print-child-handoff.bin'
+const MAX_HANDOFF_AGE_MS = 60_000
+const MAX_FILE_BYTES = 32_768
+const pending = new Map<string, Promise<void>>()
 
 export type ManagedPrintChildSession = {
   browserDeviceId: string
@@ -21,9 +25,13 @@ type ManagedPrintChildLocalIdentity = {
   audience: typeof CHILD_AUDIENCE
   installationId: string
   deviceSecret: string
+  storeCode?: string
+  boundAt?: string
 }
 
-type ManagedPrintChildHandoff = ManagedPrintChildLocalIdentity & {
+type ManagedPrintChildHandoff = Omit<ManagedPrintChildLocalIdentity, 'schemaVersion'> & {
+  schemaVersion: 2
+  boundAt: string
   childId: string
   storeCode: string
   expiresAt: string
@@ -47,32 +55,49 @@ function validDeviceSecret(value: unknown): value is string {
 function parseLocal(value: unknown): ManagedPrintChildLocalIdentity {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('PRINT_CHILD_IDENTITY_INVALID')
   const row = value as Record<string, unknown>
-  if (row.schemaVersion !== CHILD_SCHEMA_VERSION || row.audience !== CHILD_AUDIENCE
-    || !validInstallationId(row.installationId) || !validDeviceSecret(row.deviceSecret)) {
+  if (!['audience,deviceSecret,installationId,schemaVersion', 'audience,deviceSecret,installationId,schemaVersion,storeCode', 'audience,boundAt,deviceSecret,installationId,schemaVersion,storeCode'].includes(Object.keys(row).sort().join(','))
+    || row.schemaVersion !== CHILD_SCHEMA_VERSION || row.audience !== CHILD_AUDIENCE
+    || !validInstallationId(row.installationId) || !validDeviceSecret(row.deviceSecret)
+    || (row.storeCode !== undefined && (typeof row.storeCode !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(row.storeCode)))
+    || (row.boundAt !== undefined && (typeof row.boundAt !== 'string' || !Number.isFinite(Date.parse(row.boundAt)) || Date.parse(row.boundAt) > Date.now()))) {
     throw new Error('PRINT_CHILD_IDENTITY_INVALID')
   }
   return { schemaVersion: CHILD_SCHEMA_VERSION, audience: CHILD_AUDIENCE,
-    installationId: row.installationId, deviceSecret: row.deviceSecret }
+    installationId: row.installationId, deviceSecret: row.deviceSecret,
+    ...(typeof row.storeCode === 'string' ? { storeCode: row.storeCode } : {}),
+    ...(typeof row.boundAt === 'string' ? { boundAt: row.boundAt } : {}) }
 }
 
-async function atomicEncryptedWrite(destination: string, value: string) {
+async function atomicEncryptedWrite(destination: string, value: string, handoff = false) {
   if (!safeStorage.isEncryptionAvailable()) throw new Error('PRINT_CHILD_SAFE_STORAGE_UNAVAILABLE')
-  await mkdir(path.dirname(destination), { recursive: true })
+  await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 })
+  const directory = await lstat(path.dirname(destination))
+  if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error('PRINT_CHILD_DIRECTORY_INVALID')
   const temporary = `${destination}.tmp-${process.pid}-${Date.now()}`
-  const handle = await open(temporary, 'w')
+  const handle = await open(temporary, 'wx', 0o600)
   try {
-    await handle.writeFile(safeStorage.encryptString(value).toString('base64'), 'utf8')
-    await handle.sync()
-  } finally {
-    await handle.close()
+    try {
+      const ciphertext = handoff ? await sealPrintChildHandoff(value) : safeStorage.encryptString(value).toString('base64')
+      await handle.writeFile(ciphertext, 'utf8')
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
+    await rename(temporary, destination)
+  } catch (error) {
+    await unlink(temporary).catch(() => undefined)
+    throw error
   }
-  await rename(temporary, destination)
 }
 
 async function readLocalIdentity(appDataPath: string): Promise<ManagedPrintChildLocalIdentity | null> {
   const source = childPath(appDataPath, CHILD_IDENTITY_FILENAME)
   let encrypted: string
-  try { encrypted = await readFile(source, 'utf8') }
+  try {
+    const info = await lstat(source)
+    if (!info.isFile() || info.isSymbolicLink() || info.size === 0 || info.size > MAX_FILE_BYTES) throw new Error('PRINT_CHILD_IDENTITY_INVALID')
+    encrypted = await readFile(source, 'utf8')
+  }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw new Error('PRINT_CHILD_IDENTITY_UNAVAILABLE')
@@ -103,20 +128,33 @@ async function localIdentity(appDataPath: string) {
  * bounded proof to provision/recover the hidden child. The Desktop credential
  * never leaves the existing main-process CredentialStore path.
  */
-export async function writeManagedPrintChildHandoff(
+async function provisionHandoff(
   appDataPath: string,
   session: ManagedPrintChildSession,
   options: { baseUrl?: string; fetchImpl?: FetchLike } = {},
 ): Promise<void> {
-  if (!Number.isFinite(Date.parse(session.expiresAt)) || Date.parse(session.expiresAt) <= Date.now()) {
+  // A rejected refresh must never leave an older capability available for a
+  // later settings-only launch. Server-side parent/store checks remain authoritative.
+  const destination = childPath(appDataPath, CHILD_HANDOFF_FILENAME)
+  try {
+    const directory = await lstat(path.dirname(destination))
+    if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error('PRINT_CHILD_DIRECTORY_INVALID')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+  await unlink(destination).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(session.storeCode) || !session.browserDeviceId || !session.token
+    || !Number.isFinite(Date.parse(session.expiresAt)) || Date.parse(session.expiresAt) <= Date.now()) {
     throw new Error('PRINT_CHILD_SESSION_EXPIRED')
   }
   const identity = await localIdentity(appDataPath)
+  if (identity.storeCode !== undefined && identity.storeCode !== session.storeCode) throw new Error('PRINT_CHILD_STORE_MISMATCH')
   const fetchImpl = options.fetchImpl ?? globalThis.fetch
   const response = await fetchImpl(`${(options.baseUrl ?? 'https://elifekh.com').replace(/\/+$/, '')}/api/desktop/print-child`, {
     method: 'POST',
     redirect: 'error',
     cache: 'no-store',
+    signal: AbortSignal.timeout(10_000),
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -126,19 +164,40 @@ export async function writeManagedPrintChildHandoff(
     body: JSON.stringify({ installationId: identity.installationId, deviceSecret: identity.deviceSecret, agentVersion: 'managed-print-child-v1' }),
   })
   const body = await response.json().catch(() => null) as Record<string, unknown> | null
-  if (!response.ok || !body || body.ok !== true || typeof body.childId !== 'string'
+  if (!response.ok || !body || body.ok !== true || typeof body.childId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(body.childId)
     || body.storeCode !== session.storeCode || typeof body.credentialExpiresAt !== 'string'
     || !Number.isFinite(Date.parse(body.credentialExpiresAt)) || Date.parse(body.credentialExpiresAt) <= Date.now()) {
-    throw new Error(typeof body?.error === 'string' ? body.error : 'PRINT_CHILD_PROVISION_REJECTED')
+    throw new Error('PRINT_CHILD_PROVISION_REJECTED')
   }
+  const expiresAt = Math.min(Date.parse(session.expiresAt), Date.parse(body.credentialExpiresAt), Date.now() + MAX_HANDOFF_AGE_MS)
+  if (expiresAt <= Date.now()) throw new Error('PRINT_CHILD_SESSION_EXPIRED')
+  const boundAt = identity.boundAt ?? new Date().toISOString()
+  await atomicEncryptedWrite(childPath(appDataPath, CHILD_IDENTITY_FILENAME), JSON.stringify({ ...identity, storeCode: session.storeCode, boundAt }))
   const handoff: ManagedPrintChildHandoff = {
-    ...identity,
+    schemaVersion: 2,
+    boundAt,
+    audience: identity.audience,
+    installationId: identity.installationId,
+    deviceSecret: identity.deviceSecret,
     childId: body.childId,
     storeCode: session.storeCode,
-    expiresAt: body.credentialExpiresAt,
+    expiresAt: new Date(expiresAt).toISOString(),
     nonce: randomUUID(),
   }
-  await atomicEncryptedWrite(childPath(appDataPath, CHILD_HANDOFF_FILENAME), JSON.stringify(handoff))
+  await atomicEncryptedWrite(destination, JSON.stringify(handoff), true)
+}
+
+export async function writeManagedPrintChildHandoff(
+  appDataPath: string,
+  session: ManagedPrintChildSession,
+  options: { baseUrl?: string; fetchImpl?: FetchLike } = {},
+): Promise<void> {
+  const key = path.resolve(appDataPath)
+  const previous = pending.get(key) ?? Promise.resolve()
+  const next = previous.catch(() => undefined).then(() => provisionHandoff(key, session, options))
+  pending.set(key, next)
+  try { await next }
+  finally { if (pending.get(key) === next) pending.delete(key) }
 }
 
 export const managedPrintChildHandoffPath = (appDataPath: string) => childPath(appDataPath, CHILD_HANDOFF_FILENAME)

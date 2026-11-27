@@ -9,7 +9,7 @@ import { inflateRawSync } from 'node:zlib'
 
 export const TASK_ID = 'ES-PRINT-NETWORK-FIRST-01'
 export const ADDON_VERSION = '0.1.0'
-export const CANDIDATE_VERSION = '0.1.0-commercial-rc.10'
+export const CANDIDATE_VERSION = '0.1.0-commercial-rc.15'
 export const ELECTRON_VERSION = '44.3.0'
 export const BASELINE_COMMIT = '452de10f112140637bc419e7bff740fb3b5f2c27'
 export const GOVERNANCE_HEAD_COMMIT = 'e4563bbf0dd0e61606dcd6bcb37cc83862abdb30'

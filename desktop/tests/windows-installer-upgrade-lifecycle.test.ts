@@ -123,7 +123,7 @@ describe('ES-DESKTOP-INSTALLER-UPGRADE-LIFECYCLE-FIX-01', () => {
 
     expect(body).toContain('File /oname=eshop-current-uninstaller.exe "${UNINSTALLER_OUT_FILE}"')
     expect(body).toContain(
-      'ExecWait \'"$PLUGINSDIR\\eshop-current-uninstaller.exe" /S /KEEP_APP_DATA /currentuser --keep-shortcuts --updated _?=$R1\'',
+      'ExecWait \'"$PLUGINSDIR\\eshop-current-uninstaller.exe" /S /KEEP_APP_DATA $R6 --keep-shortcuts --updated _?=$R1\'',
     )
     expect(body).not.toMatch(/ExecWait[^\n]*\$R2/)
     expect(body.indexOf('SetOutPath "$TEMP"')).toBeLessThan(body.indexOf('ExecWait'))
@@ -140,8 +140,8 @@ describe('ES-DESKTOP-INSTALLER-UPGRADE-LIFECYCLE-FIX-01', () => {
   it('fails closed instead of executing an unverifiable prior installation', () => {
     const body = macroBody('eshopUninstallPriorVersion')
 
-    expect(body).toContain('ReadRegStr $R1 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation')
-    expect(body).toContain('ReadRegStr $R2 HKCU "${UNINSTALL_REGISTRY_KEY}" UninstallString')
+    expect(body).toContain('ReadRegStr $R1 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation')
+    expect(body).toContain('ReadRegStr $R2 SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" UninstallString')
     expect(installerInclude).toContain('Function eshopGetQuotedPath')
     expect(body).toContain('!insertmacro eshopGetQuotedPath $R3 "$R2"')
     expect(body).toContain('$R3 != "$R1\\${UNINSTALL_FILENAME}"')
@@ -149,7 +149,7 @@ describe('ES-DESKTOP-INSTALLER-UPGRADE-LIFECYCLE-FIX-01', () => {
     expect(body).toContain('${OrIfNot} ${FileExists} "$R3"')
     expect(body).toContain('SetErrorLevel 4')
     expect(body).toContain('SetErrorLevel 5')
-    expect(body).toContain('ReadRegStr $R4 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation')
+    expect(body).toContain('ReadRegStr $R4 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation')
     expect(body).not.toMatch(/\bReturn\b/)
   })
 
@@ -167,7 +167,9 @@ describe('ES-DESKTOP-INSTALLER-UPGRADE-LIFECYCLE-FIX-01', () => {
     expect(installerInclude).toContain('!define /ifndef MUI_UNICON "${MUI_ICON}"')
     expect(installerInclude).toContain('!if "${MUI_ICON}" != "${MUI_UNICON}"')
     expect(installerInclude.match(/^\s*WriteRegStr HKCU "\$\{ESHOP_DESKTOP_AUTOSTART_KEY\}"/gm)).toHaveLength(1)
-    expect(installerInclude.match(/^\s*DeleteRegValue HKCU /gm)).toHaveLength(1)
+    expect(installerInclude.match(/^\s*DeleteRegValue HKCU "\$\{ESHOP_DESKTOP_AUTOSTART_KEY\}"/gm)).toHaveLength(1)
+    expect(installerInclude.match(/^\s*DeleteRegValue HKCU /gm)).toHaveLength(5)
+    expect(installerInclude.match(/^\s*DeleteRegValue HKCU "\$\{ESHOP_NETWORK_ADDON_MARKER_KEY\}" Pending\w+/gm)).toHaveLength(4)
     expect(installerInclude).toContain('"${ESHOP_DESKTOP_AUTOSTART_VALUE}"')
   })
 

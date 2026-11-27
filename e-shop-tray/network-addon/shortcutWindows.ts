@@ -5,12 +5,13 @@ import type { DesktopRegistration, NetworkRegistration } from './shortcutLifecyc
 
 const DESKTOP_KEY = 'Software\\1acbd53d-b2f7-5af7-b432-3048068fa60f'
 const NETWORK_KEY = 'Software\\3b0d00d3-14c9-55d6-bef2-f6474bb2de71'
-// Read only two product registrations and the current user's Known Folder.
+const MANAGED_DESKTOP_KEY = 'Software\\be247cb9-f9cd-575f-b032-177e26afd518'
+// Read only three exact product registrations and the current user's Known Folder.
 // No caller-controlled command, registry path, environment override or secret.
 const SCRIPT = `$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 $rows=@();foreach($h in @('CurrentUser','LocalMachine')){foreach($v in @('Registry64','Registry32')){
  $root=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::$h,[Microsoft.Win32.RegistryView]::$v)
- try {foreach($id in @('1acbd53d-b2f7-5af7-b432-3048068fa60f','3b0d00d3-14c9-55d6-bef2-f6474bb2de71')){
+ try {foreach($id in @('1acbd53d-b2f7-5af7-b432-3048068fa60f','3b0d00d3-14c9-55d6-bef2-f6474bb2de71','be247cb9-f9cd-575f-b032-177e26afd518')){
   $key=$root.OpenSubKey('Software\\'+$id);$un=$root.OpenSubKey('Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\'+$id)
   try {if($null -ne $key -or $null -ne $un){$rows+=@{hive=$h;id=$id;location=$(if($key){$key.GetValue('InstallLocation')});shortcut=$(if($key){$key.GetValue('ShortcutName')});version=$(if($un){$un.GetValue('DisplayVersion')});uninstall=$(if($un){$un.GetValue('UninstallString')})}}}
   finally {if($key){$key.Dispose()};if($un){$un.Dispose()}}
@@ -30,12 +31,17 @@ export function parseShortcutRegistration(raw: string): RegistrySnapshot {
   if (raw.length > 32768) fail()
   const data = JSON.parse(raw)
   if (!data || Object.keys(data).sort().join(',') !== 'programs,registrations' || !Array.isArray(data.registrations)
-    || data.registrations.length > 8) fail()
+    || data.registrations.length > 12) fail()
+  const copies = new Map<string, number>()
   const registrations: Row[] = data.registrations.map((row: Record<string, unknown>) => {
     if (!row || Object.keys(row).sort().join(',') !== 'hive,id,location,shortcut,uninstall,version'
       || !['CurrentUser', 'LocalMachine'].includes(String(row.hive))
-      || ![DESKTOP_KEY.slice(9), NETWORK_KEY.slice(9)].includes(String(row.id))
+      || ![DESKTOP_KEY.slice(9), NETWORK_KEY.slice(9), MANAGED_DESKTOP_KEY.slice(9)].includes(String(row.id))
       || ['shortcut', 'version', 'uninstall'].some(key => typeof row[key] !== 'string' || (row[key] as string).length > 2048)) fail()
+    const key = `${row.hive}:${row.id}`, count = (copies.get(key) ?? 0) + 1
+    // At most one observation per registry view; repeated arbitrary rows fail.
+    if (count > 2) fail()
+    copies.set(key, count)
     return { hive: row.hive === 'CurrentUser' ? 'HKCU' : 'HKLM', id: String(row.id), location: localPath(row.location),
       shortcut: String(row.shortcut), version: String(row.version), uninstall: String(row.uninstall) }
   })
@@ -116,6 +122,20 @@ export async function desktopRegistration(snapshot: RegistrySnapshot): Promise<D
   return { source: 'windows-registry', hive: row.hive, registryKey: DESKTOP_KEY,
     appId: 'com.eshop.desktop.prototype', version: '0.4.7', installLocation: row.location,
     executable, shortcutName: 'E-Shop', executableVerified: true }
+}
+/** Separate identity reader: never reinterpret a legacy ownership record. */
+export async function managedDesktopRegistration(snapshot: RegistrySnapshot): Promise<DesktopRegistration | null> {
+  const row = uniqueRow(snapshot, MANAGED_DESKTOP_KEY.slice(9))
+  if (!row) return null
+  if (row.hive !== 'HKCU' || row.version !== '0.3.0-rc.6' || row.shortcut !== 'E-Shop Desktop') fail()
+  const executable = path.join(row.location, 'E-Shop Desktop.exe')
+  const uninstaller = path.join(row.location, 'Uninstall E-Shop Desktop.exe')
+  if (row.uninstall !== `"${uninstaller}" /currentuser`) fail()
+  await verifyExecutable(executable, 'eshop-desktop', row.version)
+  await regularLocal(uninstaller)
+  return { source: 'windows-registry', hive: 'HKCU', registryKey: MANAGED_DESKTOP_KEY,
+    appId: 'com.eshop.desktop', version: row.version, installLocation: row.location,
+    executable, shortcutName: row.shortcut, executableVerified: true }
 }
 export async function networkRegistration(snapshot: RegistrySnapshot, executable: string): Promise<NetworkRegistration | null> {
   const row = uniqueRow(snapshot, NETWORK_KEY.slice(9))

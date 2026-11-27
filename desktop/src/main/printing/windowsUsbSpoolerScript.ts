@@ -1,6 +1,8 @@
+import { WINDOWS_USB_IDENTITY_SCRIPT } from './windowsUsbIdentityScript'
+
 // The Windows child performs no printing until the parent grants the one-shot GO.
 // The print data is sent over stdin and is never part of the command line.
-export const WINDOWS_USB_SPOOLER_SCRIPT = String.raw`
+export const WINDOWS_USB_SPOOLER_SCRIPT = WINDOWS_USB_IDENTITY_SCRIPT + String.raw`
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $handle = [IntPtr]::Zero
@@ -16,13 +18,8 @@ try {
 
   function Assert-UsbReady {
     if ((Get-Service -Name Spooler).Status -ne 'Running') { throw 'SPOOLER_NOT_RUNNING' }
-    $portKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\USB Monitor\Ports\' + $target.portName
-    $deviceId = (Get-ItemProperty -LiteralPath $portKey -Name 'Device Id').'Device Id'
+    $deviceId = Resolve-UsbPortDevice $target.portName
     if ($deviceId -ine $target.deviceInstanceId) { throw 'USB_PORT_IDENTITY_MISMATCH' }
-    $device = @(Get-PnpDevice -PresentOnly -InstanceId $target.deviceInstanceId)
-    if ($device.Count -ne 1 -or $device[0].InstanceId -ine $target.deviceInstanceId -or $device[0].Status -ne 'OK') {
-      throw 'USB_DEVICE_NOT_READY'
-    }
     $queues = @(Get-CimInstance Win32_Printer | Where-Object {
       $_.PortName -split ',' -contains $target.portName
     })

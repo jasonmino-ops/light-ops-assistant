@@ -38,7 +38,7 @@ import { NetworkAddonProfile, bindingTuple, sameBinding, type ColdModePreflightC
 import { ColdModeLifecycle } from './coldModeLifecycle'
 import { EntryCoordinator, entryIntent, readCashierEntry, cashierBlocker, networkLoginItem, type EntryIntent } from './entryCoordinator'
 import { ShortcutLifecycle, LEGACY_SHORTCUTS, SHORTCUT_ROLES, reviewLegacyShortcuts, type LegacyShortcutId, type ShortcutResult } from './shortcutLifecycle'
-import { readShortcutRegistration, desktopRegistration, networkRegistration, networkUninstaller, assertNormalShortcutDirectory, assertNormalShortcutFile } from './shortcutWindows'
+import { readShortcutRegistration, desktopRegistration, managedDesktopRegistration, networkRegistration, networkUninstaller, assertNormalShortcutDirectory, assertNormalShortcutFile } from './shortcutWindows'
 
 const SERVER = 'https://elifekh.com'
 const USER_DATA = path.join(app.getPath('appData'), 'E-Shop-Network-Print-Addon')
@@ -57,6 +57,10 @@ let resultLog: RelayResultLog | undefined
 const transport = new NetworkRawTcpTransport()
 let scanner: AbortController | undefined
 let lastCode = 'STARTING'
+let firstInitializationError: string | undefined
+let managedCashierOpening: Promise<void> | undefined
+let managedCashierCode = 'DESKTOP_ENTRY_READY'
+let managedCashierAvailability: Promise<boolean> | undefined
 // Process-local only: DONE means startup activation was consumed, not RUNNING.
 let activation: 'PENDING' | 'DONE' = 'PENDING'
 let settingsRequest = 0
@@ -66,7 +70,7 @@ let shortcutCode = 'SHORTCUT_NOT_CHECKED'
 const recordedContinuityDiagnostics = new Set<string>()
 const INSTALLER_UPGRADE_EXIT_TIMEOUT_MS = 30_000
 
-async function shortcutManager() {
+async function shortcutManager(managedDesktop = false) {
   const snapshot = await readShortcutRegistration()
   await assertNormalShortcutDirectory(snapshot.programs)
   let menu = snapshot.programs
@@ -88,6 +92,8 @@ async function shortcutManager() {
   return new ShortcutLifecycle({ directory, desktopDirectory: app.getPath('desktop'), startMenuDirectory: menu,
     networkExecutable: process.execPath, networkUninstaller: await networkUninstaller(snapshot, process.execPath),
     readDesktopRegistration: async () => desktopRegistration(await readShortcutRegistration()),
+    readManagedDesktopRegistration: managedDesktop
+      ? async () => managedDesktopRegistration(await readShortcutRegistration()) : undefined,
     readNetworkRegistration: async () => networkRegistration(await readShortcutRegistration(), process.execPath),
     assertNormalDirectory: assertNormalShortcutDirectory,
     assertNormalFile: assertNormalShortcutFile,
@@ -95,18 +101,35 @@ async function shortcutManager() {
       args: link.args ?? '', icon: link.icon ?? '', iconIndex: link.iconIndex ?? 0, appUserModelId: link.appUserModelId ?? '' } },
     writeShortcutLink: (file, spec) => shell.writeShortcutLink(file, 'create', spec) } })
 }
-async function installShortcuts(confirmLegacy?: (item: ShortcutResult) => Promise<boolean>) {
-  const manager = await shortcutManager()
+type DesktopInstallPhase = 'legacy' | 'prerequisite' | 'complete'
+function shortcutInstallPhase(argv: readonly string[]): DesktopInstallPhase {
+  const phases = argv.filter(value => value.startsWith('--desktop-install-'))
+  if (!phases.length) return 'legacy'
+  const allowed = ['--install-shortcuts', '--silent-shortcuts', '--desktop-install-prerequisite', '--desktop-install-complete']
+  if (phases.length !== 1 || !allowed.includes(phases[0])
+    || argv.filter(value => value === '--install-shortcuts').length !== 1
+    || argv.filter(value => value === '--silent-shortcuts').length !== 1
+    || argv.slice(1).some(value => !allowed.includes(value))) throw new Error('SHORTCUT_DESKTOP_PHASE_INVALID')
+  return phases[0] === '--desktop-install-prerequisite' ? 'prerequisite' : 'complete'
+}
+async function installShortcuts(confirmLegacy?: (item: ShortcutResult) => Promise<boolean>, phase: DesktopInstallPhase = 'legacy') {
+  const manager = await shortcutManager(phase !== 'legacy')
   const results: ShortcutResult[] = await manager.recover()
-  for (const role of SHORTCUT_ROLES) {
+  // Prerequisite success is deliberately NOT complete four-role readiness.
+  // Cashier and binding depend on the actual modern Desktop installed later.
+  const roles = phase === 'prerequisite' ? ['manage', 'uninstall'] as const : SHORTCUT_ROLES
+  for (const role of roles) {
     try { results.push(await manager.ensure(role)) }
     catch (error) { results.push({ subject: role, status: 'UNAVAILABLE', reason: code(error) }) }
   }
-  results.push(...await reviewLegacyShortcuts(manager, confirmLegacy))
+  if (phase === 'legacy') results.push(...await reviewLegacyShortcuts(manager, confirmLegacy))
   // Installation readiness is the four new product entries. Legacy links are
   // warnings for explicit/manual review and never silently redirect printing.
   // In particular, the all-users Desktop 0.4.7 entry is outside automation.
-  shortcutCode = shortcutsReady(results) ? 'SHORTCUT_READY' : 'SHORTCUT_NEEDS_ATTENTION'
+  shortcutCode = phase === 'prerequisite'
+    ? roles.every(role => ['CREATED', 'UNCHANGED'].includes(results.filter(result => result.subject === role).at(-1)?.status ?? ''))
+      ? 'SHORTCUT_PREREQUISITE_READY' : 'SHORTCUT_NEEDS_ATTENTION'
+    : shortcutsReady(results) ? 'SHORTCUT_READY' : 'SHORTCUT_NEEDS_ATTENTION'
   return results
 }
 function shortcutsReady(results: ShortcutResult[]) {
@@ -362,12 +385,20 @@ async function status() {
   if (cashierAvailable) {
     try { await assertIdentity() } catch { cashierAvailable = false }
   }
+  if (managedRuntime) {
+    // This cached hint is for display only. Every actual launch revalidates
+    // HKCU, physical EXE/ASAR metadata and the current-user uninstaller.
+    managedCashierAvailability ??= verifiedManagedDesktop().then(() => true, () => false)
+    cashierAvailable = await managedCashierAvailability
+  }
   return { version: app.getVersion(), server: SERVER, storeCode: binding?.storeCode ?? null,
+    managedSettings: managedRuntime, firstInitializationError: firstInitializationError ?? null,
     ready: !!profile && !!lifecycle && !!state, busy: entry.busy, code: lastCode, activation, settingsRequest, mode: state?.mode ?? null,
     enabled: state?.enabled ?? false, endpoint: endpoint ?? null, kitchenEndpoint: kitchenEndpoint ?? null,
     revision: state?.revision ?? 0,
     test: state?.test ?? null, kitchenTest: state?.kitchenTest ?? null, lastEvent: lastEvent ?? null,
-    restartRequired, cashierAvailable, entryCode: entry.entryCode, entryPending: entry.entryPending, shortcutCode,
+    restartRequired, cashierAvailable, entryCode: managedRuntime ? managedCashierCode : entry.entryCode,
+    entryPending: managedRuntime ? !!managedCashierOpening : entry.entryPending, shortcutCode,
     coldEnableCheckRequired: state?.coldEnableCheckRequired ?? false,
     coldProcess: lifecycle?.coldProcess ?? false, endpointChangeProcess: lifecycle?.endpointChangeProcess ?? false,
     dualSetupRequired: (state?.schemaVersion === 3 || state?.schemaVersion === 4) && state.mode === 'SHARED_PRINTER',
@@ -450,6 +481,32 @@ async function sendTest(input: Record<string, unknown>) {
     sha256: createHash('sha256').update(bytes).digest('hex'), physicalCompletionKnown: false }
 }
 
+async function verifiedManagedDesktop() {
+  const registration = await managedDesktopRegistration(await readShortcutRegistration())
+  if (!registration) throw new Error('DESKTOP_ENTRY_UNAVAILABLE')
+  return registration
+}
+
+function openManagedDesktop(): Promise<void> {
+  if (managedCashierOpening) return managedCashierOpening
+  managedCashierCode = 'DESKTOP_ENTRY_OPENING'
+  const operation = (async () => {
+    // A print-only child never grants cashier authority. The existing Desktop
+    // process owns PIN/authentication, POS session and cashier admission.
+    const desktop = await verifiedManagedDesktop()
+    if (entry.isExiting) throw new Error('ADDON_EXIT_IN_PROGRESS')
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(desktop.executable, [], { shell: false, detached: true, stdio: 'ignore', windowsHide: false })
+      child.once('error', () => reject(new Error('DESKTOP_ENTRY_OPEN_FAILED')))
+      child.once('spawn', () => { child.unref(); resolve() })
+    })
+    managedCashierCode = 'DESKTOP_ENTRY_OPENED'
+  })().catch(error => { managedCashierCode = code(error); throw error })
+    .finally(() => { if (managedCashierOpening === operation) managedCashierOpening = undefined })
+  managedCashierOpening = operation
+  return operation
+}
+
 async function openCashier(config: NetworkPrinterConfig) {
   if (managedPrintChild) throw new Error('PRINT_CHILD_CAPABILITY_REJECTED')
   await assertIdentity()
@@ -482,7 +539,10 @@ async function openCashier(config: NetworkPrinterConfig) {
   })
 }
 
-const entry = new EntryCoordinator({ initialize: initializeDependencies, activateAtStartup, openCashier,
+const entry = new EntryCoordinator({ initialize: async () => {
+  try { await initializeDependencies() }
+  catch (error) { firstInitializationError ??= code(error); throw error }
+}, activateAtStartup, openCashier,
   showManagement(settings) { if (settings) settingsRequest++; showWindow() }, errorCode: code,
   readCashier: () => readCashierEntry({ profile: knownProfile(), restartRequired: knownLifecycle().restartRequired,
     printingReady: lastCode === 'RUNNING' && knownLifecycle().everStartedPoller, assertIdentity }),
@@ -497,6 +557,10 @@ const entry = new EntryCoordinator({ initialize: initializeDependencies, activat
 })
 
 async function dispatchEntry(intent: EntryIntent) {
+  if (managedRuntime && intent === 'cashier') {
+    try { await openManagedDesktop() } catch { showWindow() }
+    return
+  }
   try { await entry.dispatch(intent) } catch { /* The coordinator retains entry diagnostics and opens setup when appropriate. */ }
 }
 
@@ -506,7 +570,7 @@ async function perform(action: unknown, value: unknown) {
     return entry.runOperation(async () => {
       if (action === 'shortcuts') {
         exactObject(value ?? {}, [])
-        const results = await installShortcuts()
+        const results = await installShortcuts(undefined, managedRuntime ? 'complete' : 'legacy')
         return { created: results.filter(item => !LEGACY_SHORTCUTS.includes(item.subject as LegacyShortcutId)),
           legacy: results.filter(item => LEGACY_SHORTCUTS.includes(item.subject as LegacyShortcutId)) }
       }
@@ -516,7 +580,11 @@ async function perform(action: unknown, value: unknown) {
       return (await shortcutManager()).migrateLegacy(data.id as LegacyShortcutId, { sha256: data.sha256, ownershipConfirmed: true })
     }, false, true)
   }
-  if (action === 'cashier') { exactObject(value ?? {}, []); await entry.launchCashier(); return null }
+  if (action === 'cashier') { exactObject(value ?? {}, []);
+    if (managedRuntime) await openManagedDesktop()
+    else await entry.launchCashier()
+    return null
+  }
   if (action !== 'exit' && (lifecycle?.restartRequired || profile?.restartRequired)) throw new Error('ADDON_PROFILE_RESTART_REQUIRED')
   if (['discover', 'test', 'confirmTest'].includes(String(action)) && profile?.snapshot().coldEnableCheckRequired) {
     throw new Error('ADDON_COLD_EXPLICIT_ENABLE_REQUIRED')
@@ -630,9 +698,20 @@ function showWindow() {
 
 const helper = process.argv.filter(value => value === '--install-shortcuts' || value === '--uninstall-shortcuts')
 const silentShortcutArgs = process.argv.filter(value => value === '--silent-shortcuts')
-const installerUpgradeArgs = process.argv.slice(2).filter(value => value === '--installer-upgrade')
-const installerUpgradeMode = installerUpgradeArgs.length === 1 && process.argv.slice(2).length === 1
-const invalidInstallerUpgradeArgs = process.argv.includes('--installer-upgrade') && !installerUpgradeMode
+let desktopInstallPhase: DesktopInstallPhase = 'legacy'
+let invalidDesktopInstallPhase = false
+try { desktopInstallPhase = shortcutInstallPhase(process.argv) } catch { invalidDesktopInstallPhase = true }
+function installerUpgradeIntent(argv: readonly string[], defaultApp: boolean): 'none' | 'valid' | 'invalid' {
+  const requests = argv.filter(value => value === '--installer-upgrade')
+  if (!requests.length) return 'none'
+  // Packaged Electron has only the executable prefix; defaultApp also has
+  // the application path. Never accept a maintenance flag with other intents.
+  const args = argv.slice(defaultApp ? 2 : 1)
+  return requests.length === 1 && args.length === 1 && args[0] === '--installer-upgrade' ? 'valid' : 'invalid'
+}
+const installerUpgrade = installerUpgradeIntent(process.argv, process.defaultApp === true)
+const installerUpgradeMode = installerUpgrade === 'valid'
+const invalidInstallerUpgradeArgs = installerUpgrade === 'invalid'
 const helperMode = helper.length === 1 && !process.argv.some(value => ['--cashier', '--manage', '--background', '--settings-only'].includes(value))
   && (silentShortcutArgs.length === 0 || (helper[0] === '--install-shortcuts' && silentShortcutArgs.length === 1))
 // Reject conflicting cold-start intents before dependency initialization or
@@ -641,7 +720,7 @@ let startupIntent: EntryIntent | undefined
 if (!helperMode && !installerUpgradeMode) {
   try { startupIntent = entryIntent(process.argv) } catch { /* Fail closed below. */ }
 }
-if (invalidInstallerUpgradeArgs) app.exit(8)
+if (invalidInstallerUpgradeArgs || invalidDesktopInstallPhase) app.exit(8)
 else if (!helperMode && !installerUpgradeMode && !startupIntent) app.exit(8)
 else if (!app.requestSingleInstanceLock()) { if (helperMode) app.exit(8); else app.quit() }
 else if (installerUpgradeMode) {
@@ -665,13 +744,14 @@ else if (helperMode) {
           checkboxLabel: '我确认此文件由产品安装器创建，不是用户自建或修改的入口', checkboxChecked: false,
           buttons: ['保留，稍后在管理与维护处理', '备份并收纳'], defaultId: 0, cancelId: 0, noLink: true })
         return result.response === 1 && result.checkboxChecked === true
-      })
+      }, desktopInstallPhase)
       // Upgrade only: preserve Windows' disabled/approved choice on an exact
       // existing product Run item. A missing item stays missing until opt-in.
       const login = currentLoginItem()
       if (login && !login.background) app.setLoginItemSettings({ name: 'EShopNetworkPrintAddon',
         path: process.execPath, args: ['--background'], openAtLogin: true, enabled: login.enabled })
-      app.exit(shortcutCode === 'SHORTCUT_READY' ? 0 : 7)
+      const expected = desktopInstallPhase === 'prerequisite' ? 'SHORTCUT_PREREQUISITE_READY' : 'SHORTCUT_READY'
+      app.exit(shortcutCode === expected ? 0 : 7)
     } else {
       await (await shortcutManager()).uninstall()
       app.exit(0)
@@ -679,8 +759,15 @@ else if (helperMode) {
   }).catch(() => app.exit(8))
 } else {
   app.on('second-instance', (_event, argv) => {
+    const upgrade = installerUpgradeIntent(argv, process.defaultApp === true)
+    if (upgrade === 'invalid') {
+      // A malformed maintenance request must not terminate the resident or
+      // fall through to binding retries / normal printing activation.
+      lastCode = 'ADDON_INSTALLER_UPGRADE_ARGUMENTS_REJECTED'
+      return
+    }
     if (argv.some(value => ['--install-shortcuts', '--uninstall-shortcuts'].includes(value))) return
-    if (argv.includes('--installer-upgrade')) {
+    if (upgrade === 'valid') {
       void app.whenReady().then(async () => {
         try { await safeExitForInstallerUpgrade() }
         catch (error) { lastCode = error instanceof Error ? error.message : 'ADDON_SAFE_EXIT_FAILED'; showWindow() }

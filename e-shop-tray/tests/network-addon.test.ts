@@ -447,7 +447,10 @@ describe('Network Add-on independent installer contract', () => {
     expect(uninit).toContain('${If} ${Errors}')
     const install = installer.split('!macro customInstall\n')[1].split('!macroend')[0]
     expect(install).toContain('--install-shortcuts')
-    expect(install).toContain('${If} ${Silent}')
+    expect(install).toContain('${If} $addonDesktopPrerequisite == "true"')
+    expect(install).toContain('${ElseIf} ${Silent}')
+    expect(install).toContain('--install-shortcuts --silent-shortcuts --desktop-install-prerequisite')
+    expect(install.split('${ElseIf} ${Silent}')[1]).not.toContain('--desktop-install-')
     expect(install).toContain('--install-shortcuts --silent-shortcuts')
     expect(install).toMatch(/IfSilent \+2 0\s+MessageBox/)
     expect(install).toMatch(/SetErrorLevel 7\s+(?:;[^\n]*\n\s*)*Quit/)

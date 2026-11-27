@@ -60,6 +60,28 @@ describe('Desktop managed POS-session bridge', () => {
     )
   })
 
+
+  it('shares the same in-flight proof with cashier and companion without issuing a replacement session', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 }))
+    const bridge = new PosSessionBridge({ baseUrl: 'https://example.test',
+      credentialReader: { readCredential: async () => ({ ok: true as const, credential: { schemaVersion: 1 as const, deviceToken: 'fixture-only' } }) }, fetchImpl })
+    const [cashier, companion, again] = await Promise.all([bridge.take(), bridge.issue(), bridge.issue()])
+    expect(cashier).toEqual(companion); expect(again).toEqual(companion)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(await bridge.take()).toBeNull()
+    expect(await bridge.issue()).toEqual(companion)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses an expired cached companion proof without rotating the cashier session', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ...payload, expiresAt: '2020-01-01T00:00:00.000Z' }), { status: 200 }))
+    const bridge = new PosSessionBridge({ baseUrl: 'https://example.test',
+      credentialReader: { readCredential: async () => ({ ok: true as const, credential: { schemaVersion: 1 as const, deviceToken: 'fixture-only' } }) }, fetchImpl })
+    await bridge.prepare()
+    expect(await bridge.issue()).toBeNull(); expect(await bridge.issue()).toBeNull()
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
   it('does not call the adapter without a readable credential and rejects malformed payloads', async () => {
     const missingFetch = vi.fn()
     const missing = new PosSessionBridge({

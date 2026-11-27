@@ -79,12 +79,15 @@ export class PosSessionBridge {
   }
 
   /**
-   * Issue a fresh, server-derived short-lived session for a managed local
+   * Reuse the existing server-derived session proof for a managed local
    * companion. The Desktop device credential remains main-process-only; the
    * returned payload is the bounded BrowserPosDevice capability.
    */
-  issue(): Promise<PosSessionPayload | null> {
-    return this.requestSession()
+  async issue(): Promise<PosSessionPayload | null> {
+    // Issuance rotates the server BrowserPosDevice and revokes the cashier's
+    // previous proof. A companion must share the same in-flight/session proof.
+    const payload = await this.prepare()
+    return payload && Date.parse(payload.expiresAt) > Date.now() ? payload : null
   }
 
   private async requestSession(): Promise<PosSessionPayload | null> {

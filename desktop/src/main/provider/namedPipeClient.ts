@@ -25,6 +25,10 @@ export interface WindowsProviderPipeClientOptions {
 
 export class WindowsProviderPipeClient {
   private socket: net.Socket | null = null
+  private connection: Promise<void> | null = null
+  private cancelPending: (() => void) | null = null
+  private connected = false
+  private disposed = false
   private readonly decoder = new ProviderFrameDecoder()
   private sequence = 0
   readonly pipeName: string
@@ -33,18 +37,65 @@ export class WindowsProviderPipeClient {
     this.pipeName = options.pipeName ?? buildWindowsProviderPipeName()
   }
 
-  connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const socket = net.connect(this.pipeName, () => {
-        this.socket = socket
-        logger.info('provider.transport.connected', { pipeNameHash: safePipeIdentifier(this.pipeName) })
-        this.sendHandshake()
-        resolve()
+  connect(signal?: AbortSignal, deadlineAt?: number): Promise<void> {
+    if (this.connection) return this.connection
+    if (this.disposed || signal?.aborted) return Promise.reject(this.cancelled(signal))
+    const expired = () => deadlineAt !== undefined && performance.now() >= deadlineAt
+    const timeout = () => Object.assign(new Error('Provider startup connection deadline exceeded'), { code: 'PROVIDER_CONNECT_TIMEOUT' })
+    if (expired()) return Promise.reject(timeout())
+    this.connection = new Promise((resolve, reject) => {
+      // Own the socket while connecting, so quit/deadline can actually cancel it.
+      const socket = net.connect(this.pipeName)
+      this.socket = socket
+      const current = () => !this.disposed && this.socket === socket
+      const cleanup = () => {
+        signal?.removeEventListener('abort', abort)
+        this.cancelPending = null
+      }
+      const fail = (error: Error) => {
+        if (!current() || this.connected) return
+        cleanup()
+        this.socket = null
+        this.disposed = true
+        socket.destroy()
+        reject(error)
+      }
+      const abort = () => fail(this.cancelled(signal))
+      this.cancelPending = abort
+      signal?.addEventListener('abort', abort, { once: true })
+      socket.once('connect', () => {
+        if (!current() || signal?.aborted) { abort(); return }
+        // I/O may run before an overdue timer after an event-loop stall.
+        if (expired()) { fail(timeout()); return }
+        this.connected = true
+        cleanup()
+        try {
+          logger.info('provider.transport.connected', { pipeNameHash: safePipeIdentifier(this.pipeName) })
+          this.sendHandshake()
+          resolve()
+        } catch (error) {
+          this.destroy()
+          // A connected socket must never enter the startup ENOENT retry path,
+          // even if a synchronous handshake write happens to report ENOENT.
+          reject(Object.assign(new Error('Provider handshake failed'), { code: 'PROVIDER_HANDSHAKE_FAILED', cause: error }))
+        }
       })
-      socket.once('error', reject)
-      socket.on('data', (chunk) => this.handleData(chunk))
-      socket.on('close', () => this.options.onClose?.('pipe_closed'))
+      // Keep an error listener after settlement; retired sockets must not throw.
+      socket.on('error', (error) => {
+        if (!current()) return
+        if (!this.connected) fail(error)
+        else this.destroy()
+      })
+      socket.on('data', (chunk) => { if (current() && this.connected) this.handleData(chunk) })
+      socket.on('close', () => {
+        if (!current()) return
+        if (!this.connected) {
+          fail(Object.assign(new Error('Provider pipe closed before connection'), { code: 'PIPE_CLOSED' }))
+        } else this.destroy()
+      })
+      if (signal?.aborted) abort()
     })
+    return this.connection
   }
 
   requestHealth(): void {
@@ -73,8 +124,19 @@ export class WindowsProviderPipeClient {
   }
 
   destroy(): void {
-    this.socket?.destroy()
+    if (this.cancelPending) { this.cancelPending(); return }
+    const socket = this.socket
+    const wasConnected = this.connected
     this.socket = null
+    this.connected = false
+    this.disposed = true
+    socket?.destroy()
+    if (wasConnected) this.options.onClose?.('pipe_closed')
+  }
+
+  private cancelled(signal?: AbortSignal): Error {
+    return signal?.reason instanceof Error ? signal.reason
+      : Object.assign(new Error('Provider connection cancelled'), { code: 'PROVIDER_CONNECT_CANCELLED' })
   }
 
   private sendHandshake(): void {
@@ -125,7 +187,9 @@ export class WindowsProviderPipeClient {
   }
 
   private write(frame: HrtFrame<unknown>): void {
-    this.socket?.write(encodeProviderEnvelope({ supervisorToken: this.options.supervisorToken, frame }))
+    if (this.connected && !this.disposed && this.socket && !this.socket.destroyed) {
+      this.socket.write(encodeProviderEnvelope({ supervisorToken: this.options.supervisorToken, frame }))
+    }
   }
 
   private nextSequence(): number {

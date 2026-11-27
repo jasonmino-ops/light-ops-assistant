@@ -48,14 +48,23 @@ describe('ES-DESKTOP-AUTOSTART-01 Windows installer registration', () => {
 
   it('uses same-name overwrite semantics so upgrades cannot add duplicate entries', () => {
     expect(autostartWrites()).toHaveLength(1)
-    expect(installerInclude.match(/ESHOP_DESKTOP_AUTOSTART_VALUE/g)).toHaveLength(3)
+    // Definition, the single write/delete, and a read-only HKLM collision check.
+    expect(installerInclude.match(/ESHOP_DESKTOP_AUTOSTART_VALUE/g)).toHaveLength(4)
+    expect(matchingLines(/^ReadRegStr \$R9 HKLM "\$\{ESHOP_DESKTOP_AUTOSTART_KEY\}"/)).toHaveLength(1)
     expect(installerInclude).not.toMatch(/WriteRegExpandStr|WriteRegBin|WriteRegDWORD/)
   })
 
   it('deletes the exact registration during uninstall', () => {
-    const deletes = matchingLines(/^DeleteRegValue\b/)
+    const deletes = matchingLines(/^DeleteRegValue HKCU "\$\{ESHOP_DESKTOP_AUTOSTART_KEY\}"/)
 
     expect(deletes).toEqual([
+      'DeleteRegValue HKCU "${ESHOP_DESKTOP_AUTOSTART_KEY}" "${ESHOP_DESKTOP_AUTOSTART_VALUE}"',
+    ])
+    expect(matchingLines(/^DeleteRegValue\b/)).toEqual([
+      'DeleteRegValue HKCU "${ESHOP_NETWORK_ADDON_MARKER_KEY}" PendingVersion',
+      'DeleteRegValue HKCU "${ESHOP_NETWORK_ADDON_MARKER_KEY}" PendingDesktopPath',
+      'DeleteRegValue HKCU "${ESHOP_NETWORK_ADDON_MARKER_KEY}" PendingMode',
+      'DeleteRegValue HKCU "${ESHOP_NETWORK_ADDON_MARKER_KEY}" PendingInstallerSha256',
       'DeleteRegValue HKCU "${ESHOP_DESKTOP_AUTOSTART_KEY}" "${ESHOP_DESKTOP_AUTOSTART_VALUE}"',
     ])
   })

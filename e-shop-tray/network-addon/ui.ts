@@ -1,4 +1,5 @@
 type Status = { version: string; server: string; storeCode: string | null; ready: boolean; busy: boolean; code: string;
+  managedSettings?: boolean; firstInitializationError?: string | null;
   cashierAvailable: boolean; entryCode: string; entryPending: boolean;
   shortcutCode: string;
   activation: 'PENDING' | 'DONE'; settingsRequest: number;
@@ -23,6 +24,16 @@ let advancedSettings = false
 let flowRole: 'FRONT' | 'KITCHEN' | null = null
 let flowPurpose: 'SETUP' | 'RETEST' | 'REPLACE' = 'SETUP'
 const messages: Record<string, string> = {
+  DESKTOP_ENTRY_READY: '无需先配置打印机。本操作不会启用打印助手，打印状态以收银台为准。',
+  DESKTOP_ENTRY_OPENING: '正在打开 Desktop 收银台，请不要重复点击。',
+  DESKTOP_ENTRY_OPENED: '已打开 Desktop，请在收银台核对门店。',
+  DESKTOP_ENTRY_UNAVAILABLE: '无法核验本机 Desktop，请联系技术支持；不会改用旧版入口或打印身份登录。',
+  DESKTOP_ENTRY_OPEN_FAILED: 'Desktop 没有打开，请联系技术支持。',
+  PRINT_CHILD_HANDOFF_UNAVAILABLE: '尚未收到 Desktop 的打印授权交接。请从 Desktop 内打开打印设置；无需重新绑定门店。',
+  PRINT_CHILD_HANDOFF_INVALID: 'Desktop 打印授权交接校验失败，已安全停止。请保留诊断码并联系技术支持；不要重新绑定或反复读取。',
+  PRINT_CHILD_DPAPI_TIMEOUT: '读取本机加密交接超时，已安全停止；打印助手不会自动重试或打印。',
+  PRINT_CHILD_DPAPI_FAILED: '本机加密交接读取失败，已安全停止。请保留诊断码并联系技术支持。',
+  PRINT_CHILD_SAFE_STORAGE_UNAVAILABLE: '本机加密存储暂不可用，打印设置已安全停止。',
   ENTRY_IDLE: '日常点桌面上的「店小二收银」就可以。第一次使用请先完成门店绑定和打印机设置。',
   ENTRY_OPENING: '正在打开收银台，请不要重复点击。',
   ENTRY_OPENED: '收银台已经在 Chrome 里打开了。请核对一下浏览器里显示的门店是否正确。',
@@ -102,7 +113,7 @@ function decideView(state: Status): { view: 'calm' | 'alarm' | 'setup'; severity
 function pillText(state: Status, view: string, severity: string) {
   if (view === 'alarm') return severity === 'unsure' ? '有单要核对' : '打印有问题'
   if (view === 'calm') return state.enabled ? '打印正常' : '已暂停'
-  if (!state.ready) return '正在启动'
+  if (!state.ready) return state.busy || state.code === 'STARTING' ? '正在连接门店' : '门店连接未完成'
   if (state.activation === 'PENDING') return '自动打印未启动'
   return state.mode ? '需要处理' : '准备设置'
 }
@@ -128,7 +139,8 @@ function render(state: Status) {
     : message(state.code)
   el('version').textContent = `店小二打印 ${state.version}`
   el('diagnostic').textContent = [state.lastEvent?.jobId ? `任务 ${state.lastEvent.jobId}` : null,
-    state.code, state.lastEvent?.resultCode, state.lastEvent?.effectBoundary].filter(Boolean).join(' · ')
+    state.code, state.firstInitializationError && state.firstInitializationError !== state.code
+      ? `首次：${state.firstInitializationError}` : null, state.lastEvent?.resultCode, state.lastEvent?.effectBoundary].filter(Boolean).join(' · ')
   el('configured-endpoint').textContent = state.endpoint ? `前台打印机：${state.endpoint.host}，端口 ${state.endpoint.port}` : '还没有确认前台打印机'
   el('configured-kitchen-endpoint').textContent = state.kitchenEndpoint
     ? `厨房打印机：${state.kitchenEndpoint.host}，端口 ${state.kitchenEndpoint.port}`
@@ -159,8 +171,8 @@ function render(state: Status) {
   el<HTMLButtonElement>('enable').disabled = !state.ready || (state.enabled && state.activation !== 'PENDING') || !state.revision || blocked || state.test?.outcome !== 'CONFIRMED'
     || (state.dualSetupRequired && state.kitchenTest?.outcome !== 'CONFIRMED') || !input('single-agent').checked
     || (state.coldEnableCheckRequired && !input('enable-tabs-closed').checked)
-  el<HTMLButtonElement>('cashier').disabled = !state.cashierAvailable || blocked || state.entryPending
-  el('cashier').textContent = state.activation === 'PENDING' ? '打开收银台（不启动打印）'
+  el<HTMLButtonElement>('cashier').disabled = !state.cashierAvailable || (state.managedSettings ? busy : blocked) || state.entryPending
+  el('cashier').textContent = state.managedSettings ? '打开店小二收银台' : state.activation === 'PENDING' ? '打开收银台（不启动打印）'
     : view === 'alarm' ? '仍然开始营业' : state.enabled ? '开始营业' : '打开收银台'
   el('entry-message').textContent = state.entryCode && state.entryCode !== 'READY'
     ? (messages[state.entryCode] ?? '请按提示完成设置，或先看一下打印状态。打开收银台不会解除暂停，也不会转到原来的打印方式。')

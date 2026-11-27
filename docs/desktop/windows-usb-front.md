@@ -16,6 +16,10 @@ $instance = (Get-ItemProperty -LiteralPath $portKey -Name 'Device Id').'Device I
 Get-PnpDevice -PresentOnly -InstanceId $instance
 ```
 
+部分 Windows 原生 USB 打印布局没有上述 `USB Monitor\Ports` 登记分支。兼容候选会读取当前存在的 USBPRINT 设备，在 `Enum\USBPRINT\...\Device Parameters\PortName` 核对端口，并通过直接的 `DEVPKEY_Device_Parent` 确认物理 USB 实例。发现与独立提交前 worker 共用解析规则，每次重新读取，不以端口编号作为永久设备身份。
+
+有效旧登记仍受支持；旧登记与当前原生映射冲突、同一实体出现在其他端口、重复绑定、记录读失败、父设备缺失或非直接 USB 父关系均拒绝。不得手工伪造 `Device Id`、跳过校验或自动跟随端口变化。更换端口后须重新核对并显式更新配置。既有 5 秒探测和 10 秒提交上限、队列唯一/在线/非共享/非默认/空闲要求保持。
+
 ## 按设备启用
 
 正常退出 Desktop。使用现有 `--v3-endpoint-provision=<绝对路径>` 入口导入本机受控的 JSON。以下为示例。填写实际绑定的 storeId、deviceId、队列、端口及 PnP 实例，并选用高于已安装配置的 revision。导入的是完整角色配置。若已有 TCP KITCHEN，将其原值写入同一文件。

@@ -23,6 +23,7 @@ import { NoPayloadEndpointReadiness, type RoleReadinessMask } from './endpointRe
 import { proveTcpDiagnosticTarget, type ProveTcpDiagnosticTarget, type TcpDiagnosticTarget } from './tcpDiagnosticTarget'
 import { createTcpDiagnosticBoundary, executeTcpPrinterTest, makeTcpTestIdentity } from './tcpPrinterTest'
 import { logger } from '../logger'
+import { trustedPrintOrigins } from './trustedPrintOrigins'
 import type { PrintSettingsEndpoint, PrintSettingsReply, PrintSettingsRequest, PrintRoleTestRequest } from '../../shared/v3PrintSettings'
 
 const PRINT_ROLES: readonly PrinterRole[] = ['FRONT', 'KITCHEN']
@@ -362,7 +363,15 @@ export class V3PrintingRuntime {
   public async printSettings(request: PrintSettingsRequest, prepared?: PreparedPrintTest): Promise<PrintSettingsReply> {
     if (!this.settingsReady || process.platform !== 'win32') return rejectSettings('PRINT_SETTINGS_UNAVAILABLE')
     if (!this.settingsStoreCode || request.storeCode !== this.settingsStoreCode) return rejectSettings('PRINT_SETTINGS_STORE_MISMATCH')
-    const mode = this.controlPlane.current().controlPlane?.mode
+    const snapshot = this.controlPlane.current()
+    const mode = snapshot.controlPlane?.mode
+    const replacementAvailable = mode === 'V3_ACTIVE' && !!snapshot.controlPlane?.ownerDeviceId && snapshot.status === 'FENCED' &&
+      this.controlPlane.isOtherPrintOwner(snapshot.controlPlane.ownerDeviceId)
+    if (request.action === 'prepare-replacement') {
+      if (!replacementAvailable || this.releaseBlocked || this.localExecutions || this.outbox.list().length) return rejectSettings('PRINT_SETTINGS_AUTHORITY_REQUIRED')
+      const replacementTarget = await this.cloud?.prepareReplacement()
+      return replacementTarget ? { ok: true, replacementTarget } : rejectSettings('PRINT_SETTINGS_AUTHORITY_REQUIRED')
+    }
     if (request.action === 'read') {
       if (mode !== 'V3_ACTIVE') return { ok: true, state: {
         mode: mode === 'V2_ACTIVE' ? 'LEGACY' : 'BLOCKED', revision: 0, front: null, kitchen: null,
@@ -371,7 +380,7 @@ export class V3PrintingRuntime {
       const config = await this.endpoints.readSettings()
       if (!config.ok) return config
       const kitchen = settingsEndpoint(config.endpoints.KITCHEN)
-      return { ok: true, state: { mode: 'V3', revision: config.revision,
+      return { ok: true, state: { mode: 'V3', revision: config.revision, ...(replacementAvailable && { replacementAvailable }),
         front: settingsEndpoint(config.endpoints.FRONT), kitchen: kitchen?.kind === 'TCP' ? kitchen : null,
         usbSupported: !!this.usbFrontTest, blockedCode: this.settingsBlockedCode(),
         ...(this.tcpTest && { roleTests: { tcpReady: this.roleReadiness } }),
@@ -468,6 +477,16 @@ export class V3PrintingRuntime {
     const batch = this.controlPlane.current().batch
     if (input.source === 'LOCAL_DESKTOP' && (mode !== 'V3_ACTIVE' || !batch)) return this.holdLocal(input)
     if (!batch) return { status: 'AUTHORITY_REJECTED' as const, mode: 'ADMISSION_CLOSED' as const, reason: 'NO_OWNER_SCOPED_BATCH' }
+    if (batch.executionStartAt && input.source === 'LOCAL_DESKTOP') {
+      const observed = trustedPrintOrigins.eligible(batch, input.role, input.identity.printJobId)
+      const eligibility = observed === null
+        ? input.orderNo && await this.cloud?.checkOriginal(batch.id, input.orderNo, input.role, input.identity.printJobId)
+        : observed ? 'ELIGIBLE' : 'EXCLUDED'
+      if (eligibility === 'EXCLUDED') {
+        return { status: 'AUTHORITY_REJECTED' as const, mode: 'ADMISSION_CLOSED' as const, reason: 'PRINT_ORIGIN_EXCLUDED' }
+      }
+      if (eligibility !== 'ELIGIBLE') return this.holdLocal(input, 'PRINT_ORIGIN_UNAVAILABLE')
+    }
     const readiness = await this.proveRoleReadiness(input.role, this.lifecycleGeneration)
     if (!readiness) {
       if (input.source === 'LOCAL_DESKTOP') return this.holdLocal(input)

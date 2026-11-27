@@ -206,3 +206,81 @@ describe('required entry readiness without automatic public Desktop migration', 
     expect(fn([...base, { subject: 'cashier', status: 'UNAVAILABLE' }])).toBe(false)
   })
 })
+
+describe('RC3 exact managed Desktop registration', () => {
+  const id = 'be247cb9-f9cd-575f-b032-177e26afd518'
+  const location = 'C:\\Users\\Cashier\\Apps\\Desktop'
+  const executable = path.win32.join(location, 'E-Shop Desktop.exe')
+  const uninstaller = path.win32.join(location, 'Uninstall E-Shop Desktop.exe')
+  const registered = { hive: 'HKCU', id, location, shortcut: 'E-Shop Desktop', version: '0.3.0-rc.6', uninstall: `"${uninstaller}" /currentuser` }
+  async function fixture() {
+    const source = await compiledFunctions('shortcutWindows.ts', ['fail', 'uniqueRow', 'managedDesktopRegistration'], ['MANAGED_DESKTOP_KEY'])
+    const verifyExecutable = vi.fn(async () => {}), regularLocal = vi.fn(async () => {})
+    const fn = runInNewContext(source.compiled, { exports: {}, Error, path: path.win32, verifyExecutable, regularLocal }, { timeout: 1000 })
+    return { fn, verifyExecutable, regularLocal }
+  }
+  it('requires the actual current-user modern program, physical ASAR metadata and exact uninstaller contract', async () => {
+    const f = await fixture()
+    await expect(f.fn({ registrations: [registered] })).resolves.toMatchObject({ hive: 'HKCU', appId: 'com.eshop.desktop', executable, executableVerified: true })
+    expect(f.verifyExecutable.mock.calls).toEqual([[executable, 'eshop-desktop', '0.3.0-rc.6']])
+    expect(f.regularLocal.mock.calls).toEqual([[uninstaller]])
+  })
+  it.each([{ hive: 'HKLM' }, { version: '0.3.0-rc.1' }, { version: '0.3.0-rc.2' }, { version: '0.3.0-rc.3' }, { version: '0.3.0-rc.4' }, { version: '0.3.0-rc.5' }, { version: '0.3.0-rc.7' }, { shortcut: 'E-Shop' },
+    { uninstall: `"${uninstaller}" /allusers` }, { uninstall: `"${uninstaller}" /currentuser /extra` },
+    { uninstall: `"${path.win32.join(location, 'other.exe')}" /currentuser` }])('rejects incompatible identity before opening files: %j', async change => {
+    const f = await fixture(); await expect(f.fn({ registrations: [{ ...registered, ...change }] })).rejects.toThrow()
+    expect(f.verifyExecutable).not.toHaveBeenCalled(); expect(f.regularLocal).not.toHaveBeenCalled()
+  })
+  it('does not reinterpret old 0.4.7 registration and rejects conflicting modern observations', async () => {
+    const f = await fixture()
+    await expect(f.fn({ registrations: [{ ...registered, id: row.id, version: '0.4.7' }] })).resolves.toBeNull()
+    await expect(f.fn({ registrations: [registered, { ...registered, hive: 'HKLM' }] })).rejects.toThrow()
+    expect(f.verifyExecutable).not.toHaveBeenCalled()
+  })
+  it('propagates physical executable/ASAR and uninstaller rejection without a legacy fallback', async () => {
+    const f = await fixture(); f.verifyExecutable.mockRejectedValueOnce(new Error('SHORTCUT_UNSAFE_FILE'))
+    await expect(f.fn({ registrations: [registered] })).rejects.toThrow('SHORTCUT_UNSAFE_FILE'); expect(f.regularLocal).not.toHaveBeenCalled()
+    f.regularLocal.mockRejectedValueOnce(new Error('SHORTCUT_UNSAFE_FILE'))
+    await expect(f.fn({ registrations: [registered] })).rejects.toThrow('SHORTCUT_UNSAFE_FILE')
+  })
+})
+
+describe('RC2 actual installer helper phase control flow', () => {
+  it('accepts only an exact silent single managed phase; legacy invocation stays separate', async () => {
+    const source = await compiledFunctions('main.ts', ['shortcutInstallPhase'])
+    const fn = runInNewContext(source.compiled, { Error }, { timeout: 1000 })
+    const base = ['addon.exe', '--install-shortcuts', '--silent-shortcuts']
+    expect(fn(base)).toBe('legacy')
+    for (const phase of ['prerequisite', 'complete']) expect(fn([...base, `--desktop-install-${phase}`])).toBe(phase)
+    for (const args of [[...base, '--desktop-install-other'], [...base, '--desktop-install-complete', '--extra'],
+      [...base, '--desktop-install-prerequisite', '--desktop-install-complete'], [...base, '--desktop-install-complete', '--desktop-install-complete'],
+      ['addon.exe', '--install-shortcuts', '--desktop-install-complete'], [...base, '--desktop-install-complete', '--silent-shortcuts'],
+      [...base, '--desktop-install-complete', '--install-shortcuts']]) expect(() => fn(args)).toThrow('SHORTCUT_DESKTOP_PHASE_INVALID')
+  })
+  async function fixture(unavailable?: string) {
+    const source = await compiledFunctions('main.ts', ['shortcutsReady', 'installShortcuts'])
+    const roles = ['cashier', 'manage', 'desktop-binding', 'uninstall']
+    const manager = { recover: vi.fn(async () => []), ensure: vi.fn(async (subject: string) => ({ subject, status: subject === unavailable ? 'UNAVAILABLE' : 'CREATED' })) }
+    const context = { shortcutCode: '', SHORTCUT_ROLES: roles, shortcutManager: vi.fn(async () => manager),
+      reviewLegacyShortcuts: vi.fn(async () => []), code: () => 'SHORTCUT_UNAVAILABLE' }
+    const fn = runInNewContext(source.compiled, context, { timeout: 1000 })
+    return { fn, manager, context }
+  }
+  it('prepares only two roles and never reports full readiness or requests legacy review', async () => {
+    const f = await fixture(); await f.fn(undefined, 'prerequisite')
+    expect(f.manager.ensure.mock.calls).toEqual([['manage'], ['uninstall']])
+    expect(f.context.shortcutCode).toBe('SHORTCUT_PREREQUISITE_READY')
+    expect(f.context.shortcutManager).toHaveBeenCalledWith(true); expect(f.context.reviewLegacyShortcuts).not.toHaveBeenCalled()
+  })
+  it.each(['cashier', 'manage', 'desktop-binding', 'uninstall'])('final verification fails if any required role is unavailable: %s', async role => {
+    const f = await fixture(role); await f.fn(undefined, 'complete')
+    expect(f.manager.ensure).toHaveBeenCalledTimes(4); expect(f.context.shortcutCode).toBe('SHORTCUT_NEEDS_ATTENTION')
+    expect(f.context.reviewLegacyShortcuts).not.toHaveBeenCalled()
+  })
+  it('keeps standalone full four-role legacy handling distinct from managed completion', async () => {
+    const f = await fixture(); await f.fn(); expect(f.context.shortcutCode).toBe('SHORTCUT_READY')
+    expect(f.context.shortcutManager).toHaveBeenCalledWith(false); expect(f.context.reviewLegacyShortcuts).toHaveBeenCalledTimes(1)
+    await f.fn(undefined, 'complete'); expect(f.context.shortcutCode).toBe('SHORTCUT_READY')
+    expect(f.context.shortcutManager).toHaveBeenLastCalledWith(true); expect(f.context.reviewLegacyShortcuts).toHaveBeenCalledTimes(1)
+  })
+})

@@ -8,6 +8,8 @@
   !error "Network Add-on requires matching installer/uninstaller icons"
 !endif
 
+Var /GLOBAL addonDesktopPrerequisite
+
 !macro customCheckAppRunning
   ; Also called by un.onInit, including silent upgrade/uninstall. Only 603 is
   ; verified absence; enumeration failure must never trigger file replacement.
@@ -27,6 +29,21 @@
 !macroend
 
 !macro addonCheckArguments
+  ${StdUtils.TestParameter} $addonDesktopPrerequisite "desktop-prerequisite"
+  ${If} $addonDesktopPrerequisite == "true"
+    !ifdef BUILD_UNINSTALLER
+      SetErrorLevel 4
+      Quit
+    !else
+      ${IfNot} ${Silent}
+        SetErrorLevel 4
+        Quit
+      ${EndIf}
+    !endif
+  ${ElseIf} $addonDesktopPrerequisite != "false"
+    SetErrorLevel 4
+    Quit
+  ${EndIf}
   ${If} ${isForAllUsers}
     SetErrorLevel 4
     Quit
@@ -119,7 +136,9 @@
   ; Owned entry creation and per-object explicit legacy ownership confirmation.
   ; Silent installs retain unconfirmed files. No printing Agent starts here.
   ClearErrors
-  ${If} ${Silent}
+  ${If} $addonDesktopPrerequisite == "true"
+    ExecWait '"$INSTDIR\E-Shop-Network-Print-Addon.exe" --install-shortcuts --silent-shortcuts --desktop-install-prerequisite' $R0
+  ${ElseIf} ${Silent}
     ExecWait '"$INSTDIR\E-Shop-Network-Print-Addon.exe" --install-shortcuts --silent-shortcuts' $R0
   ${Else}
     ExecWait '"$INSTDIR\E-Shop-Network-Print-Addon.exe" --install-shortcuts' $R0

@@ -83,6 +83,34 @@ export class V3PrintJobClient {
       return response.ok && body?.ok === true && (body.status === 'DURABLY_HELD' || body.status === 'DURABLY_ACCEPTED') ? body.status : null
     } catch { return null }
   }
+  public async prepareReplacement(): Promise<{ deviceId: string; confirmationId: string } | null> {
+    try {
+      const response = await this.fetchImpl(`${this.baseUrl}/api/desktop/v3-print-control-plane`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
+        body: JSON.stringify({ action: 'PREPARE_PRINT_REPLACEMENT', printStartVersion: 1 }), signal: AbortSignal.timeout(5000),
+      })
+      const data = record(await response.json())
+      const target = record(data?.target)
+      if (!response.ok || data?.ok !== true || typeof target?.deviceId !== 'string' || typeof target.confirmationId !== 'string') return null
+      return { deviceId: target.deviceId, confirmationId: target.confirmationId }
+    } catch { return null }
+  }
+
+  public async checkOriginal(batchId: string, orderNo: string, role: PrinterRole, printJobId: string): Promise<'ELIGIBLE' | 'EXCLUDED' | 'UNAVAILABLE'> {
+    const query = new URLSearchParams({ action: 'CHECK_ORIGINAL', batchId, orderNo, role, printJobId })
+    try {
+      const response = await this.fetchImpl(`${this.baseUrl}/api/desktop/v3-print-jobs?${query}`, {
+        method: 'GET', headers: { Accept: 'application/json', Authorization: `Bearer ${this.token}` },
+        signal: AbortSignal.timeout(5000),
+      })
+      const body = record(await response.json())
+      if (!response.ok || body?.ok !== true || typeof body.eligible !== 'boolean') return 'UNAVAILABLE'
+      return body.eligible ? 'ELIGIBLE' : 'EXCLUDED'
+    } catch {
+      return 'UNAVAILABLE'
+    }
+  }
+
   public async readOperatorRecoveryProof(input: {
     orderNo: string
     originalJobId: string

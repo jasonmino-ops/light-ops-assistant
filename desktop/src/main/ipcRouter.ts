@@ -168,7 +168,7 @@ export function registerIpcHandlers(windowManager: WindowManager) {
     const runtime = v3PrintingRuntimeProvider()
     if (!runtime) return { ok: false, code: 'PRINT_SETTINGS_UNAVAILABLE' }
     try {
-      if (request.action === 'read' || request.action === 'queues') return await runtime.printSettings(request)
+      if (request.action === 'read' || request.action === 'queues' || request.action === 'prepare-replacement') return await runtime.printSettings(request)
       if (settingsConfirmationOpen) return { ok: false, code: 'PRINT_SETTINGS_BUSY' }
       settingsConfirmationOpen = true
       try {

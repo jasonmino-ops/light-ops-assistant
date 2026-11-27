@@ -14,6 +14,7 @@ export type ControlPlaneProjection = {
 export type ExecutionBatchProjection = {
   id: string
   controlPlaneId: string
+  executionStartAt?: string
   tenantId: string
   storeId: string
   ownerDeviceId: string
@@ -48,6 +49,8 @@ function batch(value: unknown): ExecutionBatchProjection | null {
     typeof row.storeId !== 'string' || typeof row.ownerDeviceId !== 'string' || !Number.isInteger(row.ownerEpoch) ||
     !Number.isInteger(row.stateVersion) || typeof row.leaseId !== 'string' || row.mode !== 'V3_ACTIVE' ||
     typeof row.expiresAt !== 'string' || typeof row.createdAt !== 'string' || (row.revokedAt !== null && typeof row.revokedAt !== 'string')) return null
+  if ('executionStartAt' in row && (typeof row.executionStartAt !== 'string' || !Number.isFinite(Date.parse(row.executionStartAt)) ||
+    new Date(row.executionStartAt).toISOString() !== row.executionStartAt)) return null
   return row as unknown as ExecutionBatchProjection
 }
 
@@ -78,7 +81,7 @@ export class V3ControlPlaneClient {
   }
 
   public issueBatch(authority: ControlPlaneProjection): Promise<{ ok: true; batch: ExecutionBatchProjection } | { ok: false; error: string }> {
-    return this.request('POST', { action: 'ISSUE_BATCH', ownerEpoch: authority.ownerEpoch, stateVersion: authority.stateVersion, leaseId: authority.leaseId })
+    return this.request('POST', { action: 'ISSUE_BATCH', printStartVersion: 1, ownerEpoch: authority.ownerEpoch, stateVersion: authority.stateVersion, leaseId: authority.leaseId })
   }
 
   private async request(method: 'GET' | 'POST', body?: unknown): Promise<any> {

@@ -1,9 +1,10 @@
-import { safeStorage } from 'electron'
-import { readFile, rename, unlink } from 'node:fs/promises'
+import { unsealPrintChildHandoff } from './windowsPrintChildProtection'
+import { randomUUID } from 'node:crypto'
+import { lstat, readFile, rename, unlink } from 'node:fs/promises'
 import path from 'node:path'
 
 const CHILD_AUDIENCE = 'eshop-managed-print-child' as const
-const CHILD_SCHEMA_VERSION = 1 as const
+const CHILD_SCHEMA_VERSION = 2 as const
 const CHILD_DIRECTORY = 'E-Shop-Network-Print-Addon'
 const CHILD_HANDOFF_FILENAME = 'managed-print-child-handoff.bin'
 
@@ -25,6 +26,7 @@ type Handoff = {
   storeCode: string
   expiresAt: string
   nonce: string
+  boundAt: string
 }
 
 function handoffPath(appDataPath: string) {
@@ -35,13 +37,15 @@ function parse(value: unknown): Handoff {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('PRINT_CHILD_HANDOFF_INVALID')
   const row = value as Record<string, unknown>
   const keys = Object.keys(row).sort().join(',')
-  if (keys !== 'audience,childId,deviceSecret,expiresAt,installationId,nonce,schemaVersion,storeCode'
+  if (keys !== 'audience,boundAt,childId,deviceSecret,expiresAt,installationId,nonce,schemaVersion,storeCode'
+    || typeof row.boundAt !== 'string' || !Number.isFinite(Date.parse(row.boundAt)) || Date.parse(row.boundAt) > Date.now()
     || row.schemaVersion !== CHILD_SCHEMA_VERSION || row.audience !== CHILD_AUDIENCE
     || typeof row.installationId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(row.installationId)
     || typeof row.deviceSecret !== 'string' || !/^ecc_v1_[A-Za-z0-9_-]{32,128}$/.test(row.deviceSecret)
     || typeof row.childId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(row.childId)
     || typeof row.storeCode !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(row.storeCode)
     || typeof row.expiresAt !== 'string' || !Number.isFinite(Date.parse(row.expiresAt)) || Date.parse(row.expiresAt) <= Date.now()
+    || Date.parse(row.expiresAt) > Date.now() + 60_000
     || typeof row.nonce !== 'string' || !/^[0-9a-f-]{32,128}$/i.test(row.nonce)) {
     throw new Error('PRINT_CHILD_HANDOFF_INVALID')
   }
@@ -50,29 +54,39 @@ function parse(value: unknown): Handoff {
 
 /** Consume the Desktop-written handoff exactly once; no legacy identity is fabricated. */
 export async function consumeManagedPrintChildIdentity(appDataPath: string): Promise<ManagedPrintChildIdentity | null> {
-  if (!safeStorage.isEncryptionAvailable()) throw new Error('PRINT_CHILD_SAFE_STORAGE_UNAVAILABLE')
   const source = handoffPath(appDataPath)
-  let encrypted: string
-  try { encrypted = await readFile(source, 'utf8') }
+  try {
+    const directory = await lstat(path.dirname(source))
+    if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error('PRINT_CHILD_HANDOFF_INVALID')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  }
+  const consumed = `${source}.consumed-${randomUUID()}`
+  try { await rename(source, consumed) }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
-    throw new Error('PRINT_CHILD_HANDOFF_UNAVAILABLE')
+    throw new Error('PRINT_CHILD_HANDOFF_REPLAYED')
   }
-  const consumed = `${source}.consumed-${process.pid}-${Date.now()}`
-  try { await rename(source, consumed) }
-  catch { throw new Error('PRINT_CHILD_HANDOFF_REPLAYED') }
   try {
-    const handoff = parse(JSON.parse(safeStorage.decryptString(Buffer.from(encrypted, 'base64'))))
+    // Claim the file first, then read exactly the claimed bytes. Reading the
+    // public pathname before rename could execute an older handoff twice.
+    const info = await lstat(consumed)
+    if (!info.isFile() || info.isSymbolicLink() || info.size === 0 || info.size > 32_768) throw new Error('PRINT_CHILD_HANDOFF_INVALID')
+    const encrypted = await readFile(consumed, 'utf8')
+    const handoff = parse(JSON.parse(await unsealPrintChildHandoff(encrypted)))
     return {
       installationId: handoff.installationId,
       deviceSecret: handoff.deviceSecret,
       bindingState: 'CLOUD_BOUND',
       computerId: handoff.childId,
       storeCode: handoff.storeCode,
-      boundAt: new Date().toISOString(),
+      boundAt: handoff.boundAt,
     }
   } catch (error) {
-    if (error instanceof Error && error.message === 'PRINT_CHILD_HANDOFF_INVALID') throw error
+    if (error instanceof Error && ['PRINT_CHILD_HANDOFF_INVALID', 'PRINT_CHILD_DPAPI_TIMEOUT',
+      'PRINT_CHILD_DPAPI_UNAVAILABLE', 'PRINT_CHILD_DPAPI_FAILED', 'PRINT_CHILD_DPAPI_INVALID_RESPONSE',
+      'PRINT_CHILD_WINDOWS_REQUIRED'].includes(error.message)) throw error
     throw new Error('PRINT_CHILD_HANDOFF_INVALID')
   } finally {
     await unlink(consumed).catch(() => undefined)

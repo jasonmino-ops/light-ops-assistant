@@ -26,7 +26,7 @@ export function readPrintSettingsRequest(value: unknown): PrintSettingsRequest |
   if (!row || typeof row.storeCode !== 'string' || row.storeCode !== row.storeCode.trim() || !/^[A-Za-z0-9_-]{1,64}$/.test(row.storeCode)) return null
   const keys = Object.keys(row).sort().join(',')
   const { action, storeCode, revision } = row
-  if (keys === 'action,storeCode' && (action === 'read' || action === 'queues')) return { action, storeCode }
+  if (keys === 'action,storeCode' && (action === 'read' || action === 'queues' || action === 'prepare-replacement')) return { action, storeCode }
   if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER) return null
   if (keys === 'action,revision,storeCode' && action === 'test') return { action, storeCode, revision }
   if (keys === 'action,revision,role,storeCode,transport' && action === 'test-role') {

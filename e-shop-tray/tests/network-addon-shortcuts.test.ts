@@ -479,3 +479,189 @@ describe('fixed product shortcut transactions on the actual filesystem', () => {
     release(); expect((await first).status).toBe('CREATED')
   })
 })
+
+// Managed Desktop is a distinct verified identity, never a fabricated legacy record.
+async function managedFixture(present = true) {
+  const f = await fixture()
+  const executable = path.join(f.root, 'DesktopProgram', 'E-Shop Desktop.exe')
+  await writeFile(executable, 'verified modern Desktop executable')
+  const registration: ShortcutRegistration = { source: 'windows-registry', hive: 'HKCU',
+    registryKey: 'Software\\be247cb9-f9cd-575f-b032-177e26afd518', appId: 'com.eshop.desktop', version: '0.3.0-rc.6',
+    installLocation: path.dirname(executable), executable, shortcutName: 'E-Shop Desktop', executableVerified: true }
+  const legacyReader = vi.fn(async () => { throw new Error('LEGACY_MUST_NOT_BE_REQUIRED') })
+  const modernReader = vi.fn(async () => present ? registration : null)
+  const options = { ...f.options, readDesktopRegistration: legacyReader, readManagedDesktopRegistration: modernReader }
+  return { ...f, registration, modernReader, legacyReader, managed: new ShortcutLifecycle(options),
+    managedOptions: options, freshManaged: () => new ShortcutLifecycle(options) }
+}
+
+describe('RC2 managed first-install shortcut integration', () => {
+  it('prepares only management/uninstall without reading either Desktop identity or creating business entries', async () => {
+    const f = await managedFixture(false)
+    for (const role of ['manage', 'uninstall'] as const) expect((await f.managed.ensure(role)).status).toBe('CREATED')
+    expect(f.legacyReader).not.toHaveBeenCalled(); expect(f.modernReader).not.toHaveBeenCalled()
+    await expect(readFile(f.cashier)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect((await allEvents(f)).filter(x => x.intent?.subject === 'desktop-binding')).toEqual([])
+  })
+  it('completes every role on a machine without the legacy registration, targeting the modern normal launch', async () => {
+    const f = await managedFixture()
+    for (const role of ['cashier', 'manage', 'desktop-binding', 'uninstall'] as const) expect((await f.managed.ensure(role)).status).toBe('CREATED')
+    const cashier = JSON.parse(await readFile(f.cashier, 'utf8'))
+    expect(cashier).toEqual({ target: f.registration.executable, args: '', icon: f.registration.executable,
+      iconIndex: 0, appUserModelId: 'com.eshop.desktop' })
+    const history = await allEvents(f)
+    const binding = history.find(x => x.intent?.subject === 'desktop-binding').intent
+    expect(binding.spec).toEqual(cashier); expect(binding.registration).toEqual(f.registration)
+    expect(history.find(x => x.intent?.subject === 'manage').intent.spec.args).toBe('--settings-only')
+    expect(f.legacyReader).not.toHaveBeenCalled()
+    for (const role of ['cashier', 'manage', 'desktop-binding', 'uninstall'] as const) expect((await f.freshManaged().ensure(role)).status).toBe('UNCHANGED')
+  })
+  it('does not use legacy registration when the managed Desktop is missing', async () => {
+    const f = await managedFixture(false)
+    expect(await f.managed.ensure('cashier')).toEqual({ subject: 'cashier', status: 'UNAVAILABLE' })
+    expect(await f.managed.ensure('desktop-binding')).toEqual({ subject: 'desktop-binding', status: 'UNAVAILABLE' })
+    expect(f.legacyReader).not.toHaveBeenCalled(); expect(f.shell.writeShortcutLink).not.toHaveBeenCalled()
+  })
+  it.each(['hive', 'registryKey', 'appId', 'version', 'shortcutName', 'executableVerified'] as const)('rejects unverifiable modern identity field %s before publishing an entry', async field => {
+    const f = await managedFixture(); const bad = { ...f.registration, [field]: field === 'executableVerified' ? false : 'other' }
+    f.modernReader.mockResolvedValue(bad as ShortcutRegistration)
+    await expect(f.managed.ensure('cashier')).rejects.toThrow('SHORTCUT_REGISTRATION_INVALID')
+    expect(f.shell.writeShortcutLink).not.toHaveBeenCalled()
+  })
+  it('preserves an unowned same-name cashier link and never adopts its matching target', async () => {
+    const f = await managedFixture(); const raw = JSON.stringify({ target: f.registration.executable, args: 'user-options' })
+    await writeFile(f.cashier, raw)
+    expect(await f.managed.ensure('cashier')).toMatchObject({ status: 'PRESERVED', reason: 'DESTINATION_OCCUPIED' })
+    expect(await readFile(f.cashier, 'utf8')).toBe(raw)
+  })
+  it('retains legacy owned history while safely converting only its owned cashier/binding entries', async () => {
+    const f = await managedFixture()
+    for (const role of ['cashier', 'desktop-binding'] as const) await f.lifecycle.ensure(role)
+    const before = await allEvents(f)
+    for (const role of ['cashier', 'desktop-binding'] as const) expect((await f.managed.ensure(role)).status).toBe('CREATED')
+    expect((await allEvents(f)).slice(0, before.length)).toEqual(before)
+    expect(JSON.parse(await readFile(f.cashier, 'utf8')).target).toBe(f.registration.executable)
+    await expect(f.fresh().ensure('cashier')).rejects.toThrow('SHORTCUT_MANAGED_DESKTOP_CONTEXT_REQUIRED')
+    expect(JSON.parse(await readFile(f.cashier, 'utf8')).target).toBe(f.registration.executable)
+  })
+  it('reads exact historic uninstaller ownership after the current legitimate basename changes', async () => {
+    const f = await managedFixture(); await f.managed.ensure('uninstall')
+    const current = path.join(path.dirname(f.options.networkExecutable), 'Uninstall E-Shop Network Print Add-on (TEST ONLY).exe')
+    await writeFile(current, 'verified new uninstaller')
+    const next = new ShortcutLifecycle({ ...f.managedOptions, networkUninstaller: current })
+    expect((await next.ensure('uninstall')).status).toBe('CREATED')
+    const records = await allEvents(f)
+    expect(records.some(x => x.intent?.kind === 'REPAIR')).toBe(true)
+    expect(records.at(-2).intent.spec.target).toBe(current)
+  })
+  it('retains config/state and removes only verified modern owned links on uninstall', async () => {
+    const f = await managedFixture(); const state = path.join(f.root, 'userData', 'state.keep'); await writeFile(state, 'untouched')
+    for (const role of ['cashier', 'manage', 'desktop-binding', 'uninstall'] as const) await f.managed.ensure(role)
+    const results = await f.fresh().uninstall()
+    expect(results.filter(x => x.status === 'REMOVED')).toHaveLength(4)
+    expect(await readFile(state, 'utf8')).toBe('untouched')
+    expect((await allEvents(f)).length).toBeGreaterThan(8)
+  })
+})
+
+// Model exact historical event bytes separately from the live registry. Rehash
+// the chain only while constructing fixtures; production never rewrites it.
+async function archivedManagedHistory(f: Awaited<ReturnType<typeof managedFixture>>,
+  update: (event: any) => void = event => {
+    if (event.intent?.registration?.appId === 'com.eshop.desktop') event.intent.registration.version = '0.3.0-rc.2'
+  }) {
+  const directory = path.join(f.options.directory, 'events')
+  let previous = '0'.repeat(64)
+  for (const name of (await readdir(directory)).sort()) {
+    const file = path.join(directory, name), event = JSON.parse(await readFile(file, 'utf8'))
+    update(event); event.previous = previous
+    const raw = JSON.stringify(event); await writeFile(file, raw); previous = digest(raw)
+  }
+}
+async function eventBytes(f: Awaited<ReturnType<typeof fixture>>) {
+  const directory = path.join(f.options.directory, 'events'), result: Record<string, string> = {}
+  for (const name of (await readdir(directory)).sort()) result[name] = await readFile(path.join(directory, name), 'utf8')
+  return result
+}
+async function closedManagedHistory() {
+  const f = await managedFixture()
+  for (const role of ['manage', 'uninstall', 'cashier', 'desktop-binding'] as const) await f.managed.ensure(role)
+  expect((await f.freshManaged().uninstall()).filter(item => item.status === 'REMOVED')).toHaveLength(4)
+  return f
+}
+
+describe('RC6 exact closed managed history compatibility', () => {
+  it.each(['0.3.0-rc.2', '0.3.0-rc.3', '0.3.0-rc.4', '0.3.0-rc.5', 'mixed'])('reads %s completed history, preserves bytes, and creates only current-version ownership', async version => {
+    const f = await closedManagedHistory()
+    await archivedManagedHistory(f, event => {
+      if (event.intent?.registration?.appId === 'com.eshop.desktop') event.intent.registration.version = version === 'mixed'
+        ? event.intent.subject === 'cashier' ? '0.3.0-rc.2' : '0.3.0-rc.3' : version
+    })
+    const before = await eventBytes(f)
+    expect(Object.keys(before)).toHaveLength(16)
+    expect(await f.freshManaged().recover()).toEqual([])
+    for (const role of ['manage', 'uninstall', 'cashier', 'desktop-binding'] as const) expect((await f.freshManaged().ensure(role)).status).toBe('CREATED')
+    const first = await eventBytes(f)
+    for (const [name, raw] of Object.entries(before)) expect(first[name]).toBe(raw)
+    const newIntents = (await allEvents(f)).slice(16).filter(x => x.intent?.registration)
+    expect(newIntents.map(x => x.intent.registration.version)).toEqual(['0.3.0-rc.6', '0.3.0-rc.6'])
+    for (const role of ['manage', 'uninstall', 'cashier', 'desktop-binding'] as const) expect((await f.freshManaged().ensure(role)).status).toBe('UNCHANGED')
+    expect(await eventBytes(f)).toEqual(first)
+  })
+  it.each(['recover', 'ensure', 'uninstall'])('does not use active archived ownership for %s', async operation => {
+    const f = await managedFixture(); await f.managed.ensure('cashier'); await archivedManagedHistory(f)
+    const before = await eventBytes(f), link = await readFile(f.cashier)
+    const next = f.freshManaged()
+    await expect(operation === 'ensure' ? next.ensure('cashier') : operation === 'uninstall' ? next.uninstall() : next.recover())
+      .rejects.toThrow('SHORTCUT_ARCHIVED_OWNERSHIP_NOT_CLOSED')
+    expect(await readFile(f.cashier)).toEqual(link); expect(await eventBytes(f)).toEqual(before)
+  })
+  it('does not recover a pending archived create or fabricate its decision', async () => {
+    const f = await managedFixture(); await f.managed.ensure('cashier')
+    await rm(path.join(f.options.directory, 'events', 'event-000002.json')); await archivedManagedHistory(f)
+    const before = await eventBytes(f), link = await readFile(f.cashier)
+    await expect(f.freshManaged().recover()).rejects.toThrow('SHORTCUT_ARCHIVED_OWNERSHIP_NOT_CLOSED')
+    expect(await readFile(f.cashier)).toEqual(link); expect(await eventBytes(f)).toEqual(before)
+  })
+  it.each(['0.3.0-rc.1', '0.3.0-rc.7', '0.3.0', 'unknown'])('rejects unknown archived version %s', async version => {
+    const f = await closedManagedHistory()
+    await archivedManagedHistory(f, event => { if (event.intent?.registration) event.intent.registration.version = version })
+    const before = await eventBytes(f)
+    await expect(f.freshManaged().recover()).rejects.toThrow('SHORTCUT_REGISTRATION_INVALID')
+    expect(await eventBytes(f)).toEqual(before)
+  })
+  it('rejects a non-string archived version rather than coercing a JSON array', async () => {
+    const f = await closedManagedHistory()
+    await archivedManagedHistory(f, event => { if (event.intent?.registration) event.intent.registration.version = ['0.3.0-rc.2'] })
+    const before = await eventBytes(f)
+    await expect(f.freshManaged().recover()).rejects.toThrow('SHORTCUT_REGISTRATION_INVALID')
+    expect(await eventBytes(f)).toEqual(before)
+  })
+  it.each(['0.3.0-rc.2', '0.3.0-rc.3', '0.3.0-rc.4', '0.3.0-rc.5', '0.3.0-rc.7'])('keeps live registry version %s rejected despite readable old history', async version => {
+    const f = await managedFixture(); f.modernReader.mockResolvedValue({ ...f.registration, version })
+    await expect(f.managed.ensure('cashier')).rejects.toThrow('SHORTCUT_REGISTRATION_INVALID')
+    expect(f.shell.writeShortcutLink).not.toHaveBeenCalled()
+  })
+  it.each(['hive', 'registryKey', 'appId', 'executable', 'args'])('retains archived %s identity/path restrictions', async field => {
+    const f = await closedManagedHistory(); await archivedManagedHistory(f)
+    await archivedManagedHistory(f, event => {
+      if (!event.intent?.registration) return
+      if (field === 'args') event.intent.spec.args = '--cashier'
+      else event.intent.registration[field] = field === 'hive' ? 'HKLM' : field === 'executable' ? path.join(f.root, 'other.exe') : 'other'
+    })
+    const before = await eventBytes(f)
+    await expect(f.freshManaged().recover()).rejects.toThrow(/SHORTCUT_/)
+    expect(await eventBytes(f)).toEqual(before)
+  })
+  it.each(['chain', 'backup', 'captured'])('refuses corrupt archived %s without publishing or deleting entries', async mode => {
+    const f = await closedManagedHistory(); await archivedManagedHistory(f)
+    const records = await allEvents(f), intent = records.find(x => x.intent?.kind === 'REMOVE' && x.intent.registration).intent
+    if (mode === 'chain') {
+      const file = path.join(f.options.directory, 'events', 'event-000002.json'), event = JSON.parse(await readFile(file, 'utf8'))
+      event.previous = '0'.repeat(64); await writeFile(file, JSON.stringify(event))
+    } else await writeFile(path.join(f.options.directory, 'files', `${intent.id}${mode === 'captured' ? '.captured' : ''}.lnk`), 'changed')
+    const before = await eventBytes(f), writes = f.shell.writeShortcutLink.mock.calls.length
+    await expect(f.freshManaged().ensure('manage')).rejects.toThrow(/SHORTCUT_/)
+    expect(await eventBytes(f)).toEqual(before); expect(f.shell.writeShortcutLink).toHaveBeenCalledTimes(writes)
+  })
+})

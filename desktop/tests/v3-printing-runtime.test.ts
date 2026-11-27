@@ -305,6 +305,38 @@ describe('V3PrintingRuntime execution lifecycle', () => {
     expect(coordinator.execute).not.toHaveBeenCalled()
   })
 
+  it.each(['FRONT', 'KITCHEN'] as const)('blocks an old %s local original before endpoint or ledger access', async (role) => {
+    const active = { ...batch, executionStartAt: batch.createdAt }
+    const control = { current: () => ({ controlPlane: { mode: 'V3_ACTIVE' }, batch: active }), beginExecutionLifecycle: vi.fn() }
+    const cloud = { checkOriginal: vi.fn(async () => 'EXCLUDED'), holdLocal: vi.fn() }
+    const coordinator = { execute: vi.fn() }
+    const instance = new (V3PrintingRuntime as any)({}, coordinator, control, {}, {}, cloud, 60_000, { dispose: vi.fn() })
+    await expect(instance.execute({ ...input, role })).resolves.toMatchObject({ status: 'AUTHORITY_REJECTED', reason: 'PRINT_ORIGIN_EXCLUDED' })
+    expect(control.beginExecutionLifecycle).not.toHaveBeenCalled()
+    expect(coordinator.execute).not.toHaveBeenCalled()
+    expect(cloud.holdLocal).not.toHaveBeenCalled()
+  })
+
+  it('observes the existing V2 local fallback when a formerly replaced shop is put back in V2', async () => {
+    const control = { current: () => ({ controlPlane: { mode: 'V2_ACTIVE' }, batch: null }), beginExecutionLifecycle: vi.fn() }
+    const cloud = { checkOriginal: vi.fn(), holdLocal: vi.fn() }
+    const instance = new (V3PrintingRuntime as any)({}, {}, control, {}, {}, cloud, 60_000, { dispose: vi.fn() })
+    await expect(instance.execute(input)).resolves.toEqual({ status: 'V2_FALLBACK_REQUIRED' })
+    expect(cloud.checkOriginal).not.toHaveBeenCalled()
+  })
+
+  it('does not acknowledge durability or touch hardware when an unseen original and HOLD_LOCAL are both unverifiable', async () => {
+    const active = { ...batch, executionStartAt: batch.createdAt }
+    const control = { current: () => ({ controlPlane: { mode: 'V3_ACTIVE' }, batch: active }), beginExecutionLifecycle: vi.fn() }
+    const cloud = { checkOriginal: vi.fn(async () => 'UNAVAILABLE'), holdLocal: vi.fn(async () => null) }
+    const coordinator = { execute: vi.fn() }
+    const instance = new (V3PrintingRuntime as any)({}, coordinator, control, {}, {}, cloud, 60_000, { dispose: vi.fn() })
+    const result = await instance.execute({ ...input, role: 'KITCHEN' })
+    expect(result).toEqual({ status: 'REJECTED', reason: 'V3_DURABLE_ADMISSION_REJECTED' })
+    expect(cloud.holdLocal).toHaveBeenCalledTimes(1)
+    expect(coordinator.execute).not.toHaveBeenCalled()
+  })
+
   it('issues operator recovery proof only when the exact canonical job has no local ledger record', async () => {
     const orderNo = 'ORDER-RECOVERY-001'
     const role = 'KITCHEN' as const

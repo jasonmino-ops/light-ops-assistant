@@ -70,6 +70,25 @@ function harness() {
 }
 
 describe('native device printing settings', () => {
+  it('prepares a different bound target only on explicit request with a clean local outbox', async () => {
+    const h = harness()
+    const prepare = vi.fn(async () => ({ deviceId: 'device-a', confirmationId: 'receipt' }))
+    Object.assign(h.cloud, { prepareReplacement: prepare })
+    Object.assign(h.controlPlane, { isOtherPrintOwner: (other: string) => other !== 'device-a' })
+    const request = { action: 'prepare-replacement', storeCode } as const
+    expect((await h.runtime.printSettings(request)).ok).toBe(false)
+    h.controlPlane.current.mockReturnValue({ status: 'FENCED', controlPlane: { mode: 'V3_ACTIVE', ownerDeviceId: 'old-device' } } as any)
+    expect(await h.runtime.printSettings(read)).toMatchObject({ ok: true, state: { replacementAvailable: true } })
+    expect(prepare).not.toHaveBeenCalled()
+    h.outbox.list.mockReturnValueOnce([{ outcome: 'UNKNOWN' }])
+    expect((await h.runtime.printSettings(request)).ok).toBe(false)
+    expect(prepare).not.toHaveBeenCalled()
+    expect(await h.runtime.printSettings(request)).toEqual({ ok: true, replacementTarget: { deviceId: 'device-a', confirmationId: 'receipt' } })
+    expect(prepare).toHaveBeenCalledTimes(1)
+    expect(h.cloud.receive).not.toHaveBeenCalled()
+    expect(h.runTest).not.toHaveBeenCalled()
+  })
+
   it('reads the current roles without provisioning, discovery, claims or execution', async () => {
     const h = harness()
     expect(await h.runtime.printSettings(read)).toMatchObject({

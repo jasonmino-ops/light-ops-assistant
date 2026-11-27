@@ -64,6 +64,8 @@ export class V3ControlPlaneRuntime {
     private readonly intervalMs = 30_000,
   ) {}
 
+  public isOtherPrintOwner(deviceId: string): boolean { return deviceId !== this.deviceId }
+
   public current(): V3RuntimeSnapshot {
     return { ...this.snapshot }
   }

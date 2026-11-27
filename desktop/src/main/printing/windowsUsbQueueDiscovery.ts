@@ -3,8 +3,9 @@ import { win32 } from 'node:path'
 import { promisify } from 'node:util'
 import { parseWindowsUsbEndpoint, windowsUsbEndpointKey, type WindowsUsbEndpoint } from './windowsUsbEndpoint'
 import { WindowsUsbPrintBoundary } from './windowsUsbPrintBoundary'
+import { WINDOWS_USB_IDENTITY_SCRIPT } from './windowsUsbIdentityScript'
 
-const USB_INVENTORY = String.raw`
+export const WINDOWS_USB_QUEUE_INVENTORY_SCRIPT = WINDOWS_USB_IDENTITY_SCRIPT + String.raw`
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 if ((Get-Service -Name Spooler).Status -ne 'Running') { exit 1 }
@@ -13,8 +14,7 @@ if ($queues.Count -gt 16) { exit 1 }
 $result = @(
   foreach ($queue in $queues) {
     try {
-      $portKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\USB Monitor\Ports\' + $queue.PortName
-      $id = (Get-ItemProperty -LiteralPath $portKey -Name 'Device Id').'Device Id'
+      $id = Resolve-UsbPortDevice $queue.PortName
       if ($id) {
         @{ kind = 'windows-usb'; queueName = $queue.Name; portName = $queue.PortName; deviceInstanceId = $id.ToUpperInvariant() }
       }
@@ -31,7 +31,7 @@ export async function discoverWindowsUsbQueues(): Promise<WindowsUsbEndpoint[]> 
   const system = win32.join(root, 'System32')
   const powershell = win32.join(system, 'WindowsPowerShell', 'v1.0')
   const { stdout } = await promisify(execFile)(win32.join(powershell, 'powershell.exe'), [
-    '-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(USB_INVENTORY, 'utf16le').toString('base64'),
+    '-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(WINDOWS_USB_QUEUE_INVENTORY_SCRIPT, 'utf16le').toString('base64'),
   ], {
     cwd: system, windowsHide: true, timeout: 5_000, maxBuffer: 32_768,
     env: { SystemRoot: root, WINDIR: root, PATH: system, PSModulePath: win32.join(powershell, 'Modules'),

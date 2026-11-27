@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto'
 import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-export const DESKTOP_VERSION = '0.2.0-pilot.2'
-export const ADDON_VERSION = '0.1.0-commercial-rc.10'
+export const DESKTOP_VERSION = '0.3.0-rc.6'
+export const ADDON_VERSION = '0.1.0-commercial-rc.15'
 export const ADDON_INSTALLER_FILENAME = `E-Shop-Network-Print-Addon-TEST-${ADDON_VERSION}-x64.exe`
 export const ADDON_MANIFEST_FILENAME = 'network-print-addon-manifest.json'
-export const PRODUCT_CANDIDATE_COMMIT = '60209a74ab036bddeaf6279c062a769a4ea2db77'
+export const PRODUCT_CANDIDATE_COMMIT = '0217be8cb6a9f60d01a3ba47f69492a6948c2f8d'
 export const GOVERNANCE_HEAD_COMMIT = 'e4563bbf0dd0e61606dcd6bcb37cc83862abdb30'
 
 export function sha256(bytes) {

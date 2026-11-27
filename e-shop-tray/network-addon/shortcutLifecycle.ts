@@ -33,6 +33,8 @@ export type ShortcutOptions = {
   networkUninstaller?: string
   shell: ShortcutShell
   readDesktopRegistration(): Promise<ShortcutRegistration | null>
+  /** Managed single-installer only. Legacy migration keeps its own reader. */
+  readManagedDesktopRegistration?: () => Promise<ShortcutRegistration | null>
   readNetworkRegistration(): Promise<ShortcutRegistration | null>
   /** Windows adapter must reject ALL reparse points, not just symlinks. */
   assertNormalDirectory?: (directory: string) => Promise<void>
@@ -58,8 +60,14 @@ const MAX_LINK = 128 * 1024, MAX_EVENT = 16 * 1024, MAX_EVENTS = 2048
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const HASH = /^[0-9a-f]{64}$/
 const NETWORK_APP = 'com.elife.eshop.networkprint.addon', DESKTOP_APP = 'com.eshop.desktop.prototype'
+const MANAGED_DESKTOP_APP = 'com.eshop.desktop'
+const MANAGED_DESKTOP_VERSION = '0.3.0-rc.6'
+// Read-only compatibility for exact prior candidates. These registrations
+// cannot authorize a current operation: history() requires closed ownership.
+const ARCHIVED_MANAGED_VERSIONS = ['0.3.0-rc.2', '0.3.0-rc.3', '0.3.0-rc.4', '0.3.0-rc.5']
 const NETWORK_KEY = 'Software\\3b0d00d3-14c9-55d6-bef2-f6474bb2de71'
 const DESKTOP_KEY = 'Software\\1acbd53d-b2f7-5af7-b432-3048068fa60f'
+const MANAGED_DESKTOP_KEY = 'Software\\be247cb9-f9cd-575f-b032-177e26afd518'
 const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex')
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT'
 const exists = (error: unknown) => (error as NodeJS.ErrnoException).code === 'EEXIST'
@@ -80,16 +88,23 @@ function equalPath(left: string, right: string) {
 function parseSpec(value: unknown): ShortcutSpec {
   const data = object(value, ['target', 'args', 'icon', 'iconIndex', 'appUserModelId'])
   if (typeof data.args !== 'string' || data.args.length > 64 || typeof data.appUserModelId !== 'string'
-    || ![NETWORK_APP, DESKTOP_APP].includes(data.appUserModelId) || data.iconIndex !== 0) fail()
+    || ![NETWORK_APP, DESKTOP_APP, MANAGED_DESKTOP_APP].includes(data.appUserModelId) || data.iconIndex !== 0) fail()
   return { target: absolute(data.target), args: data.args, icon: absolute(data.icon), iconIndex: 0, appUserModelId: data.appUserModelId }
 }
 function sameSpec(actual: ShortcutSpec, expected: ShortcutSpec) {
   return equalPath(actual.target, expected.target) && actual.args === expected.args && equalPath(actual.icon, expected.icon)
     && actual.iconIndex === expected.iconIndex && actual.appUserModelId === expected.appUserModelId
 }
-function parseRegistration(value: unknown, desktop: boolean): ShortcutRegistration {
+function parseRegistration(value: unknown, desktop: boolean, managed = false, archived = false): ShortcutRegistration {
   const data = object(value, ['source', 'hive', 'registryKey', 'appId', 'version', 'installLocation', 'executable', 'shortcutName', 'executableVerified'])
   const location = absolute(data.installLocation), executable = absolute(data.executable)
+  if (managed) {
+    if (!desktop || data.source !== 'windows-registry' || data.hive !== 'HKCU'
+      || data.registryKey !== MANAGED_DESKTOP_KEY || data.appId !== MANAGED_DESKTOP_APP
+      || !(data.version === MANAGED_DESKTOP_VERSION || (archived && typeof data.version === 'string' && ARCHIVED_MANAGED_VERSIONS.includes(data.version))) || data.shortcutName !== 'E-Shop Desktop' || data.executableVerified !== true
+      || !equalPath(executable, path.join(location, 'E-Shop Desktop.exe'))) fail('SHORTCUT_REGISTRATION_INVALID')
+    return data as ShortcutRegistration
+  }
   if (data.source !== 'windows-registry' || !['HKCU', 'HKLM'].includes(String(data.hive))
     || (!desktop && data.hive !== 'HKCU') || data.registryKey !== (desktop ? DESKTOP_KEY : NETWORK_KEY)
     || data.appId !== (desktop ? DESKTOP_APP : NETWORK_APP) || data.executableVerified !== true
@@ -218,14 +233,25 @@ export class ShortcutLifecycle {
     if (!(legacy ? LEGACY_SHORTCUTS : SHORTCUT_ROLES).includes(data.subject as never)
       || data.path !== this.destination(data.subject as Intent['subject'])) fail()
     const spec = parseSpec(data.spec)
-    const registration = data.registration === null ? null : parseRegistration(data.registration, data.subject === 'desktop' || data.subject === 'desktop-binding')
+    const modern = !legacy && ['cashier', 'desktop-binding'].includes(String(data.subject))
+      && (data.registration as Record<string, unknown> | null)?.appId === MANAGED_DESKTOP_APP
+    const registration = data.registration === null ? null : parseRegistration(data.registration,
+      modern || data.subject === 'desktop' || data.subject === 'desktop-binding', modern, true)
     if (legacy && (!registration || spec.args !== '' || spec.target !== registration.executable || spec.appUserModelId !== registration.appId)) fail()
     if (!legacy) {
-      const args = data.subject === 'cashier' ? '--cashier' : data.subject === 'manage' ? '--settings-only' : data.subject === 'desktop-binding' ? '--admin' : ''
-      const target = data.subject === 'desktop-binding' ? registration?.executable : data.subject === 'uninstall' ? this.options.networkUninstaller : this.options.networkExecutable
+      const args = modern ? '' : data.subject === 'cashier' ? '--cashier' : data.subject === 'manage' ? '--settings-only' : data.subject === 'desktop-binding' ? '--admin' : ''
+      const target = modern || data.subject === 'desktop-binding' ? registration?.executable : data.subject === 'uninstall' ? this.options.networkUninstaller : this.options.networkExecutable
       const validArgs = data.subject === 'manage' ? [args, '--manage'] : [args]
-      if (!validArgs.includes(spec.args) || (target && !equalPath(spec.target, target)) || (data.subject === 'desktop-binding' && !registration)
-        || spec.appUserModelId !== (data.subject === 'desktop-binding' ? DESKTOP_APP : NETWORK_APP)) fail()
+      // An archived, owned uninstall link can name a prior legitimate product
+      // filename. Keep its history readable when the current filename changes.
+      const historicalUninstaller = data.subject === 'uninstall'
+        && equalPath(path.dirname(spec.target), path.dirname(this.options.networkExecutable))
+        && ['Uninstall E-Shop-Network-Print-Addon.exe', 'Uninstall E-Shop Network Print Add-on.exe',
+          'Uninstall E-Shop Network Print Add-on (TEST ONLY).exe'].includes(path.basename(spec.target))
+      if (!validArgs.includes(spec.args) || (target && !equalPath(spec.target, target) && !historicalUninstaller)
+        || ((modern || data.subject === 'desktop-binding') && !registration)
+        || (data.subject === 'uninstall' && !historicalUninstaller)
+        || spec.appUserModelId !== (modern ? MANAGED_DESKTOP_APP : data.subject === 'desktop-binding' ? DESKTOP_APP : NETWORK_APP)) fail()
     }
     if (!equalPath(spec.icon, spec.target)) fail()
     if ((data.kind === 'MIGRATE' && data.registration === null)
@@ -259,6 +285,24 @@ export class ShortcutLifecycle {
       }
       history.events.push(data as Event); history.hashes.push(digest(raw))
       await this.syncFile(path.join(this.events, name))
+    }
+    // Old records are readable evidence, never current deletion/repair rights.
+    // Pending old transactions and old active owners require their original
+    // installer; do not recover them with a new candidate's authority.
+    const archived = history.intents.filter(intent => intent.registration?.appId === MANAGED_DESKTOP_APP
+      && intent.registration.version !== MANAGED_DESKTOP_VERSION)
+    for (const intent of archived) {
+      const decision = history.decisions.get(intent.id)
+      if (!decision || !['CREATE', 'REMOVE'].includes(intent.kind)) fail('SHORTCUT_ARCHIVED_OWNERSHIP_NOT_CLOSED')
+      if (intent.kind === 'CREATE' && decision.outcome === 'APPLIED'
+        && !history.intents.some(removal => removal.kind === 'REMOVE' && removal.originalId === intent.id
+          && removal.registration?.version === intent.registration!.version
+          && history.decisions.get(removal.id)?.outcome === 'APPLIED')) fail('SHORTCUT_ARCHIVED_OWNERSHIP_NOT_CLOSED')
+      if (intent.kind === 'REMOVE' && decision.outcome === 'APPLIED') {
+        const original = history.intents.find(item => item.id === intent.originalId)!
+        if (original.registration?.version !== intent.registration!.version
+          || !await this.matches(this.captured(intent), intent)) fail('SHORTCUT_ARCHIVED_OWNERSHIP_NOT_CLOSED')
+      }
     }
     await this.syncDirectory(this.events)
     return history
@@ -341,10 +385,11 @@ export class ShortcutLifecycle {
     return results
   }
   async recover(): Promise<ShortcutResult[]> { return this.locked(async () => this.recoverHistory(await this.history())) }
-  private async registration(desktop: boolean) {
-    const raw = await (desktop ? this.options.readDesktopRegistration() : this.options.readNetworkRegistration())
+  private async registration(desktop: boolean, managed = false) {
+    const raw = await (managed ? this.options.readManagedDesktopRegistration!()
+      : desktop ? this.options.readDesktopRegistration() : this.options.readNetworkRegistration())
     if (raw === null) return null
-    const registration = parseRegistration(raw, desktop)
+    const registration = parseRegistration(raw, desktop, managed)
     if (!desktop && !equalPath(registration.executable, this.options.networkExecutable)) fail('SHORTCUT_REGISTRATION_INVALID')
     await this.normalDirectory(path.dirname(registration.executable))
     const executable = await lstat(registration.executable)
@@ -353,11 +398,13 @@ export class ShortcutLifecycle {
   }
   private async roleSpec(role: ShortcutRole): Promise<{ spec: ShortcutSpec; registration: ShortcutRegistration | null } | null> {
     this.destination(role)
-    const registration = role === 'desktop-binding' ? await this.registration(true) : null
-    const target = role === 'desktop-binding' ? registration?.executable : role === 'uninstall' ? this.options.networkUninstaller : this.options.networkExecutable
+    const modern = Boolean(this.options.readManagedDesktopRegistration) && ['cashier', 'desktop-binding'].includes(role)
+    const registration = modern ? await this.registration(true, true) : role === 'desktop-binding' ? await this.registration(true) : null
+    const target = modern || role === 'desktop-binding' ? registration?.executable : role === 'uninstall' ? this.options.networkUninstaller : this.options.networkExecutable
     if (!target) return null
-    const args = role === 'cashier' ? '--cashier' : role === 'manage' ? '--settings-only' : role === 'desktop-binding' ? '--admin' : ''
-    return { spec: { target, args, icon: target, iconIndex: 0, appUserModelId: role === 'desktop-binding' ? DESKTOP_APP : NETWORK_APP }, registration }
+    const args = modern ? '' : role === 'cashier' ? '--cashier' : role === 'manage' ? '--settings-only' : role === 'desktop-binding' ? '--admin' : ''
+    return { spec: { target, args, icon: target, iconIndex: 0,
+      appUserModelId: modern ? MANAGED_DESKTOP_APP : role === 'desktop-binding' ? DESKTOP_APP : NETWORK_APP }, registration }
   }
   private owner(history: History, role: ShortcutRole) {
     return [...history.intents].reverse().find(intent => intent.kind === 'CREATE' && intent.subject === role
@@ -369,6 +416,10 @@ export class ShortcutLifecycle {
     if (!(SHORTCUT_ROLES as readonly string[]).includes(role)) fail('SHORTCUT_ROLE_INVALID')
     return this.locked(async () => {
       const history = await this.history(); await this.recoverHistory(history)
+      if (!this.options.readManagedDesktopRegistration && SHORTCUT_ROLES.some(role =>
+        this.owner(history, role)?.registration?.appId === MANAGED_DESKTOP_APP)) {
+        fail('SHORTCUT_MANAGED_DESKTOP_CONTEXT_REQUIRED')
+      }
       const expected = await this.roleSpec(role)
       if (!expected) return { subject: role, status: 'UNAVAILABLE' }
       const destination = this.destination(role)

@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { customerUrl, employeeUrl, getConfig, isAllowedNavigation } from './config'
 import { logger } from './logger'
 import { updateHealth, recordHealthError } from './runtimeHealth'
+import { trustedPrintOrigins } from './printing/trustedPrintOrigins'
 import { cartSyncService } from './cartSyncService'
 import { IPC_CHANNELS, type WindowRole } from '../shared/ipcChannels'
 import {
@@ -204,6 +205,7 @@ export class WindowManager {
     this.employeeWindow = win
     this.roleByWebContentsId.set(win.webContents.id, 'employee')
     this.hardenWebContents(win, 'employee')
+    trustedPrintOrigins.attach(win.webContents, this.launchConfig().baseUrl)
     updateHealth({ employeeWindow: 'starting' }, 'employee-window.creating')
 
     if (getConfig().autoFullscreen) {

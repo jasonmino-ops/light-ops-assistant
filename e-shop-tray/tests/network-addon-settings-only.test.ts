@@ -55,7 +55,9 @@ async function hashes(directory: string, prefix = ''): Promise<Record<string, st
   return result
 }
 type FixtureOptions = { old?: boolean; args?: string[]; enabled?: boolean; unreachable?: boolean;
-  cold?: boolean; fresh?: boolean; missingBinding?: boolean; interruptedRecovery?: boolean }
+  cold?: boolean; fresh?: boolean; missingBinding?: boolean; interruptedRecovery?: boolean;
+  bindingFailure?: string; managedDesktopValid?: boolean; desktopLaunch?: boolean; defaultApp?: boolean;
+  singleInstanceLock?: boolean; forwardSecondInstance?: (argv: string[]) => void }
 async function mainFixture(options: FixtureOptions = {}) {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'addon-settings-only-'))
@@ -82,6 +84,14 @@ async function mainFixture(options: FixtureOptions = {}) {
   const before = await hashes(directory)
   const counts = { profiles: 0, pollers: 0, starts: 0, stops: 0, resume: 0, recovery: 0, enables: 0, pauses: 0 }
   let profile!: profileModule.NetworkAddonProfile, lifecycle!: ColdModeLifecycle, poller!: RelayPoller
+  let bindingFailure = options.bindingFailure
+  const desktopExecutable = 'C:\\Users\\Fixture\\AppData\\Local\\Programs\\E-Shop Desktop\\E-Shop Desktop.exe'
+  const desktopSpawn = vi.fn(() => {
+    if (!options.desktopLaunch) throw new Error('NO_REAL_PROCESS')
+    const child = Object.assign(new EventEmitter(), { unref: vi.fn() })
+    queueMicrotask(() => child.emit('spawn')); return child
+  })
+  const ipcHandlers = new Map<string, (...args: any[]) => Promise<any>>()
   let unreachable = options.unreachable ?? false, missingBinding = options.missingBinding ?? false
   let validationHold: ReturnType<typeof deferred> | undefined
   const validateReached = deferred()
@@ -90,9 +100,14 @@ async function mainFixture(options: FixtureOptions = {}) {
   const deliver = vi.fn(async () => ({ bytesWritten: 10, durationMs: 1, effectBoundary: 'CROSSED' as const }))
   const render = vi.fn(async (_request: contract.NetworkRequest) => Uint8Array.from([1, 2, 3]))
   const ready: Promise<unknown>[] = []
+  const argvPrefix = ['synthetic.exe', ...(options.defaultApp ? ['synthetic-app'] : [])]
+  const processArgv = [...argvPrefix, ...(options.args ?? ['--settings-only'])]
   const app = Object.assign(new EventEmitter(), {
     getPath: () => root, setPath: vi.fn(), getVersion: () => 'TEST-ONLY',
-    requestSingleInstanceLock: vi.fn(() => true), exit: vi.fn(), quit: vi.fn(),
+    requestSingleInstanceLock: vi.fn(() => {
+      if (options.singleInstanceLock === false) options.forwardSecondInstance?.(processArgv)
+      return options.singleInstanceLock !== false
+    }), exit: vi.fn(), quit: vi.fn(),
     getLoginItemSettings: () => ({ launchItems: [] }), setLoginItemSettings: vi.fn(),
     whenReady: () => ({ then: (callback: () => unknown) => {
       const promise = Promise.resolve().then(callback); ready.push(promise); return promise
@@ -100,15 +115,15 @@ async function mainFixture(options: FixtureOptions = {}) {
   })
   const windows: FakeWindow[] = []
   class FakeWindow extends EventEmitter {
-    webContents = Object.assign(new EventEmitter(), { mainFrame: {}, setWindowOpenHandler: vi.fn(),
+    webContents = Object.assign(new EventEmitter(), { mainFrame: { url: '' }, setWindowOpenHandler: vi.fn(),
       session: { setPermissionRequestHandler: vi.fn(), webRequest: { onBeforeRequest: vi.fn() } } })
-    show = vi.fn(); focus = vi.fn(); hide = vi.fn(); loadFile = vi.fn(async () => {})
+    show = vi.fn(); focus = vi.fn(); hide = vi.fn(); loadFile = vi.fn(async (file: string) => { this.webContents.mainFrame.url = url.pathToFileURL(file).href })
     isDestroyed() { return false }
     constructor(_options: unknown) { super(); windows.push(this) }
   }
   let trayMenu: { label: string; click(): void }[] = []
   const electron = { app, BrowserWindow: FakeWindow, dialog: { showMessageBox: vi.fn(async () => ({ response: 0 })) },
-    ipcMain: { handle: vi.fn() }, Menu: { buildFromTemplate: (items: typeof trayMenu) => { trayMenu = items; return items } },
+    ipcMain: { handle: vi.fn((name: string, handler: (...args: any[]) => Promise<any>) => { ipcHandlers.set(name, handler) }) }, Menu: { buildFromTemplate: (items: typeof trayMenu) => { trayMenu = items; return items } },
     nativeImage: { createFromPath: () => ({ resize: () => ({}) }) },
     safeStorage: { isEncryptionAvailable: () => true, encryptString: (value: string) => Buffer.from(value),
       decryptString: (value: Buffer) => value.toString() }, shell: {},
@@ -123,18 +138,22 @@ async function mainFixture(options: FixtureOptions = {}) {
     } })
     entryModule = exports as typeof coordinatorModule
   }
+  const readDesktopBinding = vi.fn(async () => {
+    if (missingBinding) throw new Error('DESKTOP_BINDING_NOT_ACTIVE')
+    return { ...identity, deviceSecret: 'synthetic-test-secret' }
+  })
+  const readManagedChild = vi.fn(async () => {
+    if (bindingFailure) throw new Error(bindingFailure)
+    if (missingBinding) return null
+    return { ...identity, deviceSecret: 'synthetic-test-secret', bindingState: 'CLOUD_BOUND' }
+  })
+  const fetch = vi.fn(() => { throw new Error('NO_REAL_HTTP') })
   const imports: Record<string, unknown> = {
-    electron, 'node:crypto': { createHash, randomUUID }, 'node:fs/promises': fs, 'node:child_process': { spawn: () => { throw new Error('NO_REAL_PROCESS') } },
+    electron, 'node:crypto': { createHash, randomUUID }, 'node:fs/promises': fs, 'node:child_process': { spawn: desktopSpawn },
     'node:path': path, 'node:url': url,
     '../src/cloudRelayClient': { CloudRelayClient: class { constructor() { return client } } },
-    '../src/desktopBindingIdentity': { desktopBindingIdentityPath: () => 'synthetic-binding', readDesktopBindingIdentity: async () => {
-      if (missingBinding) throw new Error('DESKTOP_BINDING_NOT_ACTIVE')
-      return { ...identity, deviceSecret: 'synthetic-test-secret' }
-    } },
-    '../src/managedPrintChildIdentity': { consumeManagedPrintChildIdentity: async () => {
-      if (missingBinding) return null
-      return { ...identity, deviceSecret: 'synthetic-test-secret', bindingState: 'CLOUD_BOUND' }
-    } },
+    '../src/desktopBindingIdentity': { desktopBindingIdentityPath: () => 'synthetic-binding', readDesktopBindingIdentity: readDesktopBinding },
+    '../src/managedPrintChildIdentity': { consumeManagedPrintChildIdentity: readManagedChild },
     '../src/networkNodeConfig': { ...nodes, protectNetworkDirectory: async () => {} },
     '../src/networkContract': contract,
     '../src/networkDiscovery': { ...discovery, getWindowsLocalNetworks: async () => ({ interfaces, routes: [] }),
@@ -167,16 +186,18 @@ async function mainFixture(options: FixtureOptions = {}) {
       async enable(...args: Parameters<ColdModeLifecycle['enable']>) { counts.enables++; await super.enable(...args) }
       async pause() { counts.pauses++; await super.pause() }
     } },
-    './entryCoordinator': entryModule, './shortcutLifecycle': {}, './shortcutWindows': {},
+    './entryCoordinator': entryModule, './shortcutLifecycle': {}, './shortcutWindows': {
+      readShortcutRegistration: async () => ({}), managedDesktopRegistration: async () => options.managedDesktopValid
+        ? { executable: desktopExecutable } : null },
   }
   type Api = { status(): Promise<Record<string, any>>; perform(action: string, value?: unknown): Promise<any>;
     entry: coordinatorModule.EntryCoordinator; dispatchEntry(intent: coordinatorModule.EntryIntent): Promise<void> }
   const context = { exports: {}, require: (name: string) => {
     if (!(name in imports)) throw new Error(`UNEXPECTED_IMPORT:${name}`)
     return imports[name]
-  }, __dirname, process: { platform: 'win32', arch: 'x64', env: {}, execPath: 'synthetic.exe', argv: ['synthetic.exe', ...(options.args ?? ['--settings-only'])] },
-  Buffer, Uint8Array, AbortController, AbortSignal, URL, URLSearchParams, Error,
-  fetch: () => { throw new Error('NO_REAL_HTTP') }, __api: undefined as Api | undefined }
+  }, __dirname, process: { platform: 'win32', arch: 'x64', env: {}, execPath: 'synthetic.exe', argv: processArgv, defaultApp: options.defaultApp },
+  Buffer, Uint8Array, AbortController, AbortSignal, URL, URLSearchParams, Error, setTimeout, clearTimeout,
+  fetch, __api: undefined as Api | undefined }
   runInNewContext(compile(`${source('main', options.old)}\nglobalThis.__api = { status, perform, entry, dispatchEntry };`), context)
   async function settle() {
     // Electron callbacks handle their own rejection (including bad second-instance
@@ -188,11 +209,14 @@ async function mainFixture(options: FixtureOptions = {}) {
   const api = context.__api!
   releases.push(async () => { if (lifecycle) await lifecycle.safeExit() })
   return { ...api, before, directory, app, windows, counts, client, deliver, render, validateReached,
+    desktopSpawn, desktopExecutable, readDesktopBinding, readManagedChild, fetch,
+    setBindingFailure(value: string) { bindingFailure = value },
+    invoke(action: string) { const web = windows[0].webContents; return ipcHandlers.get('network-addon:action')!({ sender: web, senderFrame: web.mainFrame }, action, {}) },
     get profile() { return profile }, get lifecycle() { return lifecycle }, get poller() { return poller },
     get menu() { return trayMenu }, settle,
     reachable() { unreachable = false }, bind() { missingBinding = false },
     holdValidation() { validationHold = deferred(); return validationHold },
-    async second(args: string[]) { app.emit('second-instance', {}, ['synthetic.exe', ...args]); await settle() },
+    async second(args: string[]) { app.emit('second-instance', {}, [...argvPrefix, ...args]); await settle() },
     snapshot() { return { ...counts, timers: vi.getTimerCount(), waiting: lifecycle?.recoveryWaiting,
       generation: (lifecycle as unknown as { recoveryGeneration: number })?.recoveryGeneration,
       started: lifecycle?.everStartedPoller, enabled: profile?.snapshot().enabled } },
@@ -313,8 +337,69 @@ describe('M1 actual main settings-only lifecycle', () => {
     expect(f.windows).toHaveLength(1)
   })
 
-  it('installer-upgrade second-instance drains the resident lifecycle before replacement', async () => {
-    const f = await mainFixture({ args: ['--manage'] })
+  it.each([false, true])('installer-upgrade cold start accepts only the actual executable/app prefix (defaultApp=%s)', async defaultApp => {
+    const f = await mainFixture({ args: ['--installer-upgrade'], defaultApp, fresh: true })
+    expect(f.app.requestSingleInstanceLock).toHaveBeenCalledTimes(1)
+    expect(f.app.exit).toHaveBeenCalledTimes(1); expect(f.app.exit).toHaveBeenCalledWith(0)
+    expect(f.app.quit).not.toHaveBeenCalled()
+    expect(f.readDesktopBinding).not.toHaveBeenCalled(); expect(f.readManagedChild).not.toHaveBeenCalled()
+    expect(f.snapshot()).toMatchObject({ profiles: 0, pollers: 0, starts: 0, resume: 0, stops: 0, timers: 0 })
+    expect(f.windows).toHaveLength(0); expect(f.menu).toEqual([])
+    expect(await hashes(f.directory)).toEqual(f.before)
+    for (const spy of [f.fetch, f.client.receive, f.client.markExecuting, f.client.reportResult,
+      f.client.networkQueueState, f.deliver, f.render]) expect(spy).not.toHaveBeenCalled()
+  })
+
+  const invalidMaintenance = [
+    ['--installer-upgrade', '--installer-upgrade'], ['--installer-upgrade', 'extra'],
+    ['--installer-upgrade', '--settings-only'], ['--background', '--installer-upgrade'],
+    ['--installer-upgrade', '--install-shortcuts'], ['--installer-upgrade', '--uninstall-shortcuts'],
+  ]
+  it.each([false, true])('malformed cold maintenance is rejected before lock or initialization (defaultApp=%s)', async defaultApp => {
+    for (const args of invalidMaintenance) {
+      const f = await mainFixture({ args, defaultApp, fresh: true })
+      expect(f.app.exit).toHaveBeenCalledTimes(1); expect(f.app.exit).toHaveBeenCalledWith(8)
+      expect(f.app.requestSingleInstanceLock).not.toHaveBeenCalled(); expect(f.app.quit).not.toHaveBeenCalled()
+      expect(f.readDesktopBinding).not.toHaveBeenCalled(); expect(f.readManagedChild).not.toHaveBeenCalled()
+      expect(f.snapshot()).toMatchObject({ profiles: 0, pollers: 0, starts: 0, resume: 0, stops: 0, timers: 0 })
+      expect(f.windows).toHaveLength(0); expect(await hashes(f.directory)).toEqual(f.before)
+      for (const spy of [f.fetch, f.client.receive, f.client.markExecuting, f.client.reportResult,
+        f.client.networkQueueState, f.deliver, f.render]) expect(spy).not.toHaveBeenCalled()
+    }
+  })
+
+  it.each([false, true])('malformed resident maintenance cannot quit, activate or retry a failed binding (defaultApp=%s)', async defaultApp => {
+    const f = await mainFixture({ defaultApp, missingBinding: true, fresh: true })
+    const before = f.snapshot(), bytes = await hashes(f.directory), bindingReads = f.readManagedChild.mock.calls.length
+    for (const args of invalidMaintenance) await f.second(args)
+    expect(f.app.exit).not.toHaveBeenCalled(); expect(f.app.quit).not.toHaveBeenCalled()
+    expect(f.readManagedChild).toHaveBeenCalledTimes(bindingReads); expect(f.readDesktopBinding).not.toHaveBeenCalled()
+    expect(f.snapshot()).toEqual(before); expect(await hashes(f.directory)).toEqual(bytes)
+    expect(await f.status()).toMatchObject({ code: 'ADDON_INSTALLER_UPGRADE_ARGUMENTS_REJECTED', activation: 'PENDING' })
+    expect(f.entry.isExiting).toBe(false)
+    for (const spy of [f.fetch, f.client.receive, f.client.markExecuting, f.client.reportResult,
+      f.client.networkQueueState, f.deliver, f.render]) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])('maintenance helper losing its lock forwards the actual argv and only drains the resident (defaultApp=%s)', async defaultApp => {
+    const resident = await mainFixture({ defaultApp })
+    const forwarded = vi.fn((argv: string[]) => { resident.app.emit('second-instance', {}, argv) })
+    const helper = await mainFixture({ args: ['--installer-upgrade'], defaultApp, fresh: true,
+      singleInstanceLock: false, forwardSecondInstance: forwarded })
+    await resident.settle()
+    expect(forwarded).toHaveBeenCalledTimes(1)
+    expect(forwarded).toHaveBeenCalledWith(['synthetic.exe', ...(defaultApp ? ['synthetic-app'] : []), '--installer-upgrade'])
+    expect(helper.app.quit).toHaveBeenCalledTimes(1); expect(helper.app.exit).not.toHaveBeenCalled()
+    expect(helper.readManagedChild).not.toHaveBeenCalled(); expect(helper.readDesktopBinding).not.toHaveBeenCalled()
+    expect(helper.snapshot()).toMatchObject({ profiles: 0, pollers: 0, starts: 0, resume: 0 })
+    expect(resident.counts.stops).toBe(1); expect(resident.app.quit).toHaveBeenCalledTimes(1)
+    expect(resident.counts.starts).toBe(0); expect(resident.counts.resume).toBe(0)
+    expect(resident.fetch).not.toHaveBeenCalled(); expect(helper.fetch).not.toHaveBeenCalled()
+    expect(resident.client.receive).not.toHaveBeenCalled(); expect(helper.client.receive).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])('installer-upgrade second-instance drains the resident lifecycle before replacement (defaultApp=%s)', async defaultApp => {
+    const f = await mainFixture({ args: ['--manage'], defaultApp })
     await f.second(['--installer-upgrade'])
 
     expect(f.counts.stops).toBe(1)
@@ -322,17 +407,33 @@ describe('M1 actual main settings-only lifecycle', () => {
     expect(f.lifecycle?.restartRequired).toBe(true)
   })
 
-  it('installer-upgrade remains fail-closed when safe exit does not complete', async () => {
-    const f = await mainFixture({ args: ['--manage'] })
+  it.each([false, true])('installer-upgrade remains fail-closed when safe exit does not complete (defaultApp=%s)', async defaultApp => {
+    const f = await mainFixture({ args: ['--manage'], defaultApp })
     const safeExit = vi.spyOn(f.lifecycle!, 'safeExit').mockImplementation(() => new Promise<void>(() => {}))
-    f.app.emit('second-instance', {}, ['synthetic.exe', '--installer-upgrade'])
-    for (let index = 0; index < 20; index += 1) await Promise.resolve()
-    await vi.advanceTimersByTimeAsync(30_001)
-    for (let index = 0; index < 20; index += 1) await Promise.resolve()
+    try {
+      const second = f.second(['--installer-upgrade'])
+      for (let index = 0; index < 20; index += 1) await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(30_001)
+      await second
+      expect(safeExit).toHaveBeenCalledTimes(1)
+      expect(f.app.quit).not.toHaveBeenCalled(); expect(f.app.exit).not.toHaveBeenCalled()
+      expect(f.windows).toHaveLength(1)
+      expect(await f.status()).toMatchObject({ code: 'ADDON_SAFE_EXIT_TIMEOUT' })
+    } finally { safeExit.mockRestore() }
+  })
 
-    expect(f.app.quit).not.toHaveBeenCalled()
-    expect(f.windows).toHaveLength(1)
-    safeExit.mockRestore()
+  it.each([false, true])('duplicate valid maintenance requests share the pending safe drain (defaultApp=%s)', async defaultApp => {
+    const f = await mainFixture({ defaultApp }), hold = deferred(), original = f.lifecycle!.safeExit.bind(f.lifecycle)
+    const safeExit = vi.spyOn(f.lifecycle!, 'safeExit').mockImplementation(async () => { await hold.promise; await original() })
+    const first = f.second(['--installer-upgrade']), second = f.second(['--installer-upgrade'])
+    try {
+      for (let index = 0; index < 30; index += 1) await Promise.resolve()
+      expect(safeExit).toHaveBeenCalledTimes(1)
+      expect(f.app.quit).not.toHaveBeenCalled(); expect(f.counts.starts).toBe(0)
+      hold.resolve(); await Promise.all([first, second])
+      expect(f.counts.stops).toBe(1); expect(f.app.quit).toHaveBeenCalledTimes(1)
+      expect(f.readManagedChild).toHaveBeenCalledTimes(1); expect(f.fetch).not.toHaveBeenCalled()
+    } finally { hold.resolve(); safeExit.mockRestore() }
   })
 
   it('normal retryBinding retains existing automatic startup after the explicit retry', async () => {
@@ -407,6 +508,48 @@ describe('M1 actual main settings-only lifecycle', () => {
       expect(f.app.exit).toHaveBeenCalledWith(8); expect(f.app.requestSingleInstanceLock).not.toHaveBeenCalled()
       expect(f.snapshot()).toMatchObject({ profiles: 0, pollers: 0, starts: 0, timers: 0 })
     })
+})
+
+describe('Phase2 managed Desktop entry and initialization diagnostics', () => {
+  it('opens only the verified modern Desktop with no arguments before any printer or child profile exists', async () => {
+    const f = await mainFixture({ fresh: true, missingBinding: true, managedDesktopValid: true, desktopLaunch: true })
+    const before = await f.status()
+    expect(before).toMatchObject({ ready: false, managedSettings: true, cashierAvailable: true, enabled: false })
+    await Promise.all([f.invoke('cashier'), f.invoke('cashier')])
+    expect(f.desktopSpawn).toHaveBeenCalledTimes(1)
+    expect(f.desktopSpawn).toHaveBeenCalledWith(f.desktopExecutable, [], expect.objectContaining({ shell: false, detached: true }))
+    expect(f.snapshot()).toMatchObject({ profiles: 0, starts: 0, resume: 0 })
+    for (const spy of [f.client.receive, f.client.markExecuting, f.client.reportResult, f.client.networkQueueState, f.deliver, f.render]) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('routes managed tray and second-instance cashier intents before initialization or printer activation', async () => {
+    const f = await mainFixture({ fresh: true, missingBinding: true, managedDesktopValid: true, desktopLaunch: true })
+    await f.dispatchEntry('cashier')
+    expect(f.desktopSpawn).toHaveBeenCalledOnce()
+    expect(f.snapshot()).toMatchObject({ profiles: 0, starts: 0, resume: 0, enables: 0 })
+    for (const spy of [f.client.receive, f.client.networkQueueState, f.deliver, f.render]) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('does not fall back to a legacy or unverified Desktop', async () => {
+    const f = await mainFixture({ fresh: true, missingBinding: true, desktopLaunch: true })
+    expect((await f.status()).cashierAvailable).toBe(false)
+    const result = await f.invoke('cashier')
+    expect(result).toMatchObject({ ok: false, code: 'DESKTOP_ENTRY_UNAVAILABLE' })
+    expect(f.desktopSpawn).not.toHaveBeenCalled(); expect(f.counts.starts).toBe(0)
+  })
+
+  it('retains the first consumption error and shows a stopped state after a missing-file retry', async () => {
+    const f = await mainFixture({ fresh: true, bindingFailure: 'PRINT_CHILD_HANDOFF_INVALID' })
+    expect(await f.status()).toMatchObject({ code: 'PRINT_CHILD_HANDOFF_INVALID', firstInitializationError: 'PRINT_CHILD_HANDOFF_INVALID' })
+    f.setBindingFailure('PRINT_CHILD_HANDOFF_UNAVAILABLE')
+    expect(await f.invoke('retryBinding')).toMatchObject({ ok: false, code: 'PRINT_CHILD_HANDOFF_UNAVAILABLE' })
+    const state = await f.status()
+    expect(state).toMatchObject({ ready: false, code: 'PRINT_CHILD_HANDOFF_UNAVAILABLE', firstInitializationError: 'PRINT_CHILD_HANDOFF_INVALID' })
+    const ui = uiFixture(); ui.render(state)
+    expect(ui.element('pill').textContent).toBe('门店连接未完成')
+    expect(ui.element('diagnostic').textContent).toContain('首次：PRINT_CHILD_HANDOFF_INVALID')
+    expect(f.counts.starts).toBe(0); expect(f.deliver).not.toHaveBeenCalled()
+  })
 })
 
 describe('RC10 baseline differential — actual full main source', () => {

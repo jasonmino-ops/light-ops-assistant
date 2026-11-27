@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ADDON_INSTALLER_FILENAME, ADDON_MANIFEST_FILENAME, ADDON_VERSION, GOVERNANCE_HEAD_COMMIT, PRODUCT_CANDIDATE_COMMIT, assertManifest, readRegularFile, sha256 } from './single-installer-contract.mjs'
-import { inspectCandidateInstaller } from '../../e-shop-tray/scripts/build-network-addon.mjs'
+import { ADDON_INSTALLER_FILENAME, ADDON_MANIFEST_FILENAME, ADDON_VERSION, DESKTOP_VERSION, GOVERNANCE_HEAD_COMMIT, PRODUCT_CANDIDATE_COMMIT, assertManifest, readRegularFile, sha256 } from './single-installer-contract.mjs'
+import { inspectDesktopProfile } from './desktop-nsis-profile.mjs'
 
 const require = createRequire(import.meta.url)
 const { getPath7za } = require('builder-util')
@@ -35,7 +35,7 @@ async function extractMember(archive, member, env) {
 export async function verifySingleInstaller(installerPath, expectedBinding) {
   if (!expectedBinding) fail('SINGLE_INSTALLER_BINDING_REQUIRED')
   const installer = await readRegularFile(installerPath, 'SINGLE_INSTALLER')
-  const inspected = inspectCandidateInstaller(installer)
+  const inspected = inspectDesktopProfile(installer, expectedBinding.addon?.installerSha256)
   if (inspected.applicationArchives.length !== 1) fail('SINGLE_INSTALLER_APPLICATION_ARCHIVE_MISMATCH')
   const stage = await mkdtemp(path.join(tmpdir(), 'eshop-single-verify-'))
   try {
@@ -57,7 +57,7 @@ export async function verifySingleInstaller(installerPath, expectedBinding) {
     } catch {
       fail('SINGLE_INSTALLER_SOURCE_CONTEXT_UNAVAILABLE')
     }
-    if (embedded.product !== 'E-Shop Desktop Single Installer' || embedded.desktopVersion !== '0.2.0-pilot.2'
+    if (embedded.product !== 'E-Shop Desktop Single Installer' || embedded.desktopVersion !== DESKTOP_VERSION
       || embedded.desktopSourceCommit !== sourceCommit
       || embedded.productCandidateCommit !== PRODUCT_CANDIDATE_COMMIT
       || embedded.governanceHeadCommit !== GOVERNANCE_HEAD_COMMIT

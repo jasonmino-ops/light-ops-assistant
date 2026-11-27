@@ -47,7 +47,7 @@ async function bytes(directory: string) {
   return Object.fromEntries(await Promise.all((await readdir(directory)).map(async name => [name, (await readFile(path.join(directory, name))).toString('base64')])))
 }
 
-async function mainCashierFixture(hold?: 'ticket-fetch' | 'final-identity') {
+async function mainCashierFixture(hold?: 'ticket-fetch' | 'final-identity', managedPrintChild = false) {
   const filename = path.join(__dirname, '../network-addon/main.ts'), source = await readFile(filename, 'utf8')
   const parsed = ts.createSourceFile(filename, source, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS)
   const functions = parsed.statements.filter(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === 'openCashier')
@@ -76,7 +76,7 @@ async function mainCashierFixture(hold?: 'ticket-fetch' | 'final-identity') {
     if (hold === 'ticket-fetch') { reached.resolve(); await release.promise }
     return { ok: true, text: async () => JSON.stringify({ ticket }) }
   })
-  const context = { process: { env: { LOCALAPPDATA: 'C:\\Users\\Fixture\\AppData\\Local' } }, path: path.win32,
+  const context = { managedPrintChild, process: { env: { LOCALAPPDATA: 'C:\\Users\\Fixture\\AppData\\Local' } }, path: path.win32,
     lstat: vi.fn(async (candidate: string) => { expect(candidate).toBe(chrome); return { isFile: () => true, isSymbolicLink: () => false } }),
     assertIdentity, fetch, spawn, binding: bound, entry: undefined as EntryCoordinator | undefined,
     URL, URLSearchParams, AbortSignal, Error }
@@ -86,6 +86,12 @@ async function mainCashierFixture(hold?: 'ticket-fetch' | 'final-identity') {
 }
 
 describe('the actual main-process cashier launcher', () => {
+  it('does not use a print-only child capability to request a cashier launch ticket', async () => {
+    const launcher = await mainCashierFixture(undefined, true)
+    await expect(launcher.openCashier({ mode: 'FRONT_ONLY', endpoint })).rejects.toThrow('PRINT_CHILD_CAPABILITY_REJECTED')
+    expect(launcher.fetch).not.toHaveBeenCalled()
+    expect(launcher.spawn).not.toHaveBeenCalled()
+  })
   it.each(['ticket-fetch', 'final-identity'] as const)('does not spawn Chrome when safe exit starts during %s', async hold => {
     const launcher = await mainCashierFixture(hold), f = coordinator({ openCashier: launcher.openCashier })
     launcher.attach(f.entry)

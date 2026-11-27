@@ -32,7 +32,7 @@ extraResources:
   - from: build/network-print-addon
     to: network-print-addon
     filter:
-      - E-Shop-Network-Print-Addon-TEST-0.1.0-commercial-rc.10-x64.exe
+      - E-Shop-Network-Print-Addon-TEST-0.1.0-commercial-rc.15-x64.exe
       - network-print-addon-manifest.json
 
 win:
@@ -45,6 +45,9 @@ win:
 nsis:
   oneClick: false
   perMachine: false
+  selectPerMachineByDefault: false
+  allowElevation: false
+  packElevateHelper: false
   allowToChangeInstallationDirectory: true
   include: build/installer.nsh
   createDesktopShortcut: true
