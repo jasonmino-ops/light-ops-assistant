@@ -20,6 +20,7 @@ import {
   type CustomerOrderPrintOrder,
 } from '../lib/customer-order-fulfillment'
 import { deliverV3PrintIntent, enqueueV3PrintIntent, parseV3PrintIntent, reportV3Execution } from '../lib/v3-print-job-adapter'
+import { printStartId } from '../lib/v3-print-execution-start'
 import { enqueueV3ManualReprintWithDb, V3ReprintError } from '../lib/v3-print-reprint'
 import { customerOrderEnvelopeFromSeal } from '../lib/customer-order-fulfillment-renderer'
 import { encodeRgbaToEscPosEscStar24 } from '../lib/qzEscPosBitImage'
@@ -330,6 +331,90 @@ async function createFixture(client: PrismaClient, suffix: string) {
   return { tenantId, storeId, orderId, orderNo, deviceId, controlPlaneId, batchId, now, deadline, order, operator }
 }
 type Fixture = Awaited<ReturnType<typeof createFixture>>
+
+test('DB REPORT: concurrent stale local confirmations require the exact terminal evidence and historical device', { skip: skipReason }, async () => {
+  await withFixture(async ({ fixture: f, admin, observer }) => {
+    const { tenantId, storeId, deviceId, batchId, controlPlaneId } = f
+    const identity = { tenantId, storeId, deviceId, batchId }
+    const report = { source: 'LOCAL_DESKTOP' as const, role: 'FRONT' as const, printJobId: 'network:' + sha(f.orderNo),
+      executionId: randomUUID(), ownerEpoch: 1, reportVersion: 1, outcome: 'CROSSED' as const }
+    const accepted = { ok: true, acknowledged: true }
+    const conflict = { ok: false, code: 'V3_REPORT_CONFLICT' }
+    const readOnlyReport = (client: PrismaClient, input: Parameters<typeof reportV3Execution>[2] = report, actor = identity) =>
+      client.$transaction(async tx => {
+        await tx.$executeRaw`SET TRANSACTION READ ONLY`
+        return reportV3Execution(tx as any, actor, input)
+      })
+    const latest = { ...report, reportVersion: 2 }
+    assert.deepEqual(await reportV3Execution(admin.client as any, identity, latest), accepted)
+    const job = await admin.client.eshopTrayPrintJob.findUniqueOrThrow({ where: jobWhere(f, report.printJobId) })
+    const batch = await admin.client.v3PrintExecutionBatch.findUniqueOrThrow({ where: { id: batchId } })
+    const retryBatch = await admin.client.v3PrintExecutionBatch.create({ data: { ...batch, id: randomUUID(),
+      createdAt: new Date(job.completedAt!.getTime() + 1) } })
+    const retryIdentity = { ...identity, batchId: retryBatch.id }
+    const requestId = randomUUID()
+    const proof = { action: 'HANDOFF_CONFIRMED', confirmationId: requestId, replacement: true, previousDeviceStopped: true,
+      previousOwnerDeviceId: 'prior-device', intendedOwnerDeviceId: deviceId, stateVersion: 1, ownerEpoch: 1, occurredAt: f.now.toISOString() }
+    assert.deepEqual(await readOnlyReport(admin.client), conflict, 'stores with no prior replacement keep their behavior')
+    const audit = await admin.client.operationLog.create({ data: { id: printStartId(f, 1), tenantId, storeId, requestId,
+      userId: f.operator.id, createdAt: f.now,
+      actionType: 'V3_PRINT_CONTROLLED_HANDOFF', targetType: 'V3PrintControlPlane', targetId: controlPlaneId,
+      message: 'HANDOFF_CONFIRMED', status: 'SUCCESS', payloadSnapshot: proof } })
+    const replies = await Promise.all([readOnlyReport(admin.client, report, retryIdentity), readOnlyReport(observer.client),
+      readOnlyReport(observer.client, latest)])
+    assert.deepEqual(replies, [accepted, accepted, accepted])
+    assert.deepEqual(await admin.client.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: job.id } }), job)
+    for (const change of [{ role: 'KITCHEN' }, { source: 'CLOUD_H5' }, { executionId: randomUUID() },
+      { outcome: 'CROSSING_UNKNOWN' }, { outcome: 'FAILED_NOT_CROSSED' }, { reportVersion: 3 }] as const) {
+      assert.deepEqual(await readOnlyReport(admin.client, { ...report, ...change }), conflict)
+    }
+    for (const actor of [{ ...identity, storeId: 'other' }, { ...identity, tenantId: 'other' },
+      { ...identity, deviceId: 'other' }]) {
+      assert.deepEqual(await readOnlyReport(admin.client, report, actor), { ok: false, code: 'V3_REPORT_PROVENANCE_STALE' })
+    }
+    assert.deepEqual(await readOnlyReport(admin.client, { ...report, ownerEpoch: 2 }), { ok: false, code: 'V3_REPORT_PROVENANCE_STALE' })
+    const stored = job.payload as Record<string, string | number>
+    for (const data of [{ requestHash: '0'.repeat(64) }, { payload: { ...stored, printJobId: 'different-key' } },
+      { payload: { ...stored, executionId: randomUUID() } }, { payload: { ...stored, ownerEpoch: 2 } },
+      { payload: { ...stored, source: 'CLOUD_H5' } }, { payload: { ...stored, role: 'KITCHEN' } },
+      { resultStatus: 'CROSSING_UNKNOWN' }, { effectBoundary: 'CROSSING_UNKNOWN' }, { status: 'FAILED' as const },
+      { resultMessage: 'V3_CLAIM:other:1:foreign-batch' }, { claimAttempt: 1 }, { attemptCount: 1 }]) {
+      await admin.client.eshopTrayPrintJob.update({ where: { id: job.id }, data })
+      assert.deepEqual(await readOnlyReport(admin.client), conflict)
+      await admin.client.eshopTrayPrintJob.update({ where: { id: job.id }, data: { requestHash: job.requestHash,
+        payload: stored, resultStatus: job.resultStatus, effectBoundary: job.effectBoundary, status: job.status,
+        resultMessage: job.resultMessage, claimAttempt: job.claimAttempt, attemptCount: job.attemptCount } })
+    }
+    for (const change of [{ intendedOwnerDeviceId: 'other' }, { ownerEpoch: 2 }, { confirmationId: 'different' },
+      { previousDeviceStopped: false }, { previousOwnerDeviceId: deviceId }, { stateVersion: 0 }, { stateVersion: batch.stateVersion + 1 },
+      { occurredAt: f.deadline.toISOString() }, { occurredAt: '0' }, { occurredAt: 'not a date' }]) {
+      await admin.client.operationLog.update({ where: { id: audit.id }, data: { payloadSnapshot: { ...proof, ...change } } })
+      assert.deepEqual(await readOnlyReport(admin.client), conflict)
+    }
+    await admin.client.operationLog.update({ where: { id: audit.id }, data: { payloadSnapshot: proof } })
+    await admin.client.operationLog.update({ where: { id: audit.id }, data: { userId: null } })
+    assert.deepEqual(await readOnlyReport(admin.client), conflict)
+    await admin.client.operationLog.update({ where: { id: audit.id }, data: { userId: f.operator.id } })
+    await admin.client.v3PrintExecutionBatch.update({ where: { id: batchId }, data: { createdAt: new Date(f.now.getTime() - 1000) } })
+    assert.deepEqual(await readOnlyReport(admin.client, report, retryIdentity), conflict, 'prior batch predates the handoff')
+    await admin.client.v3PrintExecutionBatch.update({ where: { id: batchId }, data: { createdAt: batch.createdAt } })
+    await admin.client.operationLog.update({ where: { id: audit.id }, data: { payloadSnapshot: { ...proof, stateVersion: 2 } } })
+    await admin.client.v3PrintExecutionBatch.update({ where: { id: retryBatch.id }, data: { stateVersion: 2 } })
+    assert.deepEqual(await readOnlyReport(admin.client, report, retryIdentity), conflict, 'only the late batch has the matching state version')
+    await admin.client.operationLog.update({ where: { id: audit.id }, data: { payloadSnapshot: proof } })
+    await admin.client.v3PrintExecutionBatch.update({ where: { id: batchId }, data: { createdAt: retryBatch.createdAt } })
+    assert.deepEqual(await readOnlyReport(admin.client, report, retryIdentity), conflict, 'only post-completion batches exist')
+    await admin.client.v3PrintExecutionBatch.update({ where: { id: batchId }, data: { createdAt: batch.createdAt } })
+    const otherDevice = await admin.client.desktopDevice.create({ data: { tenantId, storeId, installationIdHash: randomUUID(),
+      tokenHash: randomUUID(), tokenIssuedAt: f.now, tokenExpiresAt: f.deadline } })
+    const otherBatch = await admin.client.v3PrintExecutionBatch.create({ data: { ...batch, id: randomUUID(),
+      ownerDeviceId: otherDevice.id, revokedAt: new Date() } })
+    for (const actor of [identity, { ...identity, deviceId: otherDevice.id, batchId: otherBatch.id }]) {
+      assert.deepEqual(await readOnlyReport(admin.client, report, actor), conflict, 'ambiguous historical epoch')
+    }
+    assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId, storeId } }), 1)
+  })
+})
 
 for (const method of ['CASH', 'QR'] as const) for (const schedule of ['sequential retry', 'stale order read before competing collection commits', 'missing payment read before competing collection commits'] as const) {
   test(`DB Desktop H5 three tickets: ${method}, ${schedule}, FRONT unpaid + KITCHEN then FRONT paid, no SaleRecord`, { skip: skipReason, timeout: 90_000 }, async () => withFixture(async h => {
