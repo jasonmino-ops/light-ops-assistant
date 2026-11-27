@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
-import { isPrintOriginAfterStart, readPrintExecutionStart, type PrintExecutionStart } from './v3-print-execution-start'
+import { isPrintOriginAfterStart, printStartId, readPrintExecutionStart, type PrintExecutionStart } from './v3-print-execution-start'
 import { cleanStartSelector, sealedEffect } from './v3-legacy-seven/clean-start'
 import { Prisma, type EshopTrayPrintJob } from '@prisma/client'
-import type { V3ControlPlaneDb } from './v3-print-control-plane'
+import type { V3BatchRecord, V3ControlPlaneDb } from './v3-print-control-plane'
 import { parseNetworkRequest, type NetworkRequest } from '../e-shop-tray/src/networkContract'
 import { ES_TRAY_QUEUE_NAME, ES_TRAY_RELAY_VERSION } from './es-tray-relay/config'
 import { hashPrintRequest, type EshopTrayPrintRequest } from './es-tray-relay/contract'
@@ -24,6 +24,7 @@ type EnqueueV3PrintIntentOptions = {
 }
 
 type Db = V3ControlPlaneDb & {
+  operationLog: Pick<Prisma.TransactionClient['operationLog'], 'findFirst'>
   eshopTrayPrintJob: {
     create(args: any): Promise<EshopTrayPrintJob>
     findUnique(args: any): Promise<EshopTrayPrintJob | null>
@@ -488,6 +489,53 @@ export async function deliverV3PrintIntent(db: Db, identity: {
   return first
 }
 
+// Authentication already bound the retry batch. It can be newer than the
+// terminal fact, so it cannot by itself identify the original reporter.
+async function confirmsEarlierLocalReport(db: Db, batch: V3BatchRecord, job: EshopTrayPrintJob,
+  evidence: Prisma.InputJsonObject & { printJobId: string }) {
+  if (!job.completedAt) return false
+  const scope = persistenceScope(batch)
+  const epoch = { ...scope, ownerEpoch: batch.ownerEpoch }
+  const auditWhere = {
+    ...scope, id: printStartId(scope, batch.ownerEpoch), targetId: batch.controlPlaneId, userId: { not: null },
+    targetType: 'V3PrintControlPlane', actionType: 'V3_PRINT_CONTROLLED_HANDOFF', message: 'HANDOFF_CONFIRMED', status: 'SUCCESS' as const,
+  }
+  const audit = await db.operationLog.findFirst({ where: auditWhere,
+    select: { userId: true, requestId: true, createdAt: true, payloadSnapshot: true } })
+  const fact = audit?.payloadSnapshot as Record<string, unknown> | null | undefined
+  if (!audit?.userId || !audit.requestId || fact?.action !== 'HANDOFF_CONFIRMED' || fact.confirmationId !== audit.requestId ||
+    fact.replacement !== true || fact.previousDeviceStopped !== true || fact.ownerEpoch !== batch.ownerEpoch ||
+    fact.intendedOwnerDeviceId !== batch.ownerDeviceId || typeof fact.previousOwnerDeviceId !== 'string' ||
+    !fact.previousOwnerDeviceId || fact.previousOwnerDeviceId === batch.ownerDeviceId ||
+    typeof fact.stateVersion !== 'number' || !Number.isSafeInteger(fact.stateVersion) || fact.stateVersion < 1 ||
+    fact.stateVersion > batch.stateVersion || typeof fact.occurredAt !== 'string') return false
+  const started = new Date(fact.occurredAt)
+  if (!Number.isFinite(started.getTime()) || started.toISOString() !== fact.occurredAt) return false
+
+  // Recheck the audit, exclusive epoch, causally eligible batch and exact
+  // immutable terminal row in one SELECT. Claimed/cloud jobs keep their rules.
+  const proof = await db.operationLog.findFirst({
+    where: { ...auditWhere, userId: audit.userId, requestId: audit.requestId, createdAt: audit.createdAt,
+      payloadSnapshot: { equals: audit.payloadSnapshot as Prisma.InputJsonObject },
+      store: {
+        v3PrintExecutionBatches: {
+          some: { ...epoch, controlPlaneId: batch.controlPlaneId, ownerDeviceId: batch.ownerDeviceId, mode: 'V3_ACTIVE',
+            createdAt: { gte: new Date(Math.max(started.getTime(), audit.createdAt.getTime())), lte: job.completedAt },
+            stateVersion: { gte: fact.stateVersion } },
+          none: { ...epoch, ownerDeviceId: { not: batch.ownerDeviceId } },
+        },
+        eshopTrayPrintJobs: { some: {
+          ...scope, id: job.id, schemaVersion: 3, idempotencyKey: evidence.printJobId, completedAt: job.completedAt,
+          status: 'SUCCEEDED', resultCode: job.resultCode, resultStatus: 'CROSSED', effectBoundary: 'CROSSED',
+          claimAttempt: 0, attemptCount: 0, claimedByComputerBindingId: null, executingAt: null, resultMessage: null,
+          claimTokenHash: null, leaseExpiresAt: null, payload: { equals: evidence }, requestHash: sha(JSON.stringify(evidence)),
+        } },
+      },
+    }, select: { id: true },
+  })
+  return proof !== null
+}
+
 export async function reportV3Execution(db: Db, identity: { tenantId: string; storeId: string; deviceId: string; batchId: string }, report: {
   printJobId: string; source: V3PrintSource; role: V3PrintRole; executionId: string; ownerEpoch: number; reportVersion: number; outcome: 'CROSSED' | 'FAILED_NOT_CROSSED' | 'CROSSING_UNKNOWN'
 }, now = new Date()) {
@@ -496,13 +544,15 @@ export async function reportV3Execution(db: Db, identity: { tenantId: string; st
     batch.ownerEpoch !== report.ownerEpoch) return { ok: false as const, code: 'V3_REPORT_PROVENANCE_STALE' }
   const resultCode = `V3:${report.executionId}:${report.ownerEpoch}:${report.reportVersion}:${report.outcome}`
   let job = await db.eshopTrayPrintJob.findUnique({ where: { tenantId_storeId_idempotencyKey: { tenantId: identity.tenantId, storeId: identity.storeId, idempotencyKey: report.printJobId } } })
-  if (!job && report.source === 'LOCAL_DESKTOP') {
-    const reconciliation = { schemaVersion: 3, kind: 'LOCAL_RECONCILIATION', printJobId: report.printJobId, source: report.source, role: report.role,
+  const localReconciliation = report.source === 'LOCAL_DESKTOP'
+    ? { schemaVersion: 3, kind: 'LOCAL_RECONCILIATION', printJobId: report.printJobId, source: report.source, role: report.role,
       executionId: report.executionId, ownerEpoch: report.ownerEpoch }
+    : null
+  if (!job && localReconciliation) {
     try {
       job = await db.eshopTrayPrintJob.create({ data: { tenantId: identity.tenantId, storeId: identity.storeId,
-        idempotencyKey: report.printJobId, requestHash: sha(JSON.stringify(reconciliation)), schemaVersion: 3,
-        payload: reconciliation as unknown as Prisma.InputJsonValue, status: report.outcome === 'CROSSED' ? 'SUCCEEDED' : 'FAILED', maxAttempts: 1,
+        idempotencyKey: report.printJobId, requestHash: sha(JSON.stringify(localReconciliation)), schemaVersion: 3,
+        payload: localReconciliation, status: report.outcome === 'CROSSED' ? 'SUCCEEDED' : 'FAILED', maxAttempts: 1,
         expiresAt: batch.expiresAt, completedAt: now, resultStatus: report.outcome, resultCode,
         effectBoundary: report.outcome === 'FAILED_NOT_CROSSED' ? 'NOT_CROSSED' : report.outcome, physicalCompletionKnown: false } })
       return { ok: true as const, acknowledged: true as const }
@@ -523,14 +573,15 @@ export async function reportV3Execution(db: Db, identity: { tenantId: string; st
       } })
       return reconciled.count === 1 ? { ok: true as const, acknowledged: true as const } : { ok: false as const, code: 'V3_REPORT_RACE' }
     }
+    if (localReconciliation && report.reportVersion === 1 && report.outcome === 'CROSSED' &&
+      job.resultCode === `V3:${report.executionId}:${report.ownerEpoch}:2:CROSSED` &&
+      await confirmsEarlierLocalReport(db, batch, job, localReconciliation)) {
+      return { ok: true as const, acknowledged: true as const }
+    }
     return { ok: false as const, code: 'V3_REPORT_CONFLICT' }
   }
   const intent = parse(job.payload)
   if (!intent || intent.role !== report.role) return { ok: false as const, code: 'V3_REPORT_IDENTITY_MISMATCH' }
-  const localReconciliation = report.source === 'LOCAL_DESKTOP'
-    ? { schemaVersion: 3, kind: 'LOCAL_RECONCILIATION', printJobId: report.printJobId, source: report.source, role: report.role,
-      executionId: report.executionId, ownerEpoch: report.ownerEpoch }
-    : null
   if (!localReconciliation && intent.source !== report.source) return { ok: false as const, code: 'V3_REPORT_IDENTITY_MISMATCH' }
   const claimTokenHash = v3DeliveryClaimToken(job.idempotencyKey, identity.deviceId, batch.ownerEpoch)
   const hasV3DeliveryClaim = job.claimTokenHash !== null
