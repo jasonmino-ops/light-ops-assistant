@@ -30,6 +30,7 @@ function regular(file) {
   return readFileSync(file)
 }
 export function verifySource() {
+  check(!git(root, ['status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none']).trim(), 'CLEAN_CHECKOUT_REQUIRED')
   for (const [from, to] of [[registration, 'refs/remotes/origin/main'], [projection, 'HEAD']]) {
     git(root, ['--no-replace-objects', 'merge-base', '--is-ancestor', from, to])
   }
@@ -46,13 +47,13 @@ export function verifySource() {
   for (const refs of [[projection, 'HEAD'], [projection]]) {
     git(root, ['--no-replace-objects', 'diff', '--quiet', '--no-ext-diff', '--no-textconv', ...refs, '--', ...scope])
   }
-  check(!git(root, ['ls-files', '--others', '--exclude-standard', '--', ...scope]).trim(), 'UNTRACKED_INPUT')
   const files = Object.entries(record.productSourceSha256)
   for (const [file, sha] of files) {
     check(hash(blob('HEAD', file)) === sha && hash(regular(join(root, file))) === sha, 'PRODUCT_BYTES: ' + file)
   }
   check(hash(canonical(frozenSnapshot(root))) === snapshot, 'FROZEN_SNAPSHOT')
   return { purpose: 'original RC6 source comparison', product, build, projection,
+    governanceHead: git(root, ['rev-parse', 'HEAD']).trim(), governanceTree: git(root, ['rev-parse', 'HEAD^{tree}']).trim(),
     sourceFiles: files.length, frozenSnapshotSha256: snapshot, installerVerified: false }
 }
 
