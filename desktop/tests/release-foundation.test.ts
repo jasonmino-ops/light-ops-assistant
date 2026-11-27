@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 
 const script = join(__dirname, '..', 'scripts', 'release-foundation.mjs')
 const desktopRoot = join(__dirname, '..')
@@ -49,9 +49,9 @@ function trustedRiskRegisterMatchesWorkingTree() {
   }
 }
 
-function runReleaseFoundation(args: string[], options: { cwd?: string } = {}) {
-  return execFileSync(process.execPath, [script, ...args], {
-    cwd: options.cwd ?? desktopRoot,
+function runReleaseFoundation(args: string[], policyScript = script) {
+  return execFileSync(process.execPath, [policyScript, ...args], {
+    cwd: desktopRoot,
     encoding: 'utf8',
     env: {
       ...process.env,
@@ -62,6 +62,26 @@ function runReleaseFoundation(args: string[], options: { cwd?: string } = {}) {
     },
   })
 }
+
+// Exercise the current CLI against the actual Phase 1 packaging metadata. RC6
+// intentionally cannot create or verify a Phase 1 release in its own tree.
+let pilotFixture: string | undefined
+function runPilotAssetCheck(args: string[]) {
+  if (!pilotFixture) {
+    pilotFixture = mkdtempSync(join(realpathSync(tmpdir()), 'eshop-pilot-assets-'))
+    const pilot = '55d328044cab2c6b5685fffcb5ad5f78764adfd8'
+    mkdirSync(join(pilotFixture, 'desktop/scripts'), { recursive: true })
+    for (const file of ['package.json', 'desktop/package.json', 'desktop/electron-builder.yml']) {
+      writeFileSync(join(pilotFixture, file), execFileSync('git', ['show', `${pilot}:${file}`], { cwd: repositoryRoot }))
+    }
+    // Import the real policy helpers and use the installed, lockfile-bound tools.
+    symlinkSync(join(repositoryRoot, 'scripts'), join(pilotFixture, 'scripts'), 'junction')
+    symlinkSync(join(desktopRoot, 'node_modules'), join(pilotFixture, 'desktop/node_modules'), 'junction')
+    copyFileSync(script, join(pilotFixture, 'desktop/scripts/release-foundation.mjs'))
+  }
+  return runReleaseFoundation(args, join(pilotFixture, 'desktop/scripts/release-foundation.mjs'))
+}
+afterAll(() => { if (pilotFixture) rmSync(pilotFixture, { recursive: true, force: true }) })
 
 function makeReleaseDir(metadataName = 'latest.yml') {
   const dir = mkdtempSync(join(tmpdir(), 'ep-mb3-07a-release-'))
@@ -157,7 +177,7 @@ describe('EP-MB3-07A release foundation policy', () => {
 
   it('writes and verifies release provenance plus SHA manifest without secrets', () => {
     const releaseDir = makeReleaseDir()
-    const output = runReleaseFoundation(['write', '--release-dir', releaseDir])
+    const output = runPilotAssetCheck(['write', '--release-dir', releaseDir])
     const result = JSON.parse(output)
     expect(result.result).toBe('PASS')
     expect(result.shaEntries).toBe(5)
@@ -176,29 +196,29 @@ describe('EP-MB3-07A release foundation policy', () => {
     expect(provenance.signingStatus).toBe('unsigned-internal')
     expect(JSON.stringify(provenance)).not.toMatch(/TOKEN|SECRET|PASSWORD|Authorization|Bearer/)
 
-    const verifyOutput = runReleaseFoundation(['verify', '--release-dir', releaseDir])
+    const verifyOutput = runPilotAssetCheck(['verify', '--release-dir', releaseDir])
     expect(JSON.parse(verifyOutput).result).toBe('PASS')
   })
 
   it('rejects signed-commercial claims during Phase 1', () => {
     const releaseDir = makeReleaseDir()
     expect(() =>
-      runReleaseFoundation(['write', '--release-dir', releaseDir, '--distribution-class', 'signed-commercial']),
+      runPilotAssetCheck(['write', '--release-dir', releaseDir, '--distribution-class', 'signed-commercial']),
     ).toThrow(/unsigned-internal/)
   })
 
   it('rejects tampered assets when SHA manifest no longer matches', () => {
     const releaseDir = makeReleaseDir()
-    runReleaseFoundation(['write', '--release-dir', releaseDir])
+    runPilotAssetCheck(['write', '--release-dir', releaseDir])
     writeFileSync(join(releaseDir, 'latest.yml'), 'tampered')
-    expect(() => runReleaseFoundation(['verify', '--release-dir', releaseDir])).toThrow(/SHA mismatch/)
+    expect(() => runPilotAssetCheck(['verify', '--release-dir', releaseDir])).toThrow(/SHA mismatch/)
   })
 
   it('rejects builder-debug.yml as an unexpected published asset', () => {
     const releaseDir = makeReleaseDir()
-    runReleaseFoundation(['write', '--release-dir', releaseDir])
+    runPilotAssetCheck(['write', '--release-dir', releaseDir])
     writeFileSync(join(releaseDir, 'builder-debug.yml'), 'diagnostic output')
-    expect(() => runReleaseFoundation(['verify', '--release-dir', releaseDir])).toThrow(
+    expect(() => runPilotAssetCheck(['verify', '--release-dir', releaseDir])).toThrow(
       /release asset allowlist mismatch.*builder-debug\.yml/,
     )
   })
@@ -218,18 +238,18 @@ describe('EP-MB3-07A release foundation policy', () => {
 
   it('rejects arbitrary extra files as unexpected published assets', () => {
     const releaseDir = makeReleaseDir()
-    runReleaseFoundation(['write', '--release-dir', releaseDir])
+    runPilotAssetCheck(['write', '--release-dir', releaseDir])
     writeFileSync(join(releaseDir, 'operator-note.txt'), 'not a formal release asset')
-    expect(() => runReleaseFoundation(['verify', '--release-dir', releaseDir])).toThrow(
+    expect(() => runPilotAssetCheck(['verify', '--release-dir', releaseDir])).toThrow(
       /release asset allowlist mismatch.*operator-note\.txt/,
     )
   })
 
   it('rejects missing allowlisted published assets', () => {
     const releaseDir = makeReleaseDir()
-    runReleaseFoundation(['write', '--release-dir', releaseDir])
+    runPilotAssetCheck(['write', '--release-dir', releaseDir])
     unlinkSync(join(releaseDir, 'latest.yml'))
-    expect(() => runReleaseFoundation(['verify', '--release-dir', releaseDir])).toThrow(
+    expect(() => runPilotAssetCheck(['verify', '--release-dir', releaseDir])).toThrow(
       /release asset allowlist mismatch.*latest\.yml/,
     )
   })
@@ -238,10 +258,10 @@ describe('EP-MB3-07A release foundation policy', () => {
     const releaseDir = makeReleaseDir()
     mkdirSync(join(releaseDir, 'nested'))
     writeFileSync(join(releaseDir, 'nested', 'ignored.txt'), 'not a release asset')
-    runReleaseFoundation(['write', '--release-dir', releaseDir])
+    runPilotAssetCheck(['write', '--release-dir', releaseDir])
     const shaManifest = readFileSync(join(releaseDir, 'SHA256SUMS.txt'), 'utf8')
     writeFileSync(join(releaseDir, 'SHA256SUMS.txt'), `${shaManifest}${shaManifest.split('\n')[0]}\n`)
-    expect(() => runReleaseFoundation(['verify', '--release-dir', releaseDir])).toThrow(/duplicate release asset filename/)
+    expect(() => runPilotAssetCheck(['verify', '--release-dir', releaseDir])).toThrow(/duplicate release asset filename/)
   })
 })
 

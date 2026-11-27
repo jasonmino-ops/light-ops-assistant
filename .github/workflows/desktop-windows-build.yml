@@ -14,6 +14,11 @@ on:
       - "desktop/**"
       - ".github/workflows/desktop-windows-build.yml"
   workflow_dispatch:
+    inputs:
+      verify_original_rc6:
+        description: "Check original RC6 source during the full Windows run; suppress artifact upload"
+        type: boolean
+        default: false
 
 jobs:
   build-windows:
@@ -59,6 +64,14 @@ jobs:
 
       - name: Type check
         run: npm run typecheck
+
+      - name: Original RC6 source and release contract checks
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_original_rc6
+        shell: pwsh
+        run: |
+          node scripts/verify-original-rc6.mjs source
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx vitest run tests/release-foundation.test.ts tests/original-rc6-archive.test.ts -t 'writes and verifies|signed-commercial claims|tampered assets|builder-debug.yml as|arbitrary extra|missing allowlisted|duplicate asset|original RC6 archive successor'
 
       - name: Activation focused tests
         run: |
@@ -227,6 +240,7 @@ jobs:
           node scripts/release-foundation.mjs verify --release-dir release
 
       - name: Upload installer artifact
+        if: ${{ !inputs.verify_original_rc6 }}
         uses: actions/upload-artifact@v4
         with:
           name: eshop-desktop-windows-installer
