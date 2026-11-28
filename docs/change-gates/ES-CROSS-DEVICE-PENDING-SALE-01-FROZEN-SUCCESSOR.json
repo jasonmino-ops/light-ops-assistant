@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "taskId": "ES-CROSS-DEVICE-PENDING-SALE-01",
+  "status": "FOUNDER_APPROVED_PENDING_TRUSTED_MAIN",
+  "approvedBy": "Founder",
+  "recordedAt": "2026-11-28T11:20:51Z",
+  "approvalSource": {
+    "source": "Current Founder message: Founder 正式授权：APPROVED。",
+    "recordedAt": "2026-11-28T11:20:51Z",
+    "timestampMeaning": "Time recording the received authorization; not a fabricated message timestamp or external signature.",
+    "statement": "批准本次报告所列全部 12 项精确文件内容及哈希、5 个受保护路径 ACTIVE 例外、ORDER-SYNC 窄范围冻结后继、Cashier 冻结指纹后继、测试登记及必要治理登记。立即按照既有工程治理 Skill，自主完成正式治理登记、补丁接线、完整回归、独立审查及候选 commit。CORE 三项既有失败优先通过合法后继登记解决，不得直接豁免、降低测试标准或擅自修改测试及后继读取器。不授权合并 main、生产部署、生产数据直接修改及正式发布。",
+    "baseline": "239594acaf9a8236b74b4c5c6ce9e472cc3e1cb5",
+    "candidate": "718a33074800c4c934509d3691b42cdee6fefbf8",
+    "manifestSha256": "13d298728b4afc1b9b06b0234a47a52c4b735bb5209065c0420f9f0f5e27a8c5",
+    "patchSha256": "3567c2eee3e63bb6f7887c8e21af5a6c079594ec6e0c3161a1f051485d166a48"
+  },
+  "baseOriginMainSha": "239594acaf9a8236b74b4c5c6ce9e472cc3e1cb5",
+  "sourceCandidate": "718a33074800c4c934509d3691b42cdee6fefbf8",
+  "exactWiringPathsSha256": {
+    "app/api/cashier/pending-orders/route.ts": "42514a39aef01bb0dac3393a853f13c9a9bc5c0b559f48e528fee6dda6d82ebd",
+    "app/api/cloud-deferred-sales/route.ts": "3721f89012bd44262f0507e1ecfc1dc4c9dd9c1ea1a2a1617b15e6f2e7daa403",
+    "app/api/orders/[orderNo]/cancel/route.ts": "750e1da6bc1d5070fba4b70e1743f509a8a2c3dc2a412eec64e174b6f2213029",
+    "app/api/orders/[orderNo]/checkout/route.ts": "1fde2f7187d7b91fa9d75f8cdd64473a6fe5c937147d6bc7c97261ba19a03ef0",
+    "app/api/payments/[paymentId]/cancel/route.ts": "88b09c87908bc133a7b867fdc8846b5b81928f1e45c1727129d19d1b2fa7e90b",
+    "app/api/payments/[paymentId]/confirm/route.ts": "6f10880dd7c83aaf6b16f0fded0c5d6fbf0bbe1932702bab542458c437243a1a",
+    "app/cashier/page.tsx": "6e041dd785b90a466d33175518fc238866edab79a9f8fc93ad710e8c0d117936",
+    "app/sale/page.tsx": "e18b57b37ed31412ac8b0b632479273b14f00916f5f2fe1f51fb6beb66721c37",
+    "lib/i18n/en.ts": "35c1a006c2177aadb9a96f56b2b72b783fb600c38fd683a54dafef3b2e7d9b02",
+    "lib/i18n/km.ts": "dc157186effa748fd43d35366f0e33cd484670a51e1e906d1328b69b254f260a",
+    "lib/i18n/zh.ts": "ee4b4055c97978bc0a85bfd56bce3bf003f0aa205db61149250f1bcc9a694fa8",
+    "scripts/test/manifests/root-integration-tests.json": "cb3a16322772333e7f92e04f080b07d3a8da80b193fc6d844a40110c74fa41fc"
+  },
+  "unchangedNewSourcesSha256": {
+    "lib/cloud-deferred-sale.ts": "b0c29758cc0cfda694d934f5c40d0d8d018d4337e8fbe0bc2e8554390d1aeb83",
+    "lib/cloud-deferred-http.ts": "0e01984c906d5b431afff5ae0ee2dde8b8e8777c5da879532d4a6927544f3626",
+    "app/components/CloudDeferredSalesPanel.tsx": "37a4c4964f6a802e0cdc8034421f9e3eadcc0e130649e6be3ccc22cda527d11a",
+    "tests/cloud-deferred-sale-postgres.test.ts": "8415b91bd98d6912813053d8f8da342e2e884fe01e363f0d09ba0abffacfd447",
+    "tests/cloud-deferred-sale/browser.mjs": "4962886c3dc81b29495db216e96e80d9632f89667678ced44b99dd6502383433",
+    "tests/cloud-deferred-sale/seed.ts": "622bc8caaaeda6f47bea7eb1a98f7885ef92f065623a74b0674a4c01a0c994de"
+  },
+  "scopeExceptionPath": "docs/change-gates/exceptions/ES-CROSS-DEVICE-PENDING-SALE-01.json",
+  "scopeExceptionSha256": "d5cef7611fe62c97cca62edde8f7e514de0da3862f9ffabaaa8491e86d722304",
+  "orderSyncSuccessor": {
+    "authority": "Obsidian 03-冻结文档/01-正式冻结/EP-BR-ORDER-SYNC-01 Browser Order Sync V1.0 FINAL FROZEN.md §§1–3",
+    "effect": "Only ordinary cloud DEFER may settle on authorized phone/desktop via shared original-order settlement; original freeze text preserved.",
+    "excluded": [
+      "H5 CustomerOrder",
+      "dining",
+      "offline/local holds",
+      "refunds",
+      "cart reconstruction",
+      "weak storeCode authorization"
+    ]
+  },
+  "cashierFingerprintSuccessor": {
+    "path": "app/cashier/page.tsx",
+    "previousSha256": "d7dccb90d9d9804458920cc7c9eba60ec7c3121df105adf63b9d35e634d79a1e",
+    "approvedSha256": "6e041dd785b90a466d33175518fc238866edab79a9f8fc93ad710e8c0d117936",
+    "effect": "Whole-file successor for the reviewed cloud DEFER entry only; no V3 core unfreeze or terminal safety change."
+  },
+  "integrationRegistration": {
+    "path": "scripts/test/manifests/root-integration-tests.json",
+    "previousSha256": "2f4d467a0853524301ad1535543710235e8935f625398f4737018ca1f43e9011",
+    "approvedSha256": "cb3a16322772333e7f92e04f080b07d3a8da80b193fc6d844a40110c74fa41fc",
+    "addedTest": "tests/cloud-deferred-sale-postgres.test.ts",
+    "previousCount": 27,
+    "approvedCount": 28,
+    "removedTests": []
+  },
+  "core": {
+    "rawStatus": "BLOCKED",
+    "priorComparison": "718a33074800c4c934509d3691b42cdee6fefbf8:docs/incidents/es-cross-device-pending-sale-01/evidence/core-comparison.json",
+    "controlAndPreparationCounts": {
+      "executed": 105,
+      "passed": 102,
+      "failed": 3
+    },
+    "failures": [
+      "tests/cashier-realtime-integration.test.ts",
+      "tests/es-tray-device-print-contract.test.ts",
+      "tests/v3-reprint-recovery.test.ts"
+    ],
+    "disposition": "NONE",
+    "noWaiver": true,
+    "testAndReaderChangesAuthorized": false,
+    "registrationRecognition": "NOT_RECOGNIZED_BY_CURRENT_READERS; this record alone cannot produce CORE PASS"
+  },
+  "safety": {
+    "v3CoreChanged": false,
+    "automaticHistoricalPrintRecovery": false,
+    "schemaOrMigration": false,
+    "productionDataWrite": false,
+    "deployment": false,
+    "mainMergeAuthorized": false,
+    "fieldVerified": false,
+    "productAccepted": false
+  },
+  "nextBoundary": "Real trusted-main registration and exact successor reader recognition are unresolved. Do not fabricate origin refs, bypass guards, apply protected files, weaken tests or report full CORE PASS."
+}

@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "taskId": "ES-CROSS-DEVICE-PENDING-SALE-01",
+  "featureBranch": "codex/es-cross-device-pending-sale-01",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "239594acaf9a8236b74b4c5c6ce9e472cc3e1cb5",
+  "authorizedPaths": [
+    "app/api/cashier/pending-orders/route.ts",
+    "app/api/orders/[orderNo]/cancel/route.ts",
+    "app/api/orders/[orderNo]/checkout/route.ts",
+    "app/cashier/page.tsx",
+    "app/sale/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/api/cashier/pending-orders/route.ts": "42514a39aef01bb0dac3393a853f13c9a9bc5c0b559f48e528fee6dda6d82ebd",
+    "app/api/orders/[orderNo]/cancel/route.ts": "750e1da6bc1d5070fba4b70e1743f509a8a2c3dc2a412eec64e174b6f2213029",
+    "app/api/orders/[orderNo]/checkout/route.ts": "1fde2f7187d7b91fa9d75f8cdd64473a6fe5c937147d6bc7c97261ba19a03ef0",
+    "app/cashier/page.tsx": "6e041dd785b90a466d33175518fc238866edab79a9f8fc93ad710e8c0d117936",
+    "app/sale/page.tsx": "e18b57b37ed31412ac8b0b632479273b14f00916f5f2fe1f51fb6beb66721c37"
+  },
+  "reason": "Exact original cloud DEFER cross-device settlement wiring approved by Founder; no new transaction model, expanded STAFF scope, print core or production mutation.",
+  "closeAfter": "FEATURE_MERGE",
+  "createdAt": "2026-11-28T11:20:51Z",
+  "approvedBy": "Founder",
+  "approvedAt": "2026-11-28T11:20:51Z",
+  "approvalSource": {
+    "source": "Current Founder message: Founder 正式授权：APPROVED。",
+    "recordedAt": "2026-11-28T11:20:51Z",
+    "timestampMeaning": "Time recording the received authorization; not a fabricated message timestamp or external signature.",
+    "statement": "批准本次报告所列全部 12 项精确文件内容及哈希、5 个受保护路径 ACTIVE 例外、ORDER-SYNC 窄范围冻结后继、Cashier 冻结指纹后继、测试登记及必要治理登记。立即按照既有工程治理 Skill，自主完成正式治理登记、补丁接线、完整回归、独立审查及候选 commit。CORE 三项既有失败优先通过合法后继登记解决，不得直接豁免、降低测试标准或擅自修改测试及后继读取器。不授权合并 main、生产部署、生产数据直接修改及正式发布。",
+    "baseline": "239594acaf9a8236b74b4c5c6ce9e472cc3e1cb5",
+    "candidate": "718a33074800c4c934509d3691b42cdee6fefbf8",
+    "manifestSha256": "13d298728b4afc1b9b06b0234a47a52c4b735bb5209065c0420f9f0f5e27a8c5",
+    "patchSha256": "3567c2eee3e63bb6f7887c8e21af5a6c079594ec6e0c3161a1f051485d166a48"
+  },
+  "registrationState": "LOCAL_APPROVED_PENDING_TRUSTED_MAIN",
+  "effectiveInTrustedMain": false,
+  "activationNote": "ACTIVE records the received Founder approval. Scope Guard is NOT effective until these exact bytes exist in real origin/main; local content is never authority. Main merge is explicitly unauthorized.",
+  "prohibitedChanges": [
+    "main merge",
+    "Preview or Production deployment",
+    "production data writes",
+    "formal release",
+    "schema or migrations",
+    "V3 print core / Local First / Owner / Lease / Fence / execution contract",
+    "automatic historical print catchup",
+    "test or successor-reader edits without separate exact authorization"
+  ]
+}
