@@ -40,6 +40,7 @@ import { bytesToBase64, renderDiningKitchenNoticeHtml } from '@/lib/dine-in/tick
 import DiningMealBill from './components/DiningMealBill'
 import DiningProductPicker, { type DiningCategory, type DiningProduct } from './components/DiningProductPicker'
 import DiningTableOverview, { type TableDraft } from './components/DiningTableOverview'
+import { DiningReadRequests } from './readRequests'
 
 type Gate = {
   eligible: boolean
@@ -59,6 +60,8 @@ type ApiResult<T> =
   | { kind: 'unknown' }
 
 type View = { kind: 'tables' } | { kind: 'bill' | 'menu'; mealId: string }
+type Catalog = { products: DiningProduct[]; categories: DiningCategory[] }
+type ReadScope = { code: string; headers: string; generation: number; active: boolean }
 type Phase = 'idle' | 'submitting' | 'unknown'
 type Dialog =
   | { kind: 'open'; table: DiningTableView; guestCount: string; note: string; key: string; phase: Phase }
@@ -152,7 +155,7 @@ export default function DineInPage() {
   const [recoverable, setRecoverable] = useState<{ items: DiningRecoverableMeal[]; hasMore: boolean }>({ items: [], hasMore: false })
   const [view, setView] = useState<View>({ kind: 'tables' })
   const [meal, setMeal] = useState<DiningMealView | null>(null)
-  const [catalog, setCatalog] = useState<{ products: DiningProduct[]; categories: DiningCategory[] } | null>(null)
+  const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [cart, setCart] = useState<Record<string, number>>({})
   const [orderPhase, setOrderPhase] = useState<Phase>('idle')
   const [dialog, setDialog] = useState<Dialog | null>(null)
@@ -167,9 +170,20 @@ export default function DineInPage() {
   const cartKey = useRef<string | null>(null)
   const viewRef = useRef<View>(view)
   viewRef.current = view
+  const mealRef = useRef(meal)
+  mealRef.current = meal
   /** Bumped by every authoritative update so that slower, older reads are dropped. */
   const mealEpoch = useRef(0)
   const tablesEpoch = useRef(0)
+  const storeCodeRef = useRef(storeCode)
+  storeCodeRef.current = storeCode
+  const mounted = useRef(true)
+  const readScope = useRef<ReadScope | null>(null)
+  const gateEpoch = useRef(0)
+  const gateIdentity = useRef<string | null>(null)
+  const readRequests = useRef(new DiningReadRequests())
+  const catalogCache = useRef<{ scope: ReadScope; data: Catalog } | null>(null)
+  const loadCatalogRef = useRef<(() => Promise<void>) | null>(null)
   /** How many pages of the recovery list the person has asked to see. Every refresh reads that many, from the top. */
   const recoverPages = useRef(1)
   const shownRecoverable = useRef(0)
@@ -185,6 +199,7 @@ export default function DineInPage() {
 
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(() => {
+    mounted.current = true
     setStoreCode(new URLSearchParams(window.location.search).get('storeCode')?.trim() ?? '')
     setHasBridge(printBridge() !== null)
     const update = () => setOnline(navigator.onLine)
@@ -193,20 +208,65 @@ export default function DineInPage() {
     window.addEventListener('offline', update)
     const clock = window.setInterval(() => setNow(Date.now()), 30_000)
     return () => {
+      mounted.current = false
+      if (readScope.current) readScope.current.active = false
       window.removeEventListener('online', update)
       window.removeEventListener('offline', update)
       window.clearInterval(clock)
     }
   }, [])
 
-  const loadGate = useCallback(async (code: string) => {
-    const result = await api<Gate>(code, 'eligibility')
-    if (result.kind === 'ok') { setGate(result.data); setGateProblem(null); return result.data }
-    setGateProblem(result.kind === 'refused' ? result.code : 'NETWORK')
-    return null
+  const isCurrentScope = useCallback((scope: ReadScope) => mounted.current && scope.active &&
+    readScope.current === scope && storeCodeRef.current === scope.code &&
+    JSON.stringify(posDeviceHeaders(scope.code)) === scope.headers, [])
+
+  const resetReadScope = useCallback((code: string) => {
+    if (readScope.current) readScope.current.active = false
+    const scope: ReadScope = { code, headers: JSON.stringify(posDeviceHeaders(code)), generation: (readScope.current?.generation ?? 0) + 1, active: true }
+    readScope.current = scope
+    mealEpoch.current += 1
+    tablesEpoch.current += 1
+    recoverPages.current = 1
+    shownRecoverable.current = 0
+    catalogCache.current = null
+    gateIdentity.current = null
+    setGate(null)
+    setTables(null)
+    setRecoverable({ items: [], hasMore: false })
+    setMeal(null)
+    mealRef.current = null
+    setCatalog(null)
+    return scope
   }, [])
 
+  const loadGate = useCallback(async (code: string) => {
+    if (!mounted.current || code !== storeCodeRef.current) return null
+    let scope = readScope.current
+    if (!scope || !isCurrentScope(scope)) scope = resetReadScope(code)
+    const epoch = ++gateEpoch.current
+    const result = await api<Gate>(code, 'eligibility')
+    if (!isCurrentScope(scope) || epoch !== gateEpoch.current) return null
+    if (result.kind === 'ok') {
+      const identity = JSON.stringify([result.data.store.code, result.data.role, result.data.operatorSource])
+      if (gateIdentity.current !== null && gateIdentity.current !== identity) {
+        scope = resetReadScope(code)
+        void refreshTablesRef.current?.(code)
+      }
+      gateIdentity.current = identity
+      setGate(result.data)
+      setGateProblem(null)
+      if (result.data.eligible) void loadCatalogRef.current?.()
+      return result.data
+    }
+    // A failed authorization check must also invalidate reads started alongside it.
+    resetReadScope(code)
+    setGateProblem(result.kind === 'refused' ? result.code : 'NETWORK')
+    return null
+  }, [isCurrentScope, resetReadScope])
+
   const refreshTables = useCallback(async (code: string, morePages = 0) => {
+    const scope = readScope.current
+    if (!scope || scope.code !== code || !isCurrentScope(scope)) { void loadGate(code); return }
     // A long list takes several requests; refreshes must not pile up or cancel one another.
     if (tablesBusy.current !== 'idle') { if (morePages === 0) tablesBusy.current = 'again'; return }
     tablesBusy.current = 'busy'
@@ -214,7 +274,12 @@ export default function DineInPage() {
       const epoch = ++tablesEpoch.current
       const wanted = recoverPages.current + morePages
       const result = await api<{ tables: DiningTableView[]; recoverable: DiningRecoverablePage | null }>(code, 'tables')
-      if (epoch !== tablesEpoch.current || result.kind !== 'ok') return
+      if (!isCurrentScope(scope) || epoch !== tablesEpoch.current) return
+      if (result.kind === 'refused' && (result.code === 'POS_DEVICE_UNAUTHORIZED' || result.code === 'STORE_NOT_ACTIVE')) {
+        resetReadScope(code)
+        setGateProblem(result.code)
+      }
+      if (result.kind !== 'ok') return
       setTables(result.data.tables)
       // A null recovery list means the server could not read it this time: keep what is shown.
       let page = result.data.recoverable
@@ -224,7 +289,7 @@ export default function DineInPage() {
       let complete = true
       while (read < wanted && page.hasMore && page.nextCursor) {
         const next: ApiResult<{ recoverable: DiningRecoverablePage }> = await api(code, 'tables', undefined, `&recoverCursor=${encodeURIComponent(page.nextCursor)}`)
-        if (epoch !== tablesEpoch.current) return
+        if (!isCurrentScope(scope) || epoch !== tablesEpoch.current) return
         if (next.kind !== 'ok') { complete = false; break }
         page = next.data.recoverable
         items.push(...page.items)
@@ -239,9 +304,9 @@ export default function DineInPage() {
     } finally {
       const again = (tablesBusy.current as 'idle' | 'busy' | 'again') === 'again'
       tablesBusy.current = 'idle'
-      if (again) void refreshTablesRef.current?.(code)
+      if (again && storeCodeRef.current) void refreshTablesRef.current?.(storeCodeRef.current)
     }
-  }, [])
+  }, [isCurrentScope, loadGate, resetReadScope])
   const refreshTablesRef = useRef<((code: string) => Promise<void>) | null>(null)
   refreshTablesRef.current = refreshTables
 
@@ -249,23 +314,42 @@ export default function DineInPage() {
     const current = viewRef.current
     if (current.kind === 'tables' || current.mealId !== next.mealId) return
     mealEpoch.current += 1
+    const previous = mealRef.current
+    if (!previous || previous.mealId !== next.mealId || next.version >= previous.version) mealRef.current = next
     setMeal((previous) => (!previous || previous.mealId !== next.mealId || next.version >= previous.version ? next : previous))
   }, [])
 
-  const refreshMeal = useCallback(async (code: string, mealId: string): Promise<DiningMealView | null> => {
-    const epoch = ++mealEpoch.current
-    const result = await api<{ meal: DiningMealView }>(code, `sessions/${encodeURIComponent(mealId)}`)
-    if (result.kind !== 'ok') return null
-    const current = viewRef.current
-    if (epoch === mealEpoch.current && current.kind !== 'tables' && current.mealId === mealId) {
+  const refreshMeal = useCallback(async (code: string, mealId: string, fresh = false): Promise<DiningMealView | null> => {
+    const scope = readScope.current
+    if (!scope || scope.code !== code || !isCurrentScope(scope)) { void loadGate(code); return null }
+    // Polls join without advancing the authoritative epoch. Post-mutation checks
+    // explicitly request a new read after any earlier poll has finished.
+    if (fresh) mealEpoch.current += 1
+    const epoch = mealEpoch.current
+    return readRequests.current.run(`meal:${scope.generation}:${mealId}`, epoch, async () => {
+      if (!isCurrentScope(scope) || epoch !== mealEpoch.current) return null
+      const result = await api<{ meal: DiningMealView }>(code, `sessions/${encodeURIComponent(mealId)}`)
+      const current = viewRef.current
+      if (!isCurrentScope(scope) || epoch !== mealEpoch.current) return null
+      if (result.kind === 'refused' && (result.code === 'POS_DEVICE_UNAUTHORIZED' || result.code === 'STORE_NOT_ACTIVE')) {
+        resetReadScope(code)
+        setGateProblem(result.code)
+      }
+      if (result.kind !== 'ok' ||
+        current.kind === 'tables' || current.mealId !== mealId || result.data.meal.mealId !== mealId) return null
+      if (mealRef.current?.mealId === mealId && result.data.meal.version < mealRef.current.version) return null
+      mealRef.current = result.data.meal
       setMeal((previous) => (!previous || previous.mealId !== mealId || result.data.meal.version >= previous.version ? result.data.meal : previous))
-    }
-    return result.data.meal
-  }, [])
+      return result.data.meal
+    })
+  }, [isCurrentScope, loadGate, resetReadScope])
 
   useEffect(() => {
     if (!storeCode) return
-    void loadGate(storeCode).then((loaded) => { if (loaded?.recoveryAvailable) void refreshTables(storeCode) })
+    // Each GET retains its server authorization; rendering and new business still wait for the gate.
+    void loadGate(storeCode)
+    void refreshTables(storeCode)
+    return () => { if (readScope.current?.code === storeCode) readScope.current.active = false }
   }, [storeCode, loadGate, refreshTables])
 
   // Other devices change tables and bills too; re-read quietly while nothing is in flight.
@@ -282,31 +366,51 @@ export default function DineInPage() {
 
   // ── Navigation between the three views ────────────────────────────────────
   const showTables = useCallback(() => {
+    mealEpoch.current += 1
+    viewRef.current = { kind: 'tables' }
     setView({ kind: 'tables' })
     setMeal(null)
+    mealRef.current = null
     setReceipt(null)
     if (storeCode) void refreshTables(storeCode)
   }, [storeCode, refreshTables])
 
   const showMeal = useCallback((mealId: string, kind: 'bill' | 'menu' = 'bill') => {
+    if (viewRef.current.kind === 'tables' || viewRef.current.mealId !== mealId) mealEpoch.current += 1
     viewRef.current = { kind, mealId }
     setView({ kind, mealId })
+    if (mealRef.current?.mealId !== mealId) mealRef.current = null
     setMeal((previous) => (previous?.mealId === mealId ? previous : null))
     if (storeCode) void refreshMeal(storeCode, mealId)
   }, [storeCode, refreshMeal])
 
   const loadCatalog = useCallback(async () => {
-    if (!storeCode || catalog) return
-    try {
-      const response = await fetch(`/api/cashier/store?storeCode=${encodeURIComponent(storeCode)}`, { cache: 'no-store' })
-      if (!response.ok) throw new Error('catalog')
-      const data = await response.json() as { products: DiningProduct[]; categories: DiningCategory[] }
-      setCatalog({ products: data.products, categories: data.categories })
-    } catch {
-      // Not cached, so entering the menu again retries; the bill stays usable meanwhile.
-      setNotice({ tone: 'error', text: diningText(lang).catalogFailed })
-    }
-  }, [storeCode, catalog, lang])
+    const code = storeCodeRef.current
+    if (!code) return
+    const scope = readScope.current
+    if (!scope || !isCurrentScope(scope)) { void loadGate(code); return }
+    if (catalogCache.current?.scope === scope) return
+    await readRequests.current.run(`catalog:${scope.generation}`, 0, async () => {
+      if (!isCurrentScope(scope)) return
+      try {
+        const response = await fetch(`/api/cashier/store?storeCode=${encodeURIComponent(code)}`, { cache: 'no-store' })
+        if (isCurrentScope(scope) && (response.status === 401 || response.status === 403)) {
+          resetReadScope(code)
+          setGateProblem('POS_DEVICE_UNAUTHORIZED')
+          return
+        }
+        if (!response.ok) throw new Error('catalog')
+        const data = await response.json() as Catalog
+        if (!isCurrentScope(scope)) return
+        catalogCache.current = { scope, data: { products: data.products, categories: data.categories } }
+        setCatalog(catalogCache.current.data)
+      } catch {
+        // Failures are not cached, so a later menu entry can retry.
+        if (isCurrentScope(scope)) setNotice({ tone: 'error', text: diningText(lang).catalogFailed })
+      }
+    })
+  }, [isCurrentScope, loadGate, resetReadScope, lang])
+  loadCatalogRef.current = loadCatalog
 
   const showMenu = useCallback((mealId: string) => {
     showMeal(mealId, 'menu')
@@ -386,7 +490,7 @@ export default function DineInPage() {
     } finally {
       noticeLocks.current.delete(batchId)
       setSubmittingNotices(new Set(noticeLocks.current))
-      void refreshMeal(storeCode, mealId)
+      void refreshMeal(storeCode, mealId, true)
     }
   }, [storeCode, gate?.store.name, lang, applyMeal, refreshMeal, sayRefusal])
 
@@ -549,7 +653,7 @@ export default function DineInPage() {
     // No answer. Never decide here, and never let a second, different collection start:
     // ask the server what it has.
     setDialog({ ...state, phase: 'unknown' })
-    const fresh = await refreshMeal(storeCode, mealId)
+    const fresh = await refreshMeal(storeCode, mealId, true)
     if (!fresh) { setDialog({ ...state, phase: 'unknownOffline' }); return }
     // Still open: the first attempt has not been applied (yet); only the same request may be sent again.
     // Paid: send the same request once more — it writes nothing and tells us whose payment it was.
@@ -564,7 +668,7 @@ export default function DineInPage() {
   const recheckPay = useCallback(async (state: Extract<Dialog, { kind: 'pay' }>) => {
     if (!storeCode || view.kind === 'tables') return
     setDialog({ ...state, phase: 'unknown' })
-    const fresh = await refreshMeal(storeCode, view.mealId)
+    const fresh = await refreshMeal(storeCode, view.mealId, true)
     if (!fresh) { setDialog({ ...state, phase: 'unknownOffline' }); return }
     if (fresh.state === 'OPEN') { setDialog({ ...state, phase: 'resend' }); return }
     await submitPay(state, true)
@@ -615,7 +719,7 @@ export default function DineInPage() {
     body = (
       <div style={s.center}>
         <p>{gateProblem === 'NETWORK' ? t.errUnknownResult : gateProblem === 'POS_DEVICE_UNAUTHORIZED' ? t.unauthorized : diningErrorText(lang, gateProblem)}</p>
-        <button type="button" style={{ ...s.ghost, marginTop: 12 }} onClick={() => { void loadGate(storeCode).then((loaded) => { if (loaded?.recoveryAvailable) void refreshTables(storeCode) }) }}>{t.refresh}</button>
+        <button type="button" style={{ ...s.ghost, marginTop: 12 }} onClick={() => { void loadGate(storeCode); void refreshTables(storeCode) }}>{t.refresh}</button>
       </div>
     )
   } else if (!gate) body = <div style={s.center}>{t.loading}</div>
