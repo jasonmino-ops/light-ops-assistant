@@ -1,0 +1,79 @@
+{
+  "releaseId": "ES-STD9E5497D-FIELD-STABILITY-01-B",
+  "taskIds": [
+    "ES-STD9E5497D-FIELD-STABILITY-01-B"
+  ],
+  "releaseSha": "b7776e703a770ea78632d38ac652d0bad6e7379f",
+  "releaseTree": "9c8f840a84a765f11e0694a634cf3dc89d7a2cc0",
+  "baseProductionSha": "65a23a780d16d607a0f8f818289e96c886eb1a60",
+  "sourceMainSha": "99ac06b0360fd77739b80558c1c32d4f4c677cb5",
+  "productionDeployment": "dpl_EraxN49WoWBSJfKKMJL3ecFPMfNk",
+  "control": "6bb804ba5918e06bc24576525c27de6f92a24ec6",
+  "manifestSha256": "e50145fe597425ab72655da825e7beb87b45ed5cf901ca42226430d2c6117e6c",
+  "includedSourceCommits": [
+    "0829858d04c0ea7a2528ab19fc74293a0d7df0ff"
+  ],
+  "founderAuthorization": {
+    "approvedBy": "Founder",
+    "status": "APPROVED",
+    "authorizationId": "ES-STD9E5497D-FIELD-STABILITY-01-B-RELEASE-20261129",
+    "approvedAt": "2026-11-28T17:21:36.158Z",
+    "includedSourceCommits": [
+      "0829858d04c0ea7a2528ab19fc74293a0d7df0ff"
+    ]
+  },
+  "expiresAt": "2026-11-28T19:00:00.000Z",
+  "frozenPayloadSha256": "8b6986a770e0d132447ff9aa77ff7f19f2bbcbf19fde42ee841ded99bf377abf",
+  "dispositionSha256": "1dd5922bbcf578e8b2bc744280a1c49d2daddc00472e570c119c446ba69532a1",
+  "rawIntegration": {
+    "status": "BLOCKED",
+    "expected": 22,
+    "executed": 22,
+    "pass": 19,
+    "fail": 3,
+    "skip": 0
+  },
+  "rawCORE": {
+    "status": "BLOCKED",
+    "expected": 104,
+    "executed": 104,
+    "pass": 100,
+    "fail": 4,
+    "skip": 0
+  },
+  "rawCORECandidate": "65a23a780d16d607a0f8f818289e96c886eb1a60",
+  "rawIntegrationCandidate": "65a23a780d16d607a0f8f818289e96c886eb1a60",
+  "rawProductCORECandidate": "746ead6adb1f01784d7353e73de45cdd79400efb",
+  "rawProductCORE": {
+    "status": "BLOCKED",
+    "expected": 105,
+    "executed": 105,
+    "pass": 102,
+    "fail": 3,
+    "skip": 0
+  },
+  "coverageSha256": "e9d94d59346dea2e3c9743f29c6a3da40146ec89e98846c7ee258b797b38d78d",
+  "authorizationReceiptSha256": "26dd1cf5fc4efbd447efc42d4d9c3ee0112ff44bf4fbd855279607072b2331c6",
+  "controllerSha256": {
+    ".github/release-validator/print-device-takeover.json": "e50145fe597425ab72655da825e7beb87b45ed5cf901ca42226430d2c6117e6c",
+    ".github/release-validator/print-device-takeover.mjs": "9c221e191ed98d91a09d2eaede98fc50b3599ff15f2e7c0859b7ddab5bfbe614",
+    ".github/release-validator/print-device-takeover.test.mjs": "88a64356fc57809f7fd82e39658f52d077502ab4a4abaff4012c023ad257859b",
+    ".github/workflows/selective-release-validator.yml": "754c4deb493ae85efafa4be34382937819b0f02fb794c543fc98b8fc883b910d"
+  },
+  "controllerDigest": "75ada10762d3d245b7e4b7811712cb0f709c8b111724d2ffc0ffb879570ceffa",
+  "issuerInstallationAuthorized": true,
+  "statusPublicationAuthorized": true,
+  "releaseExecutionAuthorized": true,
+  "releaseExecutionRequiresUnexpiredAppStatus": true,
+  "currentFailureDispositionAuthorized": true,
+  "migrationAuthorized": false,
+  "terminalMutationAuthorized": false,
+  "pilotOrFeedMutationAuthorized": false,
+  "defaultSelectiveValidatorChanged": false,
+  "migrationCount": 0,
+  "signatureLifetimeSeconds": 7200,
+  "acceptance": "ACCEPTED_WITH_EXACT_DINING_COVERAGE_AND_CURRENT_FAILURE_DISPOSITION",
+  "reviewReceiptSha256": "7a32c4f184ef4fc3cee777dbc77b3778ed6497f1b9dc88b8c66dd7498b56c4fb",
+  "deploymentId": "PENDING",
+  "productionSha": "PENDING"
+}
