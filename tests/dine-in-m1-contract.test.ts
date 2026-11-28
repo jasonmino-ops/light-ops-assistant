@@ -8,6 +8,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
+import vm from 'node:vm'
+import ts from 'typescript'
+import { DiningReadRequests } from '../app/desktop/dine-in/readRequests'
 import {
   DINING_NOTICE_REPORT_OUTCOMES,
   DINING_NOTICE_TTL_MS,
@@ -33,6 +36,56 @@ function files(dir: string): string[] {
 }
 const moduleFiles = [...files('lib/dine-in'), ...files('app/api/dine-in'), ...files('app/desktop/dine-in')]
 const moduleSource = new Map(moduleFiles.map((file) => [file, read(file)]))
+
+/** Execute the actual page callbacks, with controlled network/state ports, without a browser or DB. */
+function diningReadsFixture() {
+  const source = moduleSource.get('app/desktop/dine-in/page.tsx')!
+  const tree = ts.createSourceFile('page.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const callbacks = new Map<string, string>()
+  let boot = ''
+  const walk = (node: ts.Node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isCallExpression(node.initializer) &&
+      node.initializer.expression.getText(tree) === 'useCallback') callbacks.set(node.name.text, node.initializer.arguments[0].getText(tree))
+    if (ts.isCallExpression(node) && node.expression.getText(tree) === 'useEffect' && node.arguments[0]?.getText(tree).includes('void loadGate(storeCode)')) boot = node.arguments[0].getText(tree)
+    ts.forEachChild(node, walk)
+  }
+  walk(tree)
+  const ref = <T>(current: T) => ({ current })
+  const state: Record<string, unknown> = { meal: null, catalog: null, gate: null, tables: null }
+  const requests: { code: string; path: string; resolve: (result: unknown) => void }[] = []
+  const catalogs: { url: string; resolve: (result: unknown) => void }[] = []
+  let headers: Record<string, string> = { 'x-pos-device-id': 'synthetic-device-a', 'x-pos-device-token': 'synthetic-token-a' }
+  const env: Record<string, any> = {
+    mounted: ref(true), storeCodeRef: ref('store-a'), readScope: ref(null), gateEpoch: ref(0), gateIdentity: ref(null),
+    mealEpoch: ref(0), tablesEpoch: ref(0), recoverPages: ref(1), shownRecoverable: ref(0), tablesBusy: ref('idle'),
+    viewRef: ref({ kind: 'bill', mealId: 'meal-a' }), mealRef: ref(null), readRequests: ref(new DiningReadRequests()), catalogCache: ref(null),
+    loadCatalogRef: ref(null), refreshTablesRef: ref(null), storeCode: 'store-a', lang: 'zh',
+    posDeviceHeaders: () => headers, diningText: () => ({ catalogFailed: 'catalog-failed' }),
+    api: (code: string, path: string) => new Promise((resolve) => requests.push({ code, path, resolve })),
+    fetch: (url: string) => new Promise((resolve) => catalogs.push({ url, resolve })),
+  }
+  for (const name of ['Meal', 'Catalog', 'Gate', 'GateProblem', 'Tables', 'Recoverable', 'Notice', 'View', 'Receipt']) {
+    const key = name[0].toLowerCase() + name.slice(1)
+    env[`set${name}`] = (value: unknown) => { state[key] = typeof value === 'function' ? value(state[key]) : value }
+  }
+  const context = vm.createContext(env)
+  const evaluate = (expression: string) => {
+    const js = ts.transpileModule(`globalThis.__callback = ${expression}`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+    vm.runInContext(js, context)
+    return env.__callback
+  }
+  for (const name of ['isCurrentScope', 'resetReadScope', 'loadGate', 'refreshTables', 'applyMeal', 'refreshMeal', 'showTables', 'showMeal', 'loadCatalog']) {
+    assert.ok(callbacks.has(name), `actual callback ${name}`)
+    env[name] = evaluate(callbacks.get(name)!)
+  }
+  env.loadCatalogRef.current = env.loadCatalog
+  env.refreshTablesRef.current = env.refreshTables
+  env.resetReadScope('store-a')
+  return { env, state, requests, catalogs, boot: () => evaluate(boot)(), headers: (next: Record<string, string>) => { headers = next } }
+}
+
+const finishReads = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve() }
+const mealRead = (version: number, mealId = 'meal-a') => ({ kind: 'ok', data: { meal: { mealId, version, state: 'OPEN' } } })
 
 test('notice state: every combination of page report and print-job evidence', () => {
   const state = (reportedOutcome: string | null, evidence: DiningNoticeEvidence, extra: Partial<Parameters<typeof deriveDiningNoticeStatus>[0]> = {}) =>
@@ -483,4 +536,210 @@ test('cashier entry: one button, one read-only question, nothing else', () => {
   assert.match(button, /showToast\(diningText\(lang\)\.entryLeaveBlocked\)\s*return/)
   assert.doesNotMatch(button, /confirm\(/)
   assert.match(button, /dineInEntry === 'NEW' \? diningText\(lang\)\.entryNew : diningText\(lang\)\.entryRecovery/)
+})
+
+test('dining reads: repeated polls join the actual slow page read and its first success is applied', async () => {
+  const f = diningReadsFixture()
+  const epoch = f.env.mealEpoch.current
+  const first = f.env.refreshMeal('store-a', 'meal-a')
+  await finishReads()
+  const second = f.env.refreshMeal('store-a', 'meal-a')
+  const third = f.env.refreshMeal('store-a', 'meal-a')
+  await finishReads()
+  assert.equal(f.requests.length, 1)
+  assert.equal(f.env.mealEpoch.current, epoch)
+  f.requests[0].resolve(mealRead(4))
+  const results = await Promise.all([first, second, third])
+  assert.ok(results.every((result) => result.version === 4))
+  assert.equal((f.state.meal as { version: number }).version, 4)
+})
+
+test('dining reads: mutation invalidates an old poll and a fresh check waits for a separate post-mutation GET', async () => {
+  const f = diningReadsFixture()
+  const old = f.env.refreshMeal('store-a', 'meal-a')
+  await finishReads()
+  f.env.applyMeal({ mealId: 'meal-a', version: 2, state: 'OPEN' })
+  const fresh = f.env.refreshMeal('store-a', 'meal-a', true)
+  await finishReads()
+  assert.equal(f.requests.length, 1, 'no overlapping GET even across mutation epochs')
+  f.requests[0].resolve(mealRead(1))
+  assert.equal(await old, null)
+  await finishReads()
+  assert.equal(f.requests.length, 2)
+  assert.equal((f.state.meal as { version: number }).version, 2)
+  f.requests[1].resolve(mealRead(3))
+  assert.equal((await fresh).version, 3)
+  assert.equal((f.state.meal as { version: number }).version, 3)
+})
+
+test('dining reads: rapid A-B-A navigation does not reuse or apply the first visit response', async () => {
+  const f = diningReadsFixture()
+  const first = f.env.refreshMeal('store-a', 'meal-a')
+  await finishReads()
+  f.env.showMeal('meal-b')
+  await finishReads()
+  f.env.showMeal('meal-a')
+  f.requests[0].resolve(mealRead(1))
+  assert.equal(await first, null)
+  await finishReads()
+  assert.equal(f.requests.length, 3)
+  f.requests.find((entry) => entry.path.endsWith('/meal-b'))!.resolve(mealRead(9, 'meal-b'))
+  await finishReads()
+  assert.equal(f.state.meal, null)
+  f.requests[2].resolve(mealRead(3))
+  await finishReads()
+  assert.equal((f.state.meal as { mealId: string; version: number }).mealId, 'meal-a')
+  assert.equal((f.state.meal as { version: number }).version, 3)
+})
+
+test('dining reads: stale versions, mismatched meal IDs and unmounted replies are not usable as fresh checks', async () => {
+  const f = diningReadsFixture()
+  f.env.mealRef.current = { mealId: 'meal-a', version: 5 }
+  f.state.meal = f.env.mealRef.current
+  const stale = f.env.refreshMeal('store-a', 'meal-a')
+  await finishReads()
+  f.requests[0].resolve(mealRead(4))
+  assert.equal(await stale, null)
+  assert.equal((f.state.meal as { version: number }).version, 5)
+  const wrong = f.env.refreshMeal('store-a', 'meal-a')
+  await finishReads()
+  f.requests[1].resolve(mealRead(6, 'meal-b'))
+  assert.equal(await wrong, null)
+  const unmounted = f.env.refreshMeal('store-a', 'meal-a')
+  await finishReads()
+  f.env.mounted.current = false
+  f.requests[2].resolve(mealRead(6))
+  assert.equal(await unmounted, null)
+})
+
+test('dining reads: scope/header changes cannot apply or reuse old meal/catalog reads', async () => {
+  const f = diningReadsFixture()
+  const meal = f.env.refreshMeal('store-a', 'meal-a')
+  const catalog = f.env.loadCatalog()
+  await finishReads()
+  f.headers({ 'x-pos-device-id': 'synthetic-device-b', 'x-pos-device-token': 'synthetic-token-b' })
+  f.requests[0].resolve(mealRead(2))
+  f.catalogs[0].resolve({ ok: true, status: 200, json: async () => ({ products: ['old-identity'], categories: [] }) })
+  assert.equal(await meal, null)
+  await catalog
+  assert.equal(f.state.catalog, null)
+  assert.equal(f.state.meal, null)
+  const gate = f.env.loadGate('store-a')
+  assert.equal(f.env.readScope.current.generation, 2)
+  f.requests[1].resolve({ kind: 'ok', data: { eligible: false, recoveryAvailable: true, role: 'STAFF', operatorSource: 'ACCOUNT', store: { code: 'store-a' } } })
+  await gate
+  const next = f.env.loadCatalog()
+  await finishReads()
+  assert.equal(f.catalogs.length, 2)
+  f.catalogs[1].resolve({ ok: true, status: 200, json: async () => ({ products: ['current-identity'], categories: [] }) })
+  await next
+  assert.equal((f.state.catalog as { products: string[] }).products[0], 'current-identity')
+})
+
+test('dining reads: catalog single-flight, existing memory reuse, failures retry and store changes isolate results', async () => {
+  const f = diningReadsFixture()
+  const one = f.env.loadCatalog(), two = f.env.loadCatalog()
+  await finishReads()
+  assert.equal(f.catalogs.length, 1)
+  f.catalogs[0].resolve({ ok: false, status: 500 })
+  await Promise.all([one, two])
+  assert.equal(f.state.catalog, null)
+  const retry = f.env.loadCatalog()
+  await finishReads()
+  assert.equal(f.catalogs.length, 2)
+  f.env.storeCodeRef.current = 'store-b'
+  f.env.resetReadScope('store-b')
+  f.catalogs[1].resolve({ ok: true, status: 200, json: async () => ({ products: ['store-a'], categories: [] }) })
+  await retry
+  assert.equal(f.state.catalog, null)
+  const current = f.env.loadCatalog()
+  await finishReads()
+  assert.match(f.catalogs[2].url, /storeCode=store-b/)
+  f.catalogs[2].resolve({ ok: true, status: 200, json: async () => ({ products: ['store-b'], categories: [] }) })
+  await current
+  await f.env.loadCatalog()
+  assert.equal(f.catalogs.length, 3, 'same-scope loaded memory is reused')
+  assert.equal((f.state.catalog as { products: string[] }).products[0], 'store-b')
+})
+
+test('dining reads: gate and tables dispatch together; gate refusal clears parallel results and late responses', async () => {
+  const f = diningReadsFixture()
+  const cleanup = f.boot()
+  assert.deepEqual(f.requests.map((entry) => entry.path), ['eligibility', 'tables'])
+  f.requests[1].resolve({ kind: 'ok', data: { tables: ['authorized-read'], recoverable: null } })
+  await finishReads()
+  assert.equal(f.state.gate, null, 'display still awaits the gate')
+  f.requests[0].resolve({ kind: 'refused', code: 'POS_DEVICE_UNAUTHORIZED' })
+  await finishReads()
+  assert.equal(f.state.tables, null)
+  assert.equal(f.state.gate, null)
+  assert.equal(f.state.gateProblem, 'POS_DEVICE_UNAUTHORIZED')
+  assert.equal(f.catalogs.length, 0)
+  cleanup()
+})
+
+test('dining reads: latest gate result wins; ineligible gate never prefetches; changed role invalidates cache', async () => {
+  const f = diningReadsFixture()
+  const first = f.env.loadGate('store-a'), second = f.env.loadGate('store-a')
+  const gate = { eligible: false, recoveryAvailable: true, role: 'OWNER', operatorSource: 'DEVICE', store: { code: 'store-a' } }
+  f.requests[1].resolve({ kind: 'ok', data: gate })
+  await second
+  f.requests[0].resolve({ kind: 'refused', code: 'POS_DEVICE_UNAUTHORIZED' })
+  assert.equal(await first, null)
+  assert.equal((f.state.gate as { role: string }).role, 'OWNER')
+  assert.equal(f.catalogs.length, 0)
+  f.env.catalogCache.current = { scope: f.env.readScope.current, data: { products: ['owner-only-memory'], categories: [] } }
+  const changed = f.env.loadGate('store-a')
+  f.requests[2].resolve({ kind: 'ok', data: { ...gate, role: 'STAFF', operatorSource: 'ACCOUNT' } })
+  await changed
+  assert.equal(f.env.catalogCache.current, null)
+  assert.equal((f.state.gate as { role: string }).role, 'STAFF')
+})
+
+test('dining reads: old tables completion queues a refresh for the current store, not its captured store', async () => {
+  const f = diningReadsFixture()
+  const old = f.env.refreshTables('store-a')
+  f.env.storeCodeRef.current = 'store-b'
+  f.env.resetReadScope('store-b')
+  await f.env.refreshTables('store-b')
+  f.requests[0].resolve({ kind: 'ok', data: { tables: ['old-store'], recoverable: null } })
+  await old
+  await finishReads()
+  assert.equal(f.state.tables, null)
+  assert.equal(f.requests[1].code, 'store-b')
+  f.requests[1].resolve({ kind: 'ok', data: { tables: ['current-store'], recoverable: null } })
+  await finishReads()
+  assert.equal((f.state.tables as string[])[0], 'current-store')
+})
+
+test('dining reads: explicit authorization refusal invalidates sibling reads; ordinary network failure does not masquerade as authorization', async () => {
+  const f = diningReadsFixture()
+  const read = f.env.refreshMeal('store-a', 'meal-a')
+  const catalog = f.env.loadCatalog()
+  await finishReads()
+  f.requests[0].resolve({ kind: 'refused', code: 'POS_DEVICE_UNAUTHORIZED' })
+  assert.equal(await read, null)
+  f.catalogs[0].resolve({ ok: true, status: 200, json: async () => ({ products: ['revoked'], categories: [] }) })
+  await catalog
+  assert.equal(f.state.catalog, null)
+  assert.equal(f.state.gateProblem, 'POS_DEVICE_UNAUTHORIZED')
+  const next = f.env.refreshMeal('store-a', 'meal-a')
+  await finishReads()
+  const scope = f.env.readScope.current
+  f.requests[1].resolve({ kind: 'unknown' })
+  assert.equal(await next, null)
+  assert.equal(f.env.readScope.current, scope, 'unknown read result does not invent an auth change')
+})
+
+test('dining read queue: rejection releases the key and a queued newer revision still runs once', async () => {
+  const queue = new DiningReadRequests()
+  let reject!: (reason: Error) => void, reads = 0
+  const first = queue.run('same-resource', 1, () => new Promise<void>((_, no) => { reject = no; reads += 1 }))
+  await finishReads()
+  const second = queue.run('same-resource', 2, async () => { reads += 1; return 2 })
+  reject(new Error('synthetic-read-failure'))
+  await assert.rejects(first, /synthetic-read-failure/)
+  assert.equal(await second, 2)
+  assert.equal(reads, 2)
+  assert.equal(await queue.run('same-resource', 2, async () => 3), 3, 'result is not cached by the scheduler')
 })
