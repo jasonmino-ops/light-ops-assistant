@@ -13,7 +13,7 @@ const appId = 5590705, installationId = 178077967, creatorId = 351820557
 const context = 'eshop/selective-release-validator'
 const prefix = 'Dining performance '
 const manifestPath = '.github/release-validator/print-device-takeover.json'
-const manifestSha = 'e50145fe597425ab72655da825e7beb87b45ed5cf901ca42226430d2c6117e6c'
+const manifestSha = '9d96feec9a01da32dae1d184fb075b5173a0c531c56b5472f079a332f6d3de69'
 const rawManifest = readFileSync(new URL('./print-device-takeover.json', import.meta.url))
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 assert.equal(sha(rawManifest), manifestSha)
@@ -54,7 +54,7 @@ export function verifyAuthorization(record, receipt, review, control, now=Date.n
   assert.deepEqual(record.includedSourceCommits,manifest.includedSourceCommits)
   const auth=record.founderAuthorization
   assert.equal(auth.approvedBy,'Founder');assert.equal(auth.status,'APPROVED')
-  assert.equal(typeof auth.authorizationId,'string'); assert(auth.authorizationId.length>0)
+  assert.equal(auth.authorizationId,manifest.authorizationId)
   assert.deepEqual(auth.includedSourceCommits,manifest.includedSourceCommits)
   const issued=Date.parse(auth.approvedAt),expires=Date.parse(record.expiresAt)
   assert(Number.isFinite(issued)&&issued<=now&&now<expires,'Final release approval missing, future or expired')
@@ -73,7 +73,7 @@ export function verifyAuthorization(record, receipt, review, control, now=Date.n
   assert.deepEqual(Object.keys(record.controllerSha256).sort(),controlPaths)
   for(const value of Object.values(record.controllerSha256)) assert.match(value,/^[0-9a-f]{64}$/)
   assert.equal(record.controllerDigest,controllerDigest(record.controllerSha256))
-  for(const term of [record.frozenPayloadSha256,record.dispositionSha256,auth.authorizationId,manifest.candidate,manifest.tree,manifest.base,manifestSha,
+  for(const term of [control,manifest.previousControl,manifest.previousRegistration,manifest.projection,record.frozenPayloadSha256,record.dispositionSha256,auth.authorizationId,manifest.candidate,manifest.tree,manifest.base,manifestSha,
     record.controllerDigest,manifest.mainBase,...manifest.includedSourceCommits,
     '批准精确堂食性能登记、一次App签发及受保护release快进部署',manifest.deadlineExclusive])
     assert(receipt.includes(term),'Missing exact final Founder authority: '+term)
@@ -216,13 +216,27 @@ export function verifySource() {
   for(const [p,digest] of Object.entries(manifest.trustedEngineering)) {assert.equal(sha(blob(manifest.mainBase,p)),digest);assert.equal(git('ls-tree',manifest.mainBase,'--',p).split(' ')[0],manifest.trustedModes[p])}
 }
 function readRefs() {
-  const refs=['refs/heads/main','refs/heads/release',manifest.productRef,controlRef]
+  const refs=['refs/heads/main','refs/heads/release',manifest.productRef,controlRef,manifest.projectionRef]
   const live=new Map(git('ls-remote','--heads',origin,...refs).split('\n').map(line=>line.split('\t').reverse()))
   for(const ref of refs) {
     assert.match(live.get(ref)||'',/^[0-9a-f]{40}$/)
     assert.equal(git('rev-parse','refs/remotes/origin/'+ref.slice(11)),live.get(ref),'Stale checkout ref')
   }
   return live
+}
+// The original registration and its evidence remain anchored at their reviewed commit.
+export function verifyRegistration(main) {
+  const original=manifest.previousRegistration
+  assert.equal(git('show','-s','--format=%P',original),manifest.mainBase)
+  assert.deepEqual(paths(manifest.mainBase,original),registrationPaths)
+  assert.deepEqual(git('log','--diff-filter=A','--format=%H',main,'--',admissionPath).split('\n'),[original])
+  assert.equal(git('show','-s','--format=%P',main),original,'Require one direct registration successor')
+  assert.deepEqual(paths(original,main),[admissionPath,receiptPath,reviewPath].sort())
+  assert.deepEqual(paths(manifest.mainBase,main),registrationPaths)
+  for(const p of registrationPaths) {
+    assert(git('ls-tree',main,'--',p).startsWith('100644 blob '),'Regular registration file required: '+p)
+  }
+  assert.equal(git('rev-parse',main+':'+evidencePath),git('rev-parse',original+':'+evidencePath))
 }
 function validated(expectedDigest) {
   assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.GITHUB_EVENT_NAME,'push')
@@ -236,16 +250,8 @@ function validated(expectedDigest) {
   const refs=readRefs(),main=refs.get('refs/heads/main')
   assert.equal(refs.get(controlRef),control);assert.equal(refs.get('refs/heads/release'),manifest.base)
   assert.equal(refs.get(manifest.productRef),manifest.candidate)
-  git('merge-base','--is-ancestor',manifest.mainBase,main)
-  // Only our own four-file governance registration may advance the live main binding.
-  assert.deepEqual(paths(manifest.mainBase,main),registrationPaths)
-  const additions=git('log','--diff-filter=A','--format=%H',main,'--',admissionPath).split('\n').filter(Boolean)
-  assert.equal(additions.length,1)
-  const registration=additions[0]
-  assert.equal(git('show','-s','--format=%P',registration),manifest.mainBase)
-  assert.deepEqual(paths(manifest.mainBase,registration),registrationPaths)
-  assert.equal(git('rev-parse',main+'^{tree}'),git('rev-parse',registration+'^{tree}'))
-  for(const p of registrationPaths) assert.equal(sha(blob(registration,p)),sha(blob(main,p)))
+  assert.equal(refs.get(manifest.projectionRef),manifest.projection,'Original tested projection ref drift')
+  verifyRegistration(main)
   for(const [p,digest] of Object.entries(manifest.trustedEngineering)) {assert.equal(sha(blob(main,p)),digest,'Trusted engineering input changed: '+p);assert.equal(git('ls-tree',main,'--',p).split(' ')[0],manifest.trustedModes[p])}
   verifySource();verifyEvidence(blob(main,evidencePath))
   // Re-read the actual registered-main operand of the unchanged historical assertion; fixture shape is not authority.

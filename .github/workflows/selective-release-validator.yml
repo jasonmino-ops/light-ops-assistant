@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify exact dining-performance release and live trusted refs
+      - name: Verify B successor registration and original dining projection
         id: pos
         env:
           GH_TOKEN: ${{ github.token }}

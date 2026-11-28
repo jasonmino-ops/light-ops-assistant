@@ -5,7 +5,7 @@
   "tree": "9c8f840a84a765f11e0694a634cf3dc89d7a2cc0",
   "base": "65a23a780d16d607a0f8f818289e96c886eb1a60",
   "mainBase": "99ac06b0360fd77739b80558c1c32d4f4c677cb5",
-  "previousControl": "1f86f6eeb951397307d3490583b36ce96555d4ef",
+  "previousControl": "6bb804ba5918e06bc24576525c27de6f92a24ec6",
   "productRef": "refs/heads/codex/es-std9-b-release-candidate-01",
   "productionDeployment": "dpl_EraxN49WoWBSJfKKMJL3ecFPMfNk",
   "projectId": "prj_Ld76p2KNULYeu7mcf40vTG0EprY1",
@@ -15,7 +15,7 @@
     "0829858d04c0ea7a2528ab19fc74293a0d7df0ff"
   ],
   "deadlineExclusive": "2026-11-28T19:00:00.000Z",
-  "signatureLifetimeSeconds": 7200,
+  "signatureLifetimeSeconds": 4500,
   "migrationCount": 0,
   "defaultSelectiveValidatorChanged": false,
   "sourceMainSha": "99ac06b0360fd77739b80558c1c32d4f4c677cb5",
@@ -119,7 +119,7 @@
     "release_candidate--diamond-native-sales-phase2.log": "897d5d000ff935970fca3476625dc72919d570b8717134379ae5d6e1d05898b8",
     "release_candidate--dashboard-print-settings-mobile.log": "cdea9601e3360265ea2801a5f31b803baadc0fdacfc078ec818e67d94be7b7d9"
   },
-  "authorizationWindowStart": "2026-11-28T17:00:00.000Z",
+  "authorizationWindowStart": "2026-11-28T17:45:00.000Z",
   "coverageSpecs": {
     "mainCore": {
       "candidate": "99ac06b0360fd77739b80558c1c32d4f4c677cb5",
@@ -196,5 +196,9 @@
     "expectedCount": 5,
     "expectedSha256": "ec8949b0ef9880ef457e577022a4e92948581865e7766b899207b266addb00ba",
     "base": "67338b57bf2d872e2b0755c76820036f6f0743f4"
-  }
+  },
+  "previousRegistration": "0054f65a2785e1f7536c71ee4612f4af23ef7a7b",
+  "projectionRef": "refs/heads/codex/es-std9-b-projection-evidence",
+  "projection": "cf9b8881a344e64cad4c3f0deb3fe49daed98234",
+  "authorizationId": "ES-STD9E5497D-FIELD-STABILITY-01-B-CONTROL-02"
 }

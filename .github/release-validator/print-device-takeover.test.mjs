@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {readFileSync} from 'node:fs'
-import {manifest,controlPaths,controllerDigest,candidateShape,verifyAuthorization,verifyEvidence,verifySource,contextEntries,readIssuedStatus,issueOnce,verifyCoverage,verifyFailureDisposition,verifyFailureAnnex} from './print-device-takeover.mjs'
+import {manifest,controlPaths,controllerDigest,candidateShape,verifyAuthorization,verifyRegistration,verifyEvidence,verifySource,contextEntries,readIssuedStatus,issueOnce,verifyCoverage,verifyFailureDisposition,verifyFailureAnnex} from './print-device-takeover.mjs'
 const sha=x=>createHash('sha256').update(x).digest('hex')
 const control='a'.repeat(40),digest='b'.repeat(64)
 const at=Date.parse('2026-11-28T17:50:00Z')
@@ -13,17 +13,17 @@ export function fixture() {
     controllerSha256:hashes,readOnly:true,freshContext:true,notFounderOrAppSigner:true,
     evidence:'ISOLATED SYNTHETIC FIXTURE ONLY. Not Founder approval, formal Acceptance or App status. '.repeat(3)}
   review.evidenceSha256=sha(review.evidence)
-  const receipt=['ISOLATED SYNTHETIC FIXTURE NOT ACTUAL AUTHORITY','fixture-only',manifest.candidate,manifest.tree,manifest.base,
+  const receipt=['ISOLATED SYNTHETIC FIXTURE NOT ACTUAL AUTHORITY',manifest.authorizationId,control,manifest.previousControl,manifest.previousRegistration,manifest.projection,manifest.candidate,manifest.tree,manifest.base,
     review.manifestSha256,controllerDigest(hashes),manifest.mainBase,...manifest.includedSourceCommits,manifest.authorizationWindowStart,'FOUNDER_DECISION_UTC=2026-11-28T17:47:00.000Z',manifest.evidenceHashes['frozen-payload.json'],manifest.evidenceHashes['failure-disposition.json'],
     '批准精确堂食性能登记、一次App签发及受保护release快进部署',manifest.deadlineExclusive].join('\n')
   const record={releaseId:manifest.releaseId,taskIds:[manifest.taskId],releaseSha:manifest.candidate,releaseTree:manifest.tree,
     baseProductionSha:manifest.base,sourceMainSha:manifest.sourceMainSha,productionDeployment:manifest.productionDeployment,
     control,manifestSha256:review.manifestSha256,includedSourceCommits:manifest.includedSourceCommits,
-    founderAuthorization:{approvedBy:'Founder',status:'APPROVED',authorizationId:'fixture-only',approvedAt:'2026-11-28T17:47:00.000Z',includedSourceCommits:manifest.includedSourceCommits},
+    founderAuthorization:{approvedBy:'Founder',status:'APPROVED',authorizationId:manifest.authorizationId,approvedAt:'2026-11-28T17:47:00.000Z',includedSourceCommits:manifest.includedSourceCommits},
     expiresAt:manifest.deadlineExclusive,frozenPayloadSha256:manifest.evidenceHashes['frozen-payload.json'],dispositionSha256:manifest.evidenceHashes['failure-disposition.json'],rawIntegration:{status:'BLOCKED',expected:22,executed:22,pass:19,fail:3,skip:0},authorizationReceiptSha256:sha(receipt),controllerSha256:hashes,controllerDigest:controllerDigest(hashes),
     issuerInstallationAuthorized:true,statusPublicationAuthorized:true,releaseExecutionAuthorized:true,releaseExecutionRequiresUnexpiredAppStatus:true,
     migrationAuthorized:false,terminalMutationAuthorized:false,pilotOrFeedMutationAuthorized:false,defaultSelectiveValidatorChanged:false,
-    migrationCount:0,signatureLifetimeSeconds:7200,acceptance:'ACCEPTED_WITH_EXACT_DINING_COVERAGE_AND_CURRENT_FAILURE_DISPOSITION',
+    migrationCount:0,signatureLifetimeSeconds:manifest.signatureLifetimeSeconds,acceptance:'ACCEPTED_WITH_EXACT_DINING_COVERAGE_AND_CURRENT_FAILURE_DISPOSITION',
     rawCORE:{status:'BLOCKED',expected:104,executed:104,pass:100,fail:4,skip:0},
     rawCORECandidate:'65a23a780d16d607a0f8f818289e96c886eb1a60',rawIntegrationCandidate:'65a23a780d16d607a0f8f818289e96c886eb1a60',
     rawProductCORECandidate:'746ead6adb1f01784d7353e73de45cdd79400efb',rawProductCORE:{status:'BLOCKED',expected:105,executed:105,pass:102,fail:3,skip:0},
@@ -177,5 +177,16 @@ test('literal V2 failure annexes reject missing environment identity, changed so
       x=>{x.raw_status='PASS'},x=>{x.failures.pop()},x=>{x.failures[0].attribution='UNKNOWN'},
       x=>{x.failures[0].expires_at='2027-01-01T00:00:00.000Z'},x=>{x.failures[0].evidence.sha256='0'.repeat(64)},
       x=>{x.invalidate_on=[]}]) {const value=structuredClone(good);change(value);assert.throws(()=>verifyFailureAnnex(value,name))}
+  }
+})
+
+test('the original registration and the first decision cannot authorize the successor',()=>{
+  assert.throws(()=>verifyRegistration(manifest.previousRegistration))
+  const {record,receipt,review}=fixture()
+  assert.throws(()=>verifyAuthorization({...record,founderAuthorization:{...record.founderAuthorization,
+    authorizationId:'ES-STD9E5497D-FIELD-STABILITY-01-B-RELEASE-20261129'}},receipt,review,control,at))
+  for(const term of [control,manifest.previousRegistration,manifest.previousControl,manifest.projection]){
+    const wrong=receipt.replace(term,'missing')
+    assert.throws(()=>verifyAuthorization({...record,authorizationReceiptSha256:sha(wrong)},wrong,review,control,at))
   }
 })
