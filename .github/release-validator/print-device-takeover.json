@@ -1,32 +1,36 @@
 {
-  "taskId": "ES-V3-REPORT-STALE-ACK-01",
-  "releaseId": "ES-V3-REPORT-STALE-ACK-01",
-  "candidate": "65a23a780d16d607a0f8f818289e96c886eb1a60",
-  "tree": "019f923f90298e96971b0650232c21e50d71d77d",
-  "base": "eeb1c6a5b5e44dcc3ed2c3cebd12c04994b9ec06",
-  "mainBase": "746ead6adb1f01784d7353e73de45cdd79400efb",
-  "previousControl": "f7b9fa16bed84415e46d02e96844e3deb57de2fe",
-  "productRef": "refs/heads/codex/es-v3-report-stale-ack-release",
-  "productionDeployment": "dpl_BcBDLHU7RrHEfQyL56yzSQu6unYM",
+  "taskId": "ES-STD9E5497D-FIELD-STABILITY-01-B",
+  "releaseId": "ES-STD9E5497D-FIELD-STABILITY-01-B",
+  "candidate": "b7776e703a770ea78632d38ac652d0bad6e7379f",
+  "tree": "9c8f840a84a765f11e0694a634cf3dc89d7a2cc0",
+  "base": "65a23a780d16d607a0f8f818289e96c886eb1a60",
+  "mainBase": "99ac06b0360fd77739b80558c1c32d4f4c677cb5",
+  "previousControl": "1f86f6eeb951397307d3490583b36ce96555d4ef",
+  "productRef": "refs/heads/codex/es-std9-b-release-candidate-01",
+  "productionDeployment": "dpl_EraxN49WoWBSJfKKMJL3ecFPMfNk",
   "projectId": "prj_Ld76p2KNULYeu7mcf40vTG0EprY1",
   "teamId": "team_U1CeoLImuMCa2rhgBU9QCENW",
   "domain": "elifekh.com",
   "includedSourceCommits": [
-    "746ead6adb1f01784d7353e73de45cdd79400efb"
+    "0829858d04c0ea7a2528ab19fc74293a0d7df0ff"
   ],
-  "deadlineExclusive": "2026-11-27T19:45:00.000Z",
+  "deadlineExclusive": "2026-11-28T19:00:00.000Z",
   "signatureLifetimeSeconds": 7200,
   "migrationCount": 0,
   "defaultSelectiveValidatorChanged": false,
-  "sourceMainSha": "746ead6adb1f01784d7353e73de45cdd79400efb",
+  "sourceMainSha": "99ac06b0360fd77739b80558c1c32d4f4c677cb5",
   "paths": [
     {
-      "path": "lib/v3-print-job-adapter.ts",
-      "sha256": "d5eb71f5c770370380aeb8ef5a1b1d8765d4a80964be1981141edc04b51dc9c2"
+      "path": "app/desktop/dine-in/page.tsx",
+      "sha256": "340317c53019fdd4b41340086de8ef73d5c09fe5fbfd4a3f42ade06d347b1440"
     },
     {
-      "path": "tests/customer-order-fulfillment-db.test.ts",
-      "sha256": "1c828ad9674764721a6159bf83f940ed6e1ef1a661d3ac4c6a8e10e5ccb0e80f"
+      "path": "app/desktop/dine-in/readRequests.ts",
+      "sha256": "f15b9c88dd60af4903dd08924a72d4c40f3d0a6ddf916a34f8220e035ba4810d"
+    },
+    {
+      "path": "tests/dine-in-m1-contract.test.ts",
+      "sha256": "b225be85a790f1c7a63438b0ce6b41dba194da9750653a657728edc7ba408b85"
     }
   ],
   "trustedEngineering": {
@@ -40,7 +44,10 @@
     "docs/governance/ES-RELEASE-SELECTIVE-LINEAGE-GOVERNANCE-01.md": "25df18e898287db0f6553c54c890a099f3850e455789fe5c1f82799cb984dd24",
     "vercel.json": "93b6592d7215f05d7162991f0efcfd3cbd83610070356be91d73c13052427b8c",
     "docs/change-gates/exceptions/ES-PRINT-DEVICE-TAKEOVER.json": "863aac1acba5987bd3b28c735b2a8988bd8162e55286ffe57908e986555d8eb7",
-    "docs/workflows/E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V2.md": "98484279de8770d4d75417dd422f3bcc5eb3864a4cff472dd6f4bcb04ccc78ee"
+    "docs/workflows/E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V2.md": "98484279de8770d4d75417dd422f3bcc5eb3864a4cff472dd6f4bcb04ccc78ee",
+    "scripts/test/run-root-full-suite.mjs": "290fe31ba779b2c8d64603d26c1e4120644295e724b99062922f2ef6ee8cc6c5",
+    "scripts/test/manifests/root-core-tests.json": "dec5e88882e80cd904e32bdb594cdb961625d2c23d52ee902b8a153981cb267b",
+    "scripts/test/manifests/root-integration-tests.json": "2f4d467a0853524301ad1535543710235e8935f625398f4737018ca1f43e9011"
   },
   "trustedModes": {
     "scripts/check-selective-release.sh": "100755",
@@ -53,28 +60,141 @@
     "docs/governance/ES-RELEASE-SELECTIVE-LINEAGE-GOVERNANCE-01.md": "100644",
     "vercel.json": "100644",
     "docs/change-gates/exceptions/ES-PRINT-DEVICE-TAKEOVER.json": "100644",
-    "docs/workflows/E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V2.md": "100644"
+    "docs/workflows/E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V2.md": "100644",
+    "scripts/test/run-root-full-suite.mjs": "100644",
+    "scripts/test/manifests/root-core-tests.json": "100644",
+    "scripts/test/manifests/root-integration-tests.json": "100644"
   },
-  "evidenceBundleSha256": "68e2fbff0980d6bdd83cdd104f3fb2977c0fa4ed44de836b0e5e3519880b3c4b",
+  "evidenceBundleSha256": "3e8caba088995aac93da8809d78860814cb5db36f1846faaa6121b2bf7fb4f06",
   "evidenceHashes": {
-    "frozen-payload.json": "e595406217ff4db1cb1389a8658d2db37afcd4e81bc34de07cfea94622bb5a9b",
-    "failure-disposition.json": "83077e9ac276f0f5802bfa5a3ccab53222d4145399f0830b5a750da685943c4a",
-    "release-build-evidence.json": "d666327fcc1c1cf2917108d7c18c825abea0df18f36f7c276d2acf787b832e1f",
-    "claude-final.txt": "8ffc14ce2c7fbb59051c3b474be7311fddbbb8070dcf0d76a20883d8a5b76e9f",
-    "production-predicate.json": "c32b6b2de70c203079299db4be550b79fabcca1da63e2448af8ec72a9973fad3",
-    "known-product-core.json": "24bfcca63319f02c595dc481a26808fa84895bd7f38797871606a33eeb814ecc",
-    "known-release-core.json": "50cca093c9b53b7b82b996e8675410c23fcf4d8e43ea1ab73305d8b06ac09dc8",
-    "known-release-integration.json": "f7175303f2b1dd3bd490e4e6efffb3299127ae43dd484b8973457ada7dd05c64",
-    "toolchain-inputs.json": "b1723333d4e5d538f7982b79da2868dcc697dd5b34164115bd2b94ee9aed0443",
-    "failure-set-product-core.json": "88a0ca133ab05242aa556b896ff659c8e08b67783437759e8eaf0ce0766f553f",
-    "failure-set-release-core.json": "1a89d636871b1c2522e8263a02a44f20cbc456ae4d3bcc961b991f33361a06a6",
-    "failure-set-release-integration.json": "f3eb722ffae9500283582a78e59c716ff27d3e1414c6264a86bcb38d1932ce25",
-    "failure-disposition-before-registration.json": "680d43c8008a91a171af1e0eeca4f623ec7d497f3c1d08fbc85d9bf6d0dca6dd",
-    "reproduction.json": "fafcd89896454afcdfd9e45a3b3a395927a93907f4c0641b58c703dd3363d2bb",
-    "environment-505.json": "d5e498c39d8f1b6c1a6029104acda833bf34f74329990384df9eb805556922c0",
-    "known-505-targeted.json": "10decc2bf4e7be4b1e66359ae86fcb358d363ccb4bed698b339c6641d2239a3f",
-    "failure-set-505-targeted.json": "b610be717fc48e460fcfec6542d67ccf5522625703a1354aefd74079149d6590",
-    "failure-set-release-core-505.json": "8fbaaa347ea63fd87a428cb1c2bafdd0d351063272d7aeec3c9cadc10d713d46"
+    "coverage.json": "e9d94d59346dea2e3c9743f29c6a3da40146ec89e98846c7ee258b797b38d78d",
+    "failure-disposition.json": "1dd5922bbcf578e8b2bc744280a1c49d2daddc00472e570c119c446ba69532a1",
+    "frozen-payload.json": "8b6986a770e0d132447ff9aa77ff7f19f2bbcbf19fde42ee841ded99bf377abf",
+    "toolchain-inputs.json": "e883457f97d8c739f7ef841310a5e89e08d169d591c19856805ff7022953bb38",
+    "known-mainCore.json": "adf6c187eb6ba98ce7059a88cbf6bded9c831d83c3eb33ec7106112dc68e2f64",
+    "known-releaseCore.json": "befffa962d7f1cf1a1d3a56a69749216d616c0253f039c058b96885bb7907892",
+    "known-releaseIntegration.json": "ef90920410273496cc0f4f43eb7f478707db93e1164c1c2d352d5a4a76842a1e",
+    "mainCore-baseline-failure-rechecks.log": "10bb95ef2c5816850f2d845b28d558f3cf8206f0f0f68ccf3aa09ef38ca1de57",
+    "mainCore-candidate-failure-rechecks.log": "a1de41e8e5933a2de02b6371f3b735f74c887af0a00ddd8095e565992fc96ae5",
+    "releaseCore-baseline-failure-rechecks.log": "b3656793b426e318a682c58c79dc24a4f71119c3b5a19f03bb38b57d6a7006ef",
+    "releaseCore-candidate-failure-rechecks.log": "043a6c900369e4af902671580bd27700d436096bb83ba7f5097b8f0f226a1192",
+    "releaseIntegration-baseline-failure-rechecks.log": "b5f3356282cd2da8022574b2aa65c29067f2b2bffb973a6c8a737cc0b9763a69",
+    "releaseIntegration-candidate-failure-rechecks.log": "2d45eb970f53947eeb057332e781146725391db7c3680e55be5f3bea1ea7aba4",
+    "reuse-review.json": "95c629e3305175804431a334490ef2d59dc24d4a34f42a0d1f011ae4b4f8d8e0",
+    "reuse-review.md": "c6f15b40250dbf51e24999b6403be9b76659480882677d8f644eeab00d874c5d",
+    "local-identities.json": "792dde51f16f3ebfcd5cfd43ff4837cadd4903f6a3bad0d082fb56d7142e0169",
+    "tree-input-reuse.json": "c2ee749ce724de39164243901ca18b86cc151fc4e0f35262ae85aadc2273b957",
+    "source-main-review.md": "36f2d4f04ea0aabdc8f0599c9052c7229661516b4d85a0dc546685331630d9bf",
+    "original-product-review.md": "eaf3b1f91db61088f0b2b8a7e0229283fceba6937c4441c9d05d1a45807e3ea3",
+    "main-b24.log": "930de11e2bab6c9ff6040ba2f2c64ed4087a8b7571d50f0475f67e0cfc643f97",
+    "release-b24.log": "7fdbc843da0f44799ced6ec2c11bfd6e3a71dce0cd9ea6b07465cd8a4716d831",
+    "main-build.log": "5068b1730aa7fe256bf4da57aa4082ecb75f73262eb92543b80411ed87fb7568",
+    "release-build.log": "e18c6becefec02d8578fdb2f9a91ed05dab9e86eba9e2b3bd2c77d021e17f032",
+    "shared-ui.json": "9ae792936e682318cdee134f68864c5d4853636b2968e12fc0286c7c04c9c6bd",
+    "shared-ui-driver.cjs": "8b257411eb4f2fe26707ac20a38d4686de2c633d83f21ac1ba204cbe591f2e90",
+    "route-isolation.log": "cb9daa549ffa572f223448cd715fa10cbff520ba597c980d4f30398a9486dea0",
+    "registration-shape.json": "809fae47ce2cbaeb64473b2b6b9af2cf4b73cbc34b4ca8e8d7f375d31f0bcc80",
+    "registration-raw.log": "1fc09ea4a832c02afa9936823a580aac6b9115abfac16225c775586a64c19830",
+    "original-mainCore.log": "6596e0023697501b78c9709d76d8c5300e9ca2f46319cc41d05d48b8eb096559",
+    "original-releaseCore.log": "35d053b764e6432287bc98a27fced4d6b3d77930ef008110bcc09eaf4b53303f",
+    "original-releaseIntegration.log": "219d2cb67fe09a064b439f16cac01073b9da3c6dffd2eac769dec420d108129e",
+    "main_baseline--cashier-realtime-integration.log": "ff9c1d380873dadb3f67c85c20531ff6ee64848f20a5f8a0bc44ca73ddefaf26",
+    "main_baseline--es-tray-device-print-contract.log": "52d448e1cb21720646c0425820cb8e9956e604ecb08ddfecc44e9ef7cd3d7e54",
+    "main_baseline--v3-reprint-recovery.log": "9befc0b93b311367fbd548d64ad2aa4041e4275a23c234747c4516efbabdb284",
+    "main_candidate--cashier-realtime-integration.log": "bdf85963bf6b8ab10683d079fe427992ba9b5f3054aa0f5515db9c18a85e37b0",
+    "main_candidate--es-tray-device-print-contract.log": "25bc5960d41126cc142bb8cdc177b4190c496d65b2b60e75da919e3cd11b9af9",
+    "main_candidate--v3-reprint-recovery.log": "cba0074e536f422facece16a1df29fb4f6d075a3689ab493e80a79ba67791f65",
+    "release_baseline--cashier-realtime-integration.log": "ee1bad5d8845d8c7f8c2dc534c63591a1d14ce05f557d20f7eddbcaf1f1b3fa0",
+    "release_baseline--es-tray-device-print-contract.log": "d7a613dfc3c8d8d871dc8b1fa81adf1b63c191757554545043eda20e8db41189",
+    "release_baseline--v3-reprint-recovery.log": "175be13be3b2e794d766c951c8cd7a9813ed9259e014876dc097576004bbd920",
+    "release_baseline--customer-order-recovery.log": "ad9a99070690027ed335c25a9165f2795f161e4ece6b84a97e49ba0bbe9d0bdc",
+    "release_candidate--cashier-realtime-integration.log": "2baa778810de45ba23048aadde3e97a64d868dca598ca6b51d23f251b2735459",
+    "release_candidate--es-tray-device-print-contract.log": "90bb01047a0de45f18fc78cb7006f616524b1153ae5c787610f07478e3f8df28",
+    "release_candidate--v3-reprint-recovery.log": "308c3fcdb8ba2da466352403e4b279ae20c83277aaeb40dcbb749708c79c942c",
+    "release_candidate--customer-order-recovery.log": "77caef9bb8a041daa339418b80fe4812741a1805c6db4d842751676a210bec49",
+    "release_baseline--cashier-large-cart-query.log": "b3e4289ad048b85a97bdcb73d55ae4e6e9377f908c34e7863be59f09c65e496d",
+    "release_baseline--diamond-native-sales-phase2.log": "577392460c2d1ca08bcb4bf9ff555f829813c84f48f9a1b2fdc2a8813277c0c2",
+    "release_baseline--dashboard-print-settings-mobile.log": "94aaeddd2011a6db44d2939ce6907c5208c278c87eada4f098bae7ba8a5645da",
+    "release_candidate--cashier-large-cart-query.log": "f93a1b7c9fa3936603703df24301dacc010dc36b600be806412c2592f5a0e430",
+    "release_candidate--diamond-native-sales-phase2.log": "897d5d000ff935970fca3476625dc72919d570b8717134379ae5d6e1d05898b8",
+    "release_candidate--dashboard-print-settings-mobile.log": "cdea9601e3360265ea2801a5f31b803baadc0fdacfc078ec818e67d94be7b7d9"
   },
-  "authorizationWindowStart": "2026-11-27T17:45:00.000Z"
+  "authorizationWindowStart": "2026-11-28T17:00:00.000Z",
+  "coverageSpecs": {
+    "mainCore": {
+      "candidate": "99ac06b0360fd77739b80558c1c32d4f4c677cb5",
+      "oldRunSha": "746ead6adb1f01784d7353e73de45cdd79400efb",
+      "manifest": "scripts/test/manifests/root-core-tests.json",
+      "expected": 105,
+      "unchangedPass": 101,
+      "b24": 1,
+      "freshFailureFiles": 3,
+      "failureFiles": [
+        "tests/cashier-realtime-integration.test.ts",
+        "tests/es-tray-device-print-contract.test.ts",
+        "tests/v3-reprint-recovery.test.ts"
+      ],
+      "annex": "known-mainCore.json",
+      "freshBaseline": "0252e97942dacd32a2aa3790ba92f30e66dca00b",
+      "assertionIds": [
+        "tests/cashier-realtime-integration.test.ts:170:12",
+        "tests/es-tray-device-print-contract.test.ts:478:12",
+        "tests/v3-reprint-recovery.test.ts:850:12"
+      ]
+    },
+    "releaseCore": {
+      "candidate": "b7776e703a770ea78632d38ac652d0bad6e7379f",
+      "oldRunSha": "65a23a780d16d607a0f8f818289e96c886eb1a60",
+      "manifest": "scripts/test/manifests/root-core-tests.json",
+      "expected": 104,
+      "unchangedPass": 99,
+      "b24": 1,
+      "freshFailureFiles": 4,
+      "failureFiles": [
+        "tests/cashier-realtime-integration.test.ts",
+        "tests/customer-order-recovery.test.ts",
+        "tests/es-tray-device-print-contract.test.ts",
+        "tests/v3-reprint-recovery.test.ts"
+      ],
+      "annex": "known-releaseCore.json",
+      "freshBaseline": "65a23a780d16d607a0f8f818289e96c886eb1a60",
+      "assertionIds": [
+        "tests/cashier-realtime-integration.test.ts:736:12",
+        "tests/customer-order-recovery.test.ts:109:12",
+        "tests/customer-order-recovery.test.ts:127:12",
+        "tests/customer-order-recovery.test.ts:152:12",
+        "tests/customer-order-recovery.test.ts:83:12",
+        "tests/es-tray-device-print-contract.test.ts:469:12",
+        "tests/v3-reprint-recovery.test.ts:841:12"
+      ]
+    },
+    "releaseIntegration": {
+      "candidate": "b7776e703a770ea78632d38ac652d0bad6e7379f",
+      "oldRunSha": "65a23a780d16d607a0f8f818289e96c886eb1a60",
+      "manifest": "scripts/test/manifests/root-integration-tests.json",
+      "expected": 22,
+      "unchangedPass": 19,
+      "b24": 0,
+      "freshFailureFiles": 3,
+      "failureFiles": [
+        "tests/cashier-large-cart-query.test.cjs",
+        "tests/dashboard-print-settings-mobile.test.ts",
+        "tests/diamond-native-sales-phase2.test.ts"
+      ],
+      "annex": "known-releaseIntegration.json",
+      "freshBaseline": "65a23a780d16d607a0f8f818289e96c886eb1a60",
+      "assertionIds": [
+        "tests/cashier-large-cart-query.test.cjs:109:10",
+        "tests/dashboard-print-settings-mobile.test.ts:159:30",
+        "tests/diamond-native-sales-phase2.test.ts:12:8"
+      ]
+    }
+  },
+  "registeredFrozenPaths": {
+    "actualCount": 513,
+    "actualSha256": "61cef3c6db3fbd6abe83933524d10bfe51a250ffa6ada9660328957a695e6b39",
+    "expectedCount": 5,
+    "expectedSha256": "ec8949b0ef9880ef457e577022a4e92948581865e7766b899207b266addb00ba",
+    "base": "67338b57bf2d872e2b0755c76820036f6f0743f4"
+  }
 }

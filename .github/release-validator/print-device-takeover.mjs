@@ -11,19 +11,19 @@ const repo = 'jasonmino-ops/light-ops-assistant', origin = 'https://github.com/'
 const controlRef = 'refs/heads/codex/release-validator-control'
 const appId = 5590705, installationId = 178077967, creatorId = 351820557
 const context = 'eshop/selective-release-validator'
-const prefix = 'Print takeover '
+const prefix = 'Dining performance '
 const manifestPath = '.github/release-validator/print-device-takeover.json'
-const manifestSha = '906318a2adf896085e516afcfb021f017db5c499ec7899eeb0b26f3dbfac8c0a'
+const manifestSha = 'e50145fe597425ab72655da825e7beb87b45ed5cf901ca42226430d2c6117e6c'
 const rawManifest = readFileSync(new URL('./print-device-takeover.json', import.meta.url))
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 assert.equal(sha(rawManifest), manifestSha)
 export const manifest = JSON.parse(rawManifest)
 export const controlPaths = [manifestPath, '.github/release-validator/print-device-takeover.mjs',
   '.github/release-validator/print-device-takeover.test.mjs', '.github/workflows/selective-release-validator.yml'].sort()
-const admissionPath = 'docs/releases/ES-V3-REPORT-STALE-ACK-01.json'
-const receiptPath = 'docs/releases/evidence/ES-V3-REPORT-STALE-ACK-01/founder-release.md'
-const reviewPath = 'docs/releases/evidence/ES-V3-REPORT-STALE-ACK-01/controller-review.json'
-const evidencePath = 'docs/releases/evidence/ES-V3-REPORT-STALE-ACK-01/validation-evidence.json'
+const admissionPath = 'docs/releases/ES-STD9E5497D-FIELD-STABILITY-01-B.json'
+const receiptPath = 'docs/releases/evidence/ES-STD9E5497D-FIELD-STABILITY-01-B/founder-release.md'
+const reviewPath = 'docs/releases/evidence/ES-STD9E5497D-FIELD-STABILITY-01-B/controller-review.json'
+const evidencePath = 'docs/releases/evidence/ES-STD9E5497D-FIELD-STABILITY-01-B/validation-evidence.json'
 export const registrationPaths = [admissionPath, receiptPath, reviewPath, evidencePath].sort()
 const cleanEnv = { PATH: process.env.PATH, HOME: process.env.HOME, LC_ALL: 'C',
   GIT_NO_REPLACE_OBJECTS: '1', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' }
@@ -74,8 +74,8 @@ export function verifyAuthorization(record, receipt, review, control, now=Date.n
   for(const value of Object.values(record.controllerSha256)) assert.match(value,/^[0-9a-f]{64}$/)
   assert.equal(record.controllerDigest,controllerDigest(record.controllerSha256))
   for(const term of [record.frozenPayloadSha256,record.dispositionSha256,auth.authorizationId,manifest.candidate,manifest.tree,manifest.base,manifestSha,
-    record.controllerDigest,...manifest.includedSourceCommits,
-    '批准精确回报兼容登记、一次App签发及受保护release快进部署',manifest.deadlineExclusive])
+    record.controllerDigest,manifest.mainBase,...manifest.includedSourceCommits,
+    '批准精确堂食性能登记、一次App签发及受保护release快进部署',manifest.deadlineExclusive])
     assert(receipt.includes(term),'Missing exact final Founder authority: '+term)
   for(const flag of ['issuerInstallationAuthorized','statusPublicationAuthorized','releaseExecutionAuthorized',
     'releaseExecutionRequiresUnexpiredAppStatus']) assert.equal(record[flag],true)
@@ -83,8 +83,15 @@ export function verifyAuthorization(record, receipt, review, control, now=Date.n
     'defaultSelectiveValidatorChanged']) assert.equal(record[flag],false)
   assert.equal(record.migrationCount,0)
   assert.equal(record.signatureLifetimeSeconds,manifest.signatureLifetimeSeconds)
-  assert.equal(record.acceptance,'ACCEPTED_WITH_EXACT_REPORT_ACK_CORE_AND_INTEGRATION_DISPOSITION')
+  assert.equal(record.acceptance,'ACCEPTED_WITH_EXACT_DINING_COVERAGE_AND_CURRENT_FAILURE_DISPOSITION')
   assert.deepEqual(record.rawCORE,{status:'BLOCKED',expected:104,executed:104,pass:100,fail:4,skip:0})
+  // Historical complete executions stay bound to their original SHAs; never relabel them as fresh B runs.
+  assert.equal(record.rawCORECandidate,'65a23a780d16d607a0f8f818289e96c886eb1a60')
+  assert.equal(record.rawIntegrationCandidate,record.rawCORECandidate)
+  assert.equal(record.rawProductCORECandidate,'746ead6adb1f01784d7353e73de45cdd79400efb')
+  assert.deepEqual(record.rawProductCORE,{status:'BLOCKED',expected:105,executed:105,pass:102,fail:3,skip:0})
+  assert.equal(record.coverageSha256,manifest.evidenceHashes['coverage.json'])
+  assert.equal(record.currentFailureDispositionAuthorized,true)
   assert.equal(review.verdict,'PASS');assert.equal(review.readOnly,true);assert.equal(review.freshContext,true)
   assert.equal(review.notFounderOrAppSigner,true)
   assert.equal(review.candidate,manifest.candidate);assert.equal(review.tree,manifest.tree)
@@ -95,17 +102,99 @@ export function verifyAuthorization(record, receipt, review, control, now=Date.n
   assert.equal(record.reviewReceiptSha256,sha(Buffer.from(JSON.stringify(review,null,2)+'\n')))
   assert.equal(record.deploymentId,'PENDING');assert.equal(record.productionSha,'PENDING')
 }
+// B-only complete coverage: retained PASS inputs and fresh failure rechecks are distinct from a new full run.
+export function verifyCoverage(coverage) {
+  assert.equal(coverage.status,'COMPLETE_COVERAGE_WITH_CURRENT_FAILURE_DISPOSITION_REQUEST')
+  assert.equal(coverage.notANewFullSuiteExecution,true)
+  assert.deepEqual(Object.keys(coverage.suites).sort(),Object.keys(manifest.coverageSpecs).sort())
+  for(const [name,spec] of Object.entries(manifest.coverageSpecs)) {
+    const lane=coverage.suites[name], fixed=JSON.parse(blob(spec.candidate,spec.manifest))
+    assert.equal(lane.candidate,spec.candidate);assert.equal(lane.originalRunSha,spec.oldRunSha)
+    assert.equal(lane.rawStatus,'BLOCKED');assert.equal(lane.expected,spec.expected)
+    assert.equal(fixed.expectedCount,spec.expected)
+    for(const key of ['skipped','unknown','uncollected']) assert.equal(lane[key],0)
+    assert.equal(lane.entries.length,spec.expected)
+    assert.deepEqual(lane.entries.map(x=>x.file).sort(),fixed.tests.map(x=>x.file).sort())
+    const counts={REUSED_UNCHANGED_PASS:0,REUSED_EXACT_TREE_PASS:0,FRESH_FAILURE_RECHECK:0},failed=[]
+    for(const entry of lane.entries) {
+      assert(Object.hasOwn(counts,entry.mode));counts[entry.mode]++
+      assert.equal(entry.testFileSha256,sha(blob(spec.candidate,entry.file)))
+      if(entry.mode==='FRESH_FAILURE_RECHECK') {
+        assert.equal(entry.originalStatus,'FAIL');assert.equal(entry.currentStatus,'FAIL')
+        assert.equal(entry.freshExit,1);assert.equal(entry.baselineMatchesCandidate,true);failed.push(entry.file)
+        for(const k of ['freshEvidenceSha256','baselineEvidenceSha256']) assert.match(entry[k],/^[a-f0-9]{64}$/)
+      } else {
+        assert.equal(entry.originalStatus,'PASS');assert.equal(entry.originalExit,0);assert.equal(entry.currentStatus,'PASS')
+        if(entry.mode==='REUSED_UNCHANGED_PASS') {
+          assert.equal(entry.oldTestFileSha256,sha(blob(spec.oldRunSha,entry.file)))
+          assert.equal(entry.oldTestFileSha256,entry.testFileSha256)
+          assert.equal(entry.inputAuditSha256,manifest.evidenceHashes['reuse-review.json'])
+        } else {
+          assert.equal(entry.file,'tests/dine-in-m1-contract.test.ts');assert.equal(entry.assertions,24)
+          assert.equal(git('rev-parse',entry.executedOn+'^{tree}'),git('rev-parse',spec.candidate+'^{tree}'))
+          assert.equal(entry.executedTree,git('rev-parse',spec.candidate+'^{tree}'))
+          assert.equal(entry.testFileSha256,sha(blob(entry.executedOn,entry.file)))
+        }
+      }
+    }
+    assert.deepEqual(counts,{REUSED_UNCHANGED_PASS:spec.unchangedPass,REUSED_EXACT_TREE_PASS:spec.b24,FRESH_FAILURE_RECHECK:spec.freshFailureFiles})
+    assert.deepEqual(failed.sort(),spec.failureFiles)
+    assert.equal(lane.reusedUnchangedPass,spec.unchangedPass);assert.equal(lane.reusedExactTreeB24,spec.b24)
+    assert.equal(lane.freshFailureFiles,spec.freshFailureFiles)
+  }
+}
+export function verifyFailureDisposition(value,now=Date.now()) {
+  assert.equal(value.schema_version,1);assert.equal(value.status,'REQUEST_ONLY_UNTIL_EXACT_FOUNDER_ACCEPTANCE')
+  assert.equal(value.candidate,manifest.candidate);assert.equal(value.product,manifest.mainBase)
+  assert.equal(value.source,manifest.includedSourceCommits[0]);assert.equal(value.base,manifest.base)
+  assert.equal(value.expiresAt,manifest.deadlineExclusive);assert(now<Date.parse(value.expiresAt),'Failure evidence expired')
+  assert.equal(value.raw_status,'BLOCKED');assert.equal(value.oldExpiredAuthorizationInherited,false)
+  assert.deepEqual(value.candidateTriggeredFailures,[]);assert.deepEqual(value.newFailures,[])
+  assert.equal(value.actualPostRegistrationReadbackRequired,true)
+  assert.deepEqual(Object.keys(value.suites).sort(),Object.keys(manifest.coverageSpecs).sort())
+  for(const [name,spec] of Object.entries(manifest.coverageSpecs)) {
+    assert.deepEqual(value.suites[name].map(x=>x.file).sort(),spec.failureFiles)
+    for(const item of value.suites[name]) {
+      assert.equal(item.candidate,spec.candidate);assert.equal(item.baselineExit,1);assert.equal(item.candidateExit,1)
+      assert.equal(item.baselineMatchesCandidate,true);assert.equal(item.attribution,'baseline_reproduced')
+      assert.equal(item.status,'RAW_FAIL_RETAINED_NO_WAIVER');assert.equal(item.unreachedAssertionsStillUnexecuted,true)
+      assert(item.assertionSignature.length>0);assert.match(item.assertionFingerprint,/^[a-f0-9]{64}$/)
+    }
+  }
+}
+// Literal Workflow V2 known-failure annexes, bound to this finite B evidence set.
+export function verifyFailureAnnex(annex,name) {
+  const spec=manifest.coverageSpecs[name];assert(spec)
+  assert.equal(annex.schema_version,1);assert.equal(annex.status,'REQUEST_ONLY_UNTIL_EXACT_FOUNDER_ACCEPTANCE')
+  assert.deepEqual(annex.baseline,{sha:spec.freshBaseline,tree:git('rev-parse',spec.freshBaseline+'^{tree}')})
+  assert.deepEqual(annex.candidate,{sha:spec.candidate,tree:git('rev-parse',spec.candidate+'^{tree}')})
+  assert.equal(annex.environment_toolchain_config_sha256,manifest.evidenceHashes['toolchain-inputs.json'])
+  assert.equal(annex.raw_status,'BLOCKED');assert.match(annex.failure_set_sha256,/^[a-f0-9]{64}$/)
+  for(const key of ['baseline_evidence','candidate_evidence']) assert.equal(annex[key].sha256,manifest.evidenceHashes[annex[key].path])
+  assert.deepEqual(annex.failures.map(x=>x.assertion).sort(),spec.assertionIds)
+  for(const item of annex.failures) {
+    assert(spec.failureFiles.includes(item.test_id));assert.equal(item.attribution,'baseline_reproduced')
+    assert.equal(item.expires_at,manifest.deadlineExclusive);assert.match(item.fingerprint,/^[a-f0-9]{64}$/)
+    assert.equal(item.evidence.sha256,manifest.evidenceHashes[item.evidence.path])
+    for(const key of ['expected','actual','diagnostic_or_exit_code']) assert.equal(typeof item[key],'string')
+  }
+  for(const key of ['failure_set_change','result_change','input_change','candidate_or_baseline_change','expiry','revoked_authority']) assert(annex.invalidate_on.includes(key))
+}
 export function verifyEvidence(raw) {
   assert.equal(sha(raw),manifest.evidenceBundleSha256)
   const evidence=JSON.parse(raw)
-  assert.equal(evidence.status,'EXISTING_IMMUTABLE_EVIDENCE_NOT_NEW_TEST_EXECUTION')
+  assert.equal(evidence.status,'PINNED_REUSED_AND_FRESH_EVIDENCE_NOT_NEW_FULL_SUITE_EXECUTION')
   assert.equal(evidence.candidate,manifest.candidate);assert.equal(evidence.tree,manifest.tree)
+  assert.equal(evidence.source,manifest.includedSourceCommits[0]);assert.equal(evidence.main,manifest.mainBase)
   assert.equal(evidence.rawIntegrationStatus,'BLOCKED');assert.equal(evidence.base,manifest.base);assert.equal(evidence.rawCoreStatus,'BLOCKED')
   assert.deepEqual(Object.keys(evidence.files).sort(),Object.keys(manifest.evidenceHashes).sort())
   for(const [name,digest] of Object.entries(manifest.evidenceHashes)) {
     assert.equal(evidence.files[name].sha256,digest)
     assert.equal(sha(Buffer.from(evidence.files[name].base64,'base64')),digest)
   }
+  verifyCoverage(JSON.parse(Buffer.from(evidence.files['coverage.json'].base64,'base64')))
+  verifyFailureDisposition(JSON.parse(Buffer.from(evidence.files['failure-disposition.json'].base64,'base64')))
+  for(const [name,spec] of Object.entries(manifest.coverageSpecs)) verifyFailureAnnex(JSON.parse(Buffer.from(evidence.files[spec.annex].base64,'base64')),name)
 }
 export function verifySource() {
   git('merge-base','--is-ancestor',manifest.sourceMainSha,manifest.mainBase)
@@ -159,6 +248,10 @@ function validated(expectedDigest) {
   for(const p of registrationPaths) assert.equal(sha(blob(registration,p)),sha(blob(main,p)))
   for(const [p,digest] of Object.entries(manifest.trustedEngineering)) {assert.equal(sha(blob(main,p)),digest,'Trusted engineering input changed: '+p);assert.equal(git('ls-tree',main,'--',p).split(' ')[0],manifest.trustedModes[p])}
   verifySource();verifyEvidence(blob(main,evidencePath))
+  // Re-read the actual registered-main operand of the unchanged historical assertion; fixture shape is not authority.
+  const frozenPaths=git('diff','--no-renames','--name-only',manifest.registeredFrozenPaths.base,main).split('\n').filter(Boolean)
+  assert.equal(frozenPaths.length,manifest.registeredFrozenPaths.actualCount)
+  assert.equal(sha(Buffer.from(JSON.stringify(frozenPaths))),manifest.registeredFrozenPaths.actualSha256)
   const raw=blob(main,admissionPath),digest=sha(raw),record=JSON.parse(raw)
   if(expectedDigest!==undefined) assert.equal(digest,expectedDigest)
   const reviewBytes=blob(main,reviewPath)
@@ -186,7 +279,7 @@ function defaultSelective(record,main) {
 function preflight() {
   const {main,digest,record}=validated()
   console.log(defaultSelective(record,main).trim())
-  console.log('PRINT EXACT CANDIDATE + QUALIFIED ACCEPTANCE: PASS; RAW CORE AND INTEGRATION REMAIN BLOCKED')
+  console.log('DINING EXACT CANDIDATE + QUALIFIED COVERAGE: PASS; HISTORICAL AND CURRENT RAW FAILURES REMAIN BLOCKED')
   appendFileSync(process.env.GITHUB_OUTPUT,'main='+main+'\ndigest='+digest+'\n')
 }
 async function request(path,credential,method='GET',payload) {

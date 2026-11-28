@@ -2,10 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {readFileSync} from 'node:fs'
-import {manifest,controlPaths,controllerDigest,candidateShape,verifyAuthorization,verifyEvidence,verifySource,contextEntries,readIssuedStatus,issueOnce} from './print-device-takeover.mjs'
+import {manifest,controlPaths,controllerDigest,candidateShape,verifyAuthorization,verifyEvidence,verifySource,contextEntries,readIssuedStatus,issueOnce,verifyCoverage,verifyFailureDisposition,verifyFailureAnnex} from './print-device-takeover.mjs'
 const sha=x=>createHash('sha256').update(x).digest('hex')
 const control='a'.repeat(40),digest='b'.repeat(64)
-const at=Date.parse('2026-11-27T17:50:00Z')
+const at=Date.parse('2026-11-28T17:50:00Z')
 export function fixture() {
   const hashes=Object.fromEntries(controlPaths.map(p=>[p,'c'.repeat(64)]))
   const review={verdict:'PASS',candidate:manifest.candidate,tree:manifest.tree,
@@ -14,21 +14,24 @@ export function fixture() {
     evidence:'ISOLATED SYNTHETIC FIXTURE ONLY. Not Founder approval, formal Acceptance or App status. '.repeat(3)}
   review.evidenceSha256=sha(review.evidence)
   const receipt=['ISOLATED SYNTHETIC FIXTURE NOT ACTUAL AUTHORITY','fixture-only',manifest.candidate,manifest.tree,manifest.base,
-    review.manifestSha256,controllerDigest(hashes),...manifest.includedSourceCommits,manifest.authorizationWindowStart,'FOUNDER_DECISION_UTC=2026-11-27T17:47:00.000Z',manifest.evidenceHashes['frozen-payload.json'],manifest.evidenceHashes['failure-disposition.json'],
-    '批准精确回报兼容登记、一次App签发及受保护release快进部署',manifest.deadlineExclusive].join('\n')
+    review.manifestSha256,controllerDigest(hashes),manifest.mainBase,...manifest.includedSourceCommits,manifest.authorizationWindowStart,'FOUNDER_DECISION_UTC=2026-11-28T17:47:00.000Z',manifest.evidenceHashes['frozen-payload.json'],manifest.evidenceHashes['failure-disposition.json'],
+    '批准精确堂食性能登记、一次App签发及受保护release快进部署',manifest.deadlineExclusive].join('\n')
   const record={releaseId:manifest.releaseId,taskIds:[manifest.taskId],releaseSha:manifest.candidate,releaseTree:manifest.tree,
     baseProductionSha:manifest.base,sourceMainSha:manifest.sourceMainSha,productionDeployment:manifest.productionDeployment,
     control,manifestSha256:review.manifestSha256,includedSourceCommits:manifest.includedSourceCommits,
-    founderAuthorization:{approvedBy:'Founder',status:'APPROVED',authorizationId:'fixture-only',approvedAt:'2026-11-27T17:47:00.000Z',includedSourceCommits:manifest.includedSourceCommits},
+    founderAuthorization:{approvedBy:'Founder',status:'APPROVED',authorizationId:'fixture-only',approvedAt:'2026-11-28T17:47:00.000Z',includedSourceCommits:manifest.includedSourceCommits},
     expiresAt:manifest.deadlineExclusive,frozenPayloadSha256:manifest.evidenceHashes['frozen-payload.json'],dispositionSha256:manifest.evidenceHashes['failure-disposition.json'],rawIntegration:{status:'BLOCKED',expected:22,executed:22,pass:19,fail:3,skip:0},authorizationReceiptSha256:sha(receipt),controllerSha256:hashes,controllerDigest:controllerDigest(hashes),
     issuerInstallationAuthorized:true,statusPublicationAuthorized:true,releaseExecutionAuthorized:true,releaseExecutionRequiresUnexpiredAppStatus:true,
     migrationAuthorized:false,terminalMutationAuthorized:false,pilotOrFeedMutationAuthorized:false,defaultSelectiveValidatorChanged:false,
-    migrationCount:0,signatureLifetimeSeconds:7200,acceptance:'ACCEPTED_WITH_EXACT_REPORT_ACK_CORE_AND_INTEGRATION_DISPOSITION',
+    migrationCount:0,signatureLifetimeSeconds:7200,acceptance:'ACCEPTED_WITH_EXACT_DINING_COVERAGE_AND_CURRENT_FAILURE_DISPOSITION',
     rawCORE:{status:'BLOCKED',expected:104,executed:104,pass:100,fail:4,skip:0},
+    rawCORECandidate:'65a23a780d16d607a0f8f818289e96c886eb1a60',rawIntegrationCandidate:'65a23a780d16d607a0f8f818289e96c886eb1a60',
+    rawProductCORECandidate:'746ead6adb1f01784d7353e73de45cdd79400efb',rawProductCORE:{status:'BLOCKED',expected:105,executed:105,pass:102,fail:3,skip:0},
+    coverageSha256:manifest.evidenceHashes['coverage.json'],currentFailureDispositionAuthorized:true,
     reviewReceiptSha256:sha(JSON.stringify(review,null,2)+'\n'),deploymentId:'PENDING',productionSha:'PENDING'}
   return {record,review,receipt}
 }
-test('actual immutable one-commit/local-report-and-regression candidate source verifies',()=>verifySource())
+test('actual exact B independent source and one-commit release verify',()=>verifySource())
 test('candidate shape rejects other candidate/tree/path/count',()=>{
   const good={candidate:manifest.candidate,tree:manifest.tree,changedPaths:manifest.paths.map(p=>p.path),deltaCount:1}
   candidateShape(good)
@@ -62,8 +65,8 @@ test('unknown, full status pages fail closed',()=>{
   assert.throws(()=>contextEntries(null));assert.throws(()=>contextEntries(Array(100).fill({})))
   assert.deepEqual(contextEntries([{context:'other'}]),[])
 })
-const issuedAt='2026-11-27T17:50:00.000Z',expiresAt='2026-11-27T19:45:00.000Z',target='https://github.com/example/run'
-const entry={id:123,state:'success',context:'eshop/selective-release-validator',description:'Print takeover '+digest,
+const issuedAt='2026-11-28T17:50:00.000Z',expiresAt='2026-11-28T19:00:00.000Z',target='https://github.com/example/run'
+const entry={id:123,state:'success',context:'eshop/selective-release-validator',description:'Dining performance '+digest,
   creator:{id:351820557,login:'e-shop-release-validator[bot]'},target_url:target,created_at:issuedAt}
 const args={candidate:manifest.candidate,digest,issuedAt,expiresAt,target,now:()=>at,wait:async()=>{},log:()=>{}}
 test('single synthetic POST then original status-ID readback; no network or key',async()=>{
@@ -99,7 +102,7 @@ test('wrong App/ID/state/digest/target/time, duplicates and absent readback neve
   }
 })
 test('expired, evidence-boundary and excessive status lifetime reject before POST',async()=>{
-  for(const bad of [{now:()=>Date.parse(expiresAt)},{expiresAt:'2026-11-27T20:50:01Z'},
+  for(const bad of [{now:()=>Date.parse(expiresAt)},{expiresAt:'2026-11-28T20:50:01Z'},
     {issuedAt:'2026-11-26T12:00:00Z',expiresAt:'2026-11-26T13:00:00Z',now:()=>Date.parse('2026-11-26T12:00:00Z')}]) {
     let posts=0
     await assert.rejects(issueOnce({...args,...bad,readStatuses:async()=>[],revalidate:async()=>{},postStatus:async()=>{posts++;return {id:123}}}))
@@ -121,11 +124,58 @@ test('actual pinned evidence verifies and altered RAW status/content rejects',()
 
 test('identical receipt cannot shift start and expiry as a pair, or move the personal decision timestamp',()=>{
   const {record,receipt,review}=fixture()
-  const later={...record.founderAuthorization,approvedAt:'2026-11-27T17:48:00.000Z'}
+  const later={...record.founderAuthorization,approvedAt:'2026-11-28T17:48:00.000Z'}
   for(const changed of [
     {...record,founderAuthorization:{...record.founderAuthorization,approvedAt:manifest.authorizationWindowStart}},
     {...record,founderAuthorization:later},
-    {...record,founderAuthorization:later,expiresAt:'2026-11-27T19:46:00.000Z'},
-    {...record,expiresAt:'2026-11-27T19:45:00.001Z'}
+    {...record,founderAuthorization:later,expiresAt:'2026-11-28T19:46:00.000Z'},
+    {...record,expiresAt:'2026-11-28T19:00:00.001Z'}
   ]) assert.throws(()=>verifyAuthorization(changed,receipt,review,control,at))
+})
+
+const boundEvidence=()=>JSON.parse(readFileSync(process.env.PRINT_TAKEOVER_EVIDENCE_BUNDLE))
+const part=name=>JSON.parse(Buffer.from(boundEvidence().files[name].base64,'base64'))
+test('B complete audited coverage rejects omissions, duplicates, skips, changed inputs and relabeled failure',()=>{
+  const good=part('coverage.json');verifyCoverage(good)
+  for(const change of [
+    x=>{x.suites.releaseCore.entries.pop()},
+    x=>{x.suites.releaseCore.entries[1]=x.suites.releaseCore.entries[0]},
+    x=>{x.suites.releaseCore.skipped=1},
+    x=>{x.suites.releaseCore.unknown=1},
+    x=>{x.suites.releaseCore.entries[0].mode='UNKNOWN'},
+    x=>{x.suites.releaseCore.entries[0].testFileSha256='0'.repeat(64)},
+    x=>{x.suites.releaseCore.entries.find(e=>e.mode==='FRESH_FAILURE_RECHECK').currentStatus='PASS'},
+    x=>{x.suites.releaseCore.originalRunSha=manifest.candidate},
+    x=>{x.suites.releaseCore.entries.find(e=>e.mode==='REUSED_EXACT_TREE_PASS').executedOn=manifest.base},
+  ]) {const value=structuredClone(good);change(value);assert.throws(()=>verifyCoverage(value))}
+})
+test('B failure disposition rejects inherited authority, new/missing/changed failures, expiry and false PASS',()=>{
+  const good=part('failure-disposition.json');verifyFailureDisposition(good,at)
+  for(const change of [
+    x=>{x.oldExpiredAuthorizationInherited=true},x=>{x.raw_status='PASS'},
+    x=>{x.newFailures=['unexpected']},x=>{x.candidateTriggeredFailures=['unexpected']},
+    x=>{x.suites.releaseCore.pop()},x=>{x.suites.releaseCore[0].candidateExit=0},
+    x=>{x.suites.releaseCore[0].baselineMatchesCandidate=false},
+    x=>{x.suites.releaseCore[0].unreachedAssertionsStillUnexecuted=false},
+    x=>{x.expiresAt='2027-01-01T00:00:00.000Z'},
+  ]) {const value=structuredClone(good);change(value);assert.throws(()=>verifyFailureDisposition(value,at))}
+  assert.throws(()=>verifyFailureDisposition(good,Date.parse(manifest.deadlineExclusive)))
+})
+test('B cannot reuse historical task authority, false current-run counts or omit exact disposition approval',()=>{
+  const {record,receipt,review}=fixture()
+  for(const bad of [{releaseId:'ES-V3-REPORT-STALE-ACK-01'},
+    {rawCORECandidate:manifest.candidate},{rawIntegrationCandidate:manifest.candidate},
+    {rawProductCORECandidate:manifest.mainBase},{coverageSha256:'0'.repeat(64)},
+    {currentFailureDispositionAuthorized:false}])
+    assert.throws(()=>verifyAuthorization({...record,...bad},receipt,review,control,at))
+})
+
+test('literal V2 failure annexes reject missing environment identity, changed source, failure IDs and evidence',()=>{
+  for(const [name,spec] of Object.entries(manifest.coverageSpecs)) {
+    const good=part(spec.annex);verifyFailureAnnex(good,name)
+    for(const change of [x=>{delete x.environment_toolchain_config_sha256},x=>{x.candidate.sha=manifest.base},
+      x=>{x.raw_status='PASS'},x=>{x.failures.pop()},x=>{x.failures[0].attribution='UNKNOWN'},
+      x=>{x.failures[0].expires_at='2027-01-01T00:00:00.000Z'},x=>{x.failures[0].evidence.sha256='0'.repeat(64)},
+      x=>{x.invalidate_on=[]}]) {const value=structuredClone(good);change(value);assert.throws(()=>verifyFailureAnnex(value,name))}
+  }
 })
